@@ -1,0 +1,39 @@
+{
+  "name": "paperforge-web",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "PaperForge 学术写作助手前端 — 工程化 React 单页应用",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ant-design/icons": "^5.5.1",
+    "@types/react-window": "^1.8.8",
+    "antd": "^5.21.0",
+    "axios": "^1.7.7",
+    "dayjs": "^1.11.13",
+    "i18next": "^26.3.3",
+    "pdfjs-dist": "^4.7.76",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-i18next": "^17.0.8",
+    "react-markdown": "^10.1.0",
+    "react-router-dom": "^6.26.2",
+    "react-window": "^1.8.11",
+    "remark-gfm": "^4.0.1",
+    "zustand": "^4.5.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.1",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.2",
+    "typescript": "^5.6.2",
+    "vite": "^5.4.8",
+    "vite-plugin-compression": "^0.5.1"
+  }
+}

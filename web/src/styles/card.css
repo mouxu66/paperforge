@@ -1,0 +1,87 @@
+/* 毛玻璃拟态卡片 + 收藏动画 + 历史列表项 */
+
+.pf-glass-card {
+  background: rgba(255, 255, 255, 0.72) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid transparent !important;
+  border-radius: 14px !important;
+  background-clip: padding-box, border-box !important;
+  background-origin: padding-box, border-box !important;
+  background-image: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.9) 0%,
+      rgba(255, 255, 255, 0.62) 100%
+    ),
+    linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.9) 0%,
+      rgba(230, 235, 245, 0.8) 50%,
+      rgba(255, 255, 255, 0.9) 100%
+    ) !important;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+  transition: transform 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    box-shadow 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
+}
+
+.pf-glass-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 12px 40px rgba(30, 64, 175, 0.12);
+}
+
+.pf-glass-card .ant-card-head {
+  background: transparent !important;
+  border-bottom: 1px solid rgba(232, 236, 241, 0.6) !important;
+}
+
+.pf-glass-card .ant-card-body {
+  background: transparent !important;
+}
+
+/* 收藏按钮心跳动画 */
+@keyframes pf-heartbeat {
+  0% {
+    transform: scale(1);
+    color: #d9d9d9;
+  }
+  40% {
+    transform: scale(1.45);
+    color: #faad14;
+  }
+  70% {
+    transform: scale(0.92);
+    color: #faad14;
+  }
+  100% {
+    transform: scale(1);
+    color: #faad14;
+  }
+}
+
+.pf-star-anim {
+  animation: pf-heartbeat 400ms ease-in-out both;
+}
+
+/* 问答历史侧边栏列表项 */
+.pf-history-item {
+  position: relative;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  margin-bottom: 4px;
+}
+.pf-history-item:hover {
+  background-color: #f0f5ff;
+}
+.pf-history-item.pf-history-active {
+  background-color: #e6f0ff;
+  box-shadow: inset 0 0 0 1px rgba(30, 64, 175, 0.08);
+}
+.pf-history-item .pf-history-delete {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.pf-history-item:hover .pf-history-delete {
+  opacity: 1;
+}

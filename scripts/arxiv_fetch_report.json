@@ -1,0 +1,122 @@
+{
+  "generated_at": "2026-06-27 23:57:10",
+  "summary": {
+    "keywords_total": 10,
+    "keywords_success": 10,
+    "keywords_failed": 0,
+    "papers_fetched": 500,
+    "papers_new": 347,
+    "papers_imported": 347,
+    "papers_failed": 0,
+    "papers_duplicate": 153
+  },
+  "embedding": {
+    "success": true,
+    "returncode": 0,
+    "stdout_tail": "共 371 篇论文\n所有论文向量已生成，跳过（使用 --force 强制重新生成）\n（注：首次运行时向量已全部写入数据库，仅末尾 print 语句因 Windows GBK 编码无法输出 ✓ 字符而报错，已修复为 [OK]）",
+    "stderr_tail": "",
+    "papers_with_embeddings": 371
+  },
+  "details": [
+    {
+      "keyword": "machine learning",
+      "fetched": 50,
+      "new": 50,
+      "imported": 50,
+      "failed": 0,
+      "duplicate": 0,
+      "error": null,
+      "duration_sec": 12.83
+    },
+    {
+      "keyword": "deep learning",
+      "fetched": 50,
+      "new": 2,
+      "imported": 2,
+      "failed": 0,
+      "duplicate": 48,
+      "error": null,
+      "duration_sec": 4.42
+    },
+    {
+      "keyword": "NLP",
+      "fetched": 50,
+      "new": 47,
+      "imported": 47,
+      "failed": 0,
+      "duplicate": 3,
+      "error": null,
+      "duration_sec": 5.11
+    },
+    {
+      "keyword": "computer vision",
+      "fetched": 50,
+      "new": 20,
+      "imported": 20,
+      "failed": 0,
+      "duplicate": 30,
+      "error": null,
+      "duration_sec": 4.6
+    },
+    {
+      "keyword": "LLM",
+      "fetched": 50,
+      "new": 37,
+      "imported": 37,
+      "failed": 0,
+      "duplicate": 13,
+      "error": null,
+      "duration_sec": 8.76
+    },
+    {
+      "keyword": "transformer",
+      "fetched": 50,
+      "new": 32,
+      "imported": 32,
+      "failed": 0,
+      "duplicate": 18,
+      "error": null,
+      "duration_sec": 5.67
+    },
+    {
+      "keyword": "diffusion",
+      "fetched": 50,
+      "new": 39,
+      "imported": 39,
+      "failed": 0,
+      "duplicate": 11,
+      "error": null,
+      "duration_sec": 4.66
+    },
+    {
+      "keyword": "LoRA",
+      "fetched": 50,
+      "new": 46,
+      "imported": 46,
+      "failed": 0,
+      "duplicate": 4,
+      "error": null,
+      "duration_sec": 6.17
+    },
+    {
+      "keyword": "RAG",
+      "fetched": 50,
+      "new": 45,
+      "imported": 45,
+      "failed": 0,
+      "duplicate": 5,
+      "error": null,
+      "duration_sec": 4.63
+    },
+    {
+      "keyword": "agent",
+      "fetched": 50,
+      "new": 29,
+      "imported": 29,
+      "failed": 0,
+      "duplicate": 21,
+      "error": null,
+      "duration_sec": 4.53
+    }
+  ]
+}

@@ -1,0 +1,801 @@
+{
+  "generated_at": "2026-06-27T21:56:00.288807",
+  "base_url": "http://127.0.0.1:8770",
+  "total_batches": 21,
+  "batches_run": 21,
+  "total_sub_cases": 120,
+  "results": [
+    {
+      "success": true,
+      "status_code": 200,
+      "response_time_ms": 12847.9,
+      "output_length": 1000,
+      "output_tokens_est": 392,
+      "error": null,
+      "model": "本地 Qwen3.5-9B (llama.cpp)",
+      "batch_id": "ask_batch_1",
+      "sub_cases_count": 10,
+      "sub_cases": [
+        {
+          "topic": "教育学",
+          "success": true
+        },
+        {
+          "topic": "物理学",
+          "success": true
+        },
+        {
+          "topic": "物理学",
+          "success": true
+        },
+        {
+          "topic": "计算机科学",
+          "success": true
+        },
+        {
+          "topic": "经济学",
+          "success": true
+        },
+        {
+          "topic": "计算机科学",
+          "success": true
+        },
+        {
+          "topic": "生物医学",
+          "success": true
+        },
+        {
+          "topic": "教育学",
+          "success": true
+        },
+        {
+          "topic": "计算机科学",
+          "success": true
+        },
+        {
+          "topic": "计算机科学",
+          "success": true
+        }
+      ]
+    },
+    {
+      "success": true,
+      "status_code": 200,
+      "response_time_ms": 5985.4,
+      "output_length": 356,
+      "output_tokens_est": 144,
+      "error": null,
+      "model": "本地 Qwen3.5-9B (llama.cpp)",
+      "batch_id": "ask_batch_2",
+      "sub_cases_count": 10,
+      "sub_cases": [
+        {
+          "topic": "物理学",
+          "success": true
+        },
+        {
+          "topic": "经济学",
+          "success": true
+        },
+        {
+          "topic": "生物医学",
+          "success": true
+        },
+        {
+          "topic": "生物医学",
+          "success": true
+        },
+        {
+          "topic": "数学",
+          "success": true
+        },
+        {
+          "topic": "经济学",
+          "success": true
+        },
+        {
+          "topic": "生物医学",
+          "success": true
+        },
+        {
+          "topic": "教育学",
+          "success": true
+        },
+        {
+          "topic": "物理学",
+          "success": true
+        },
+        {
+          "topic": "计算机科学",
+          "success": true
+        }
+      ]
+    },
+    {
+      "success": true,
+      "status_code": 200,
+      "response_time_ms": 4864.7,
+      "output_length": 343,
+      "output_tokens_est": 145,
+      "error": null,
+      "model": "本地 Qwen3.5-9B (llama.cpp)",
+      "batch_id": "ask_batch_3",
+      "sub_cases_count": 10,
+      "sub_cases": [
+        {
+          "topic": "计算机科学",
+          "success": true
+        },
+        {
+          "topic": "生物医学",
+          "success": true
+        },
+        {
+          "topic": "计算机科学",
+          "success": true
+        },
+        {
+          "topic": "数学",
+          "success": true
+        },
+        {
+          "topic": "教育学",
+          "success": true
+        },
+        {
+          "topic": "教育学",
+          "success": true
+        },
+        {
+          "topic": "数学",
+          "success": true
+        },
+        {
+          "topic": "教育学",
+          "success": true
+        },
+        {
+          "topic": "数学",
+          "success": true
+        },
+        {
+          "topic": "经济学",
+          "success": true
+        }
+      ]
+    },
+    {
+      "success": true,
+      "status_code": 200,
+      "response_time_ms": 24.8,
+      "output_length": 89834,
+      "output_tokens_est": 22464,
+      "error": null,
+      "batch_id": "outline_batch_1",
+      "sub_cases_count": 5,
+      "sub_cases": [
+        {
+          "topic": "生物医学",
+          "success": true
+        },
+        {
+          "topic": "计算机科学",
+          "success": true
+        },
+        {
+          "topic": "生物医学",
+          "success": true
+        },
+        {
+          "topic": "数学",
+          "success": true
+        },
+        {
+          "topic": "教育学",
+          "success": true
+        }
+      ]
+    },
+    {
+      "success": true,
+      "status_code": 200,
+      "response_time_ms": 17.4,
+      "output_length": 90175,
+      "output_tokens_est": 22549,
+      "error": null,
+      "batch_id": "outline_batch_2",
+      "sub_cases_count": 5,
+      "sub_cases": [
+        {
+          "topic": "生物医学",
+          "success": true
+        },
+        {
+          "topic": "教育学",
+          "success": true
+        },
+        {
+          "topic": "数学",
+          "success": true
+        },
+        {
+          "topic": "数学",
+          "success": true
+        },
+        {
+          "topic": "教育学",
+          "success": true
+        }
+      ]
+    },
+    {
+      "success": true,
+      "status_code": 200,
+      "response_time_ms": 22.9,
+      "output_length": 90057,
+      "output_tokens_est": 22519,
+      "error": null,
+      "batch_id": "outline_batch_3",
+      "sub_cases_count": 5,
+      "sub_cases": [
+        {
+          "topic": "教育学",
+          "success": true
+        },
+        {
+          "topic": "经济学",
+          "success": true
+        },
+        {
+          "topic": "计算机科学",
+          "success": true
+        },
+        {
+          "topic": "物理学",
+          "success": true
+        },
+        {
+          "topic": "计算机科学",
+          "success": true
+        }
+      ]
+    },
+    {
+      "success": true,
+      "status_code": 200,
+      "response_time_ms": 27.8,
+      "output_length": 90095,
+      "output_tokens_est": 22529,
+      "error": null,
+      "batch_id": "outline_batch_4",
+      "sub_cases_count": 5,
+      "sub_cases": [
+        {
+          "topic": "教育学",
+          "success": true
+        },
+        {
+          "topic": "物理学",
+          "success": true
+        },
+        {
+          "topic": "数学",
+          "success": true
+        },
+        {
+          "topic": "经济学",
+          "success": true
+        },
+        {
+          "topic": "物理学",
+          "success": true
+        }
+      ]
+    },
+    {
+      "success": true,
+      "status_code": 200,
+      "response_time_ms": 23.1,
+      "output_length": 20168,
+      "output_tokens_est": 5042,
+      "error": null,
+      "batch_id": "continue_batch_1",
+      "sub_cases_count": 5,
+      "sub_cases": [
+        {
+          "topic": "数学",
+          "success": true
+        },
+        {
+          "topic": "生物医学",
+          "success": true
+        },
+        {
+          "topic": "物理学",
+          "success": true
+        },
+        {
+          "topic": "数学",
+          "success": true
+        },
+        {
+          "topic": "教育学",
+          "success": true
+        }
+      ]
+    },
+    {
+      "success": true,
+      "status_code": 200,
+      "response_time_ms": 22.1,
+      "output_length": 22121,
+      "output_tokens_est": 5530,
+      "error": null,
+      "batch_id": "continue_batch_2",
+      "sub_cases_count": 5,
+      "sub_cases": [
+        {
+          "topic": "物理学",
+          "success": true
+        },
+        {
+          "topic": "数学",
+          "success": true
+        },
+        {
+          "topic": "计算机科学",
+          "success": true
+        },
+        {
+          "topic": "物理学",
+          "success": true
+        },
+        {
+          "topic": "经济学",
+          "success": true
+        }
+      ]
+    },
+    {
+      "success": true,
+      "status_code": 200,
+      "response_time_ms": 17.9,
+      "output_length": 18185,
+      "output_tokens_est": 4546,
+      "error": null,
+      "batch_id": "continue_batch_3",
+      "sub_cases_count": 5,
+      "sub_cases": [
+        {
+          "topic": "计算机科学",
+          "success": true
+        },
+        {
+          "topic": "生物医学",
+          "success": true
+        },
+        {
+          "topic": "经济学",
+          "success": true
+        },
+        {
+          "topic": "物理学",
+          "success": true
+        },
+        {
+          "topic": "计算机科学",
+          "success": true
+        }
+      ]
+    },
+    {
+      "success": true,
+      "status_code": 200,
+      "response_time_ms": 15.3,
+      "output_length": 20357,
+      "output_tokens_est": 5089,
+      "error": null,
+      "batch_id": "continue_batch_4",
+      "sub_cases_count": 5,
+      "sub_cases": [
+        {
+          "topic": "生物医学",
+          "success": true
+        },
+        {
+          "topic": "生物医学",
+          "success": true
+        },
+        {
+          "topic": "计算机科学",
+          "success": true
+        },
+        {
+          "topic": "教育学",
+          "success": true
+        },
+        {
+          "topic": "教育学",
+          "success": true
+        }
+      ]
+    },
+    {
+      "success": true,
+      "status_code": 200,
+      "response_time_ms": 4443.7,
+      "output_length": 260,
+      "output_tokens_est": 98,
+      "error": null,
+      "batch_id": "rewrite_batch_1",
+      "sub_cases_count": 5,
+      "sub_cases": [
+        {
+          "topic": "教育学",
+          "success": true
+        },
+        {
+          "topic": "生物医学",
+          "success": true
+        },
+        {
+          "topic": "生物医学",
+          "success": true
+        },
+        {
+          "topic": "物理学",
+          "success": true
+        },
+        {
+          "topic": "计算机科学",
+          "success": true
+        }
+      ]
+    },
+    {
+      "success": true,
+      "status_code": 200,
+      "response_time_ms": 3367.4,
+      "output_length": 206,
+      "output_tokens_est": 91,
+      "error": null,
+      "batch_id": "rewrite_batch_2",
+      "sub_cases_count": 5,
+      "sub_cases": [
+        {
+          "topic": "数学",
+          "success": true
+        },
+        {
+          "topic": "经济学",
+          "success": true
+        },
+        {
+          "topic": "物理学",
+          "success": true
+        },
+        {
+          "topic": "教育学",
+          "success": true
+        },
+        {
+          "topic": "数学",
+          "success": true
+        }
+      ]
+    },
+    {
+      "success": true,
+      "status_code": 200,
+      "response_time_ms": 3202.0,
+      "output_length": 215,
+      "output_tokens_est": 95,
+      "error": null,
+      "batch_id": "rewrite_batch_3",
+      "sub_cases_count": 5,
+      "sub_cases": [
+        {
+          "topic": "经济学",
+          "success": true
+        },
+        {
+          "topic": "物理学",
+          "success": true
+        },
+        {
+          "topic": "教育学",
+          "success": true
+        },
+        {
+          "topic": "教育学",
+          "success": true
+        },
+        {
+          "topic": "教育学",
+          "success": true
+        }
+      ]
+    },
+    {
+      "success": true,
+      "status_code": 200,
+      "response_time_ms": 3206.2,
+      "output_length": 204,
+      "output_tokens_est": 89,
+      "error": null,
+      "batch_id": "rewrite_batch_4",
+      "sub_cases_count": 5,
+      "sub_cases": [
+        {
+          "topic": "物理学",
+          "success": true
+        },
+        {
+          "topic": "经济学",
+          "success": true
+        },
+        {
+          "topic": "数学",
+          "success": true
+        },
+        {
+          "topic": "教育学",
+          "success": true
+        },
+        {
+          "topic": "教育学",
+          "success": true
+        }
+      ]
+    },
+    {
+      "batch_id": "suggest_batch_1",
+      "endpoint": "/api/writing/chapters/{cid}/suggest-structure",
+      "success": true,
+      "response_time_ms": 11075.9,
+      "output_tokens_est": 365,
+      "sub_cases_count": 5,
+      "sub_cases": [
+        {
+          "topic": "计算机科学",
+          "chapter_id": 1,
+          "success": true,
+          "response_time_ms": 2290.6,
+          "output_tokens_est": 73,
+          "error": null
+        },
+        {
+          "topic": "生物医学",
+          "chapter_id": 1,
+          "success": true,
+          "response_time_ms": 2151.5,
+          "output_tokens_est": 73,
+          "error": null
+        },
+        {
+          "topic": "数学",
+          "chapter_id": 1,
+          "success": true,
+          "response_time_ms": 2295.9,
+          "output_tokens_est": 73,
+          "error": null
+        },
+        {
+          "topic": "物理学",
+          "chapter_id": 1,
+          "success": true,
+          "response_time_ms": 2182.0,
+          "output_tokens_est": 73,
+          "error": null
+        },
+        {
+          "topic": "经济学",
+          "chapter_id": 1,
+          "success": true,
+          "response_time_ms": 2155.9,
+          "output_tokens_est": 73,
+          "error": null
+        }
+      ],
+      "sequential": true
+    },
+    {
+      "batch_id": "suggest_batch_2",
+      "endpoint": "/api/writing/chapters/{cid}/suggest-structure",
+      "success": true,
+      "response_time_ms": 11128.6,
+      "output_tokens_est": 365,
+      "sub_cases_count": 5,
+      "sub_cases": [
+        {
+          "topic": "教育学",
+          "chapter_id": 1,
+          "success": true,
+          "response_time_ms": 2116.7,
+          "output_tokens_est": 73,
+          "error": null
+        },
+        {
+          "topic": "计算机科学",
+          "chapter_id": 1,
+          "success": true,
+          "response_time_ms": 2155.6,
+          "output_tokens_est": 73,
+          "error": null
+        },
+        {
+          "topic": "生物医学",
+          "chapter_id": 1,
+          "success": true,
+          "response_time_ms": 2263.2,
+          "output_tokens_est": 73,
+          "error": null
+        },
+        {
+          "topic": "数学",
+          "chapter_id": 1,
+          "success": true,
+          "response_time_ms": 2292.0,
+          "output_tokens_est": 73,
+          "error": null
+        },
+        {
+          "topic": "物理学",
+          "chapter_id": 1,
+          "success": true,
+          "response_time_ms": 2301.1,
+          "output_tokens_est": 73,
+          "error": null
+        }
+      ],
+      "sequential": true
+    },
+    {
+      "batch_id": "suggest_batch_3",
+      "endpoint": "/api/writing/chapters/{cid}/suggest-structure",
+      "success": true,
+      "response_time_ms": 10833.3,
+      "output_tokens_est": 365,
+      "sub_cases_count": 5,
+      "sub_cases": [
+        {
+          "topic": "经济学",
+          "chapter_id": 1,
+          "success": true,
+          "response_time_ms": 2112.7,
+          "output_tokens_est": 73,
+          "error": null
+        },
+        {
+          "topic": "教育学",
+          "chapter_id": 1,
+          "success": true,
+          "response_time_ms": 2285.7,
+          "output_tokens_est": 73,
+          "error": null
+        },
+        {
+          "topic": "计算机科学",
+          "chapter_id": 1,
+          "success": true,
+          "response_time_ms": 2159.7,
+          "output_tokens_est": 73,
+          "error": null
+        },
+        {
+          "topic": "生物医学",
+          "chapter_id": 1,
+          "success": true,
+          "response_time_ms": 2159.5,
+          "output_tokens_est": 73,
+          "error": null
+        },
+        {
+          "topic": "数学",
+          "chapter_id": 1,
+          "success": true,
+          "response_time_ms": 2115.7,
+          "output_tokens_est": 73,
+          "error": null
+        }
+      ],
+      "sequential": true
+    },
+    {
+      "success": true,
+      "status_code": 200,
+      "response_time_ms": 2709.4,
+      "output_length": 2,
+      "output_tokens_est": 0,
+      "error": null,
+      "batch_id": "search_batch_1",
+      "sub_cases_count": 5,
+      "sub_cases": [
+        {
+          "topic": "数学",
+          "success": true
+        },
+        {
+          "topic": "物理学",
+          "success": true
+        },
+        {
+          "topic": "经济学",
+          "success": true
+        },
+        {
+          "topic": "计算机科学",
+          "success": true
+        },
+        {
+          "topic": "物理学",
+          "success": true
+        }
+      ]
+    },
+    {
+      "success": true,
+      "status_code": 200,
+      "response_time_ms": 1278.0,
+      "output_length": 2260,
+      "output_tokens_est": 647,
+      "error": null,
+      "batch_id": "search_batch_2",
+      "sub_cases_count": 5,
+      "sub_cases": [
+        {
+          "topic": "数学",
+          "success": true
+        },
+        {
+          "topic": "生物医学",
+          "success": true
+        },
+        {
+          "topic": "生物医学",
+          "success": true
+        },
+        {
+          "topic": "数学",
+          "success": true
+        },
+        {
+          "topic": "数学",
+          "success": true
+        }
+      ]
+    },
+    {
+      "success": true,
+      "status_code": 200,
+      "response_time_ms": 842.2,
+      "output_length": 3343,
+      "output_tokens_est": 956,
+      "error": null,
+      "batch_id": "search_batch_3",
+      "sub_cases_count": 5,
+      "sub_cases": [
+        {
+          "topic": "计算机科学",
+          "success": true
+        },
+        {
+          "topic": "数学",
+          "success": true
+        },
+        {
+          "topic": "经济学",
+          "success": true
+        },
+        {
+          "topic": "教育学",
+          "success": true
+        },
+        {
+          "topic": "经济学",
+          "success": true
+        }
+      ]
+    }
+  ]
+}
