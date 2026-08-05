@@ -1,0 +1,52 @@
+{
+  "manifest_version": 3,
+  "name": "PaperForge Clipper",
+  "version": "0.3.0",
+  "description": "一键将网页上的论文 PDF 与元数据保存到本地 PaperForge 库。支持 arXiv、知网、Google Scholar。",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": ["activeTab", "storage"],
+  "host_permissions": [
+    "http://localhost:8770/*",
+    "https://localhost:8770/*",
+    "http://127.0.0.1:8770/*",
+    "https://127.0.0.1:8770/*",
+    "*://*.arxiv.org/*",
+    "*://*.cnki.net/*",
+    "*://*.cnki.com.cn/*",
+    "*://scholar.google.com/*",
+    "*://scholar.google.com.hk/*",
+    "*://scholar.google.co.jp/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://arxiv.org/abs/*",
+        "*://*.cnki.net/*",
+        "*://*.cnki.com.cn/*",
+        "*://scholar.google.com/*",
+        "*://scholar.google.com.hk/*",
+        "*://scholar.google.co.jp/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "PaperForge Clipper",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  }
+}

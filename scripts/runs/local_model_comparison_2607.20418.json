@@ -1,0 +1,21 @@
+{
+  "arxiv_id": "2607.20418",
+  "title": "Pure-DP Statistical Query Release at the Conjectured Square-Root Rate",
+  "depth": {
+    "novelty": 0.75,
+    "rigor": 0.88,
+    "influence": 0.65,
+    "reproducibility": 0.85,
+    "verdict": "accept",
+    "calibrated_score": 0.856
+  },
+  "local": {
+    "novelty": 0.95,
+    "rigor": 0.92,
+    "influence": 0.85,
+    "reproducibility": 0.75,
+    "verdict": "accept",
+    "reasoning": "The paper presents a significant theoretical advance by proving the conjectured square-root rate for pure-DP statistical query release using a novel distance-penalized likelihood envelope construction."
+  },
+  "local_raw": "{\"novelty\": 0.95, \"rigor\": 0.92, \"influence\": 0.85, \"reproducibility\": 0.75, \"verdict\": \"accept\", \"reasoning\": \"The paper presents a significant theoretical advance by proving the conjectured square-root rate for pure-DP statistical query release using a novel distance-penalized likelihood envelope construction.\"}"
+}

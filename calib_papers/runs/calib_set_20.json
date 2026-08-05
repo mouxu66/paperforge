@@ -1,0 +1,282 @@
+[
+  {
+    "paper_id": "report_82e663c7b7ac_reflection",
+    "text_hash": "",
+    "expert_scores": {
+      "final": 0.0,
+      "novelty": 0.0,
+      "rigor": 0.0,
+      "reproducibility": 0.0,
+      "influence": 0.0,
+      "objectivity": 0.0
+    },
+    "expert_verdict": "reject",
+    "weight": 1.0
+  },
+  {
+    "paper_id": "report_8f871462e026_report_8f871462e026",
+    "text_hash": "",
+    "expert_scores": {
+      "final": 0.0,
+      "novelty": 0.0,
+      "rigor": 0.0,
+      "reproducibility": 0.0,
+      "influence": 0.0,
+      "objectivity": 0.0
+    },
+    "expert_verdict": "reject",
+    "weight": 1.0
+  },
+  {
+    "paper_id": "report_22ff370f250c_report_c",
+    "text_hash": "",
+    "expert_scores": {
+      "final": 0.0,
+      "novelty": 0.0,
+      "rigor": 0.0,
+      "reproducibility": 0.0,
+      "influence": 0.0,
+      "objectivity": 0.0
+    },
+    "expert_verdict": "reject",
+    "weight": 1.0
+  },
+  {
+    "paper_id": "report_7b48260fbf7c_Test_Reflection_Qwen",
+    "text_hash": "",
+    "expert_scores": {
+      "final": 0.0,
+      "novelty": 0.0,
+      "rigor": 0.0,
+      "reproducibility": 0.0,
+      "influence": 0.0,
+      "objectivity": 0.0
+    },
+    "expert_verdict": "reject",
+    "weight": 1.0
+  },
+  {
+    "paper_id": "2606.27156",
+    "text_hash": "",
+    "expert_scores": {
+      "final": 0.508,
+      "novelty": 0.45,
+      "rigor": 0.55,
+      "reproducibility": 0.45,
+      "influence": 0.5,
+      "objectivity": 0.6
+    },
+    "expert_verdict": "major_revision",
+    "weight": 1.0
+  },
+  {
+    "paper_id": "2606.24099",
+    "text_hash": "",
+    "expert_scores": {
+      "final": 0.523,
+      "novelty": 0.5,
+      "rigor": 0.5,
+      "reproducibility": 0.45,
+      "influence": 0.5,
+      "objectivity": 0.7
+    },
+    "expert_verdict": "major_revision",
+    "weight": 1.0
+  },
+  {
+    "paper_id": "2606.27186",
+    "text_hash": "",
+    "expert_scores": {
+      "final": 0.638,
+      "novelty": 0.6,
+      "rigor": 0.85,
+      "reproducibility": 0.4,
+      "influence": 0.4,
+      "objectivity": 0.9
+    },
+    "expert_verdict": "major_revision",
+    "weight": 1.0
+  },
+  {
+    "paper_id": "2606.24359",
+    "text_hash": "",
+    "expert_scores": {
+      "final": 0.27,
+      "novelty": 0.25,
+      "rigor": 0.25,
+      "reproducibility": 0.3,
+      "influence": 0.2,
+      "objectivity": 0.4
+    },
+    "expert_verdict": "reject",
+    "weight": 1.0
+  },
+  {
+    "paper_id": "2606.27060",
+    "text_hash": "",
+    "expert_scores": {
+      "final": 0.503,
+      "novelty": 0.35,
+      "rigor": 0.55,
+      "reproducibility": 0.5,
+      "influence": 0.6,
+      "objectivity": 0.55
+    },
+    "expert_verdict": "major_revision",
+    "weight": 1.0
+  },
+  {
+    "paper_id": "2606.18205",
+    "text_hash": "",
+    "expert_scores": {
+      "final": 0.51,
+      "novelty": 0.4,
+      "rigor": 0.6,
+      "reproducibility": 0.45,
+      "influence": 0.4,
+      "objectivity": 0.75
+    },
+    "expert_verdict": "major_revision",
+    "weight": 1.0
+  },
+  {
+    "paper_id": "2606.26811",
+    "text_hash": "",
+    "expert_scores": {
+      "final": 0.588,
+      "novelty": 0.55,
+      "rigor": 0.7,
+      "reproducibility": 0.6,
+      "influence": 0.4,
+      "objectivity": 0.7
+    },
+    "expert_verdict": "major_revision",
+    "weight": 1.0
+  },
+  {
+    "paper_id": "2606.27216",
+    "text_hash": "",
+    "expert_scores": {
+      "final": 0.7,
+      "novelty": 0.6,
+      "rigor": 0.75,
+      "reproducibility": 0.8,
+      "influence": 0.65,
+      "objectivity": 0.75
+    },
+    "expert_verdict": "minor_revision",
+    "weight": 1.0
+  },
+  {
+    "paper_id": "2606.26157",
+    "text_hash": "",
+    "expert_scores": {
+      "final": 0.438,
+      "novelty": 0.4,
+      "rigor": 0.5,
+      "reproducibility": 0.5,
+      "influence": 0.35,
+      "objectivity": 0.45
+    },
+    "expert_verdict": "reject",
+    "weight": 1.0
+  },
+  {
+    "paper_id": "2606.22429",
+    "text_hash": "",
+    "expert_scores": {
+      "final": 0.663,
+      "novelty": 0.6,
+      "rigor": 0.7,
+      "reproducibility": 0.75,
+      "influence": 0.6,
+      "objectivity": 0.7
+    },
+    "expert_verdict": "major_revision",
+    "weight": 1.0
+  },
+  {
+    "paper_id": "2606.27294",
+    "text_hash": "",
+    "expert_scores": {
+      "final": 0.658,
+      "novelty": 0.7,
+      "rigor": 0.7,
+      "reproducibility": 0.55,
+      "influence": 0.6,
+      "objectivity": 0.7
+    },
+    "expert_verdict": "major_revision",
+    "weight": 1.0
+  },
+  {
+    "paper_id": "2606.27263",
+    "text_hash": "",
+    "expert_scores": {
+      "final": 0.67,
+      "novelty": 0.7,
+      "rigor": 0.8,
+      "reproducibility": 0.5,
+      "influence": 0.5,
+      "objectivity": 0.8
+    },
+    "expert_verdict": "major_revision",
+    "weight": 1.0
+  },
+  {
+    "paper_id": "2606.26341",
+    "text_hash": "",
+    "expert_scores": {
+      "final": 0.655,
+      "novelty": 0.6,
+      "rigor": 0.7,
+      "reproducibility": 0.7,
+      "influence": 0.6,
+      "objectivity": 0.7
+    },
+    "expert_verdict": "major_revision",
+    "weight": 1.0
+  },
+  {
+    "paper_id": "2606.27023",
+    "text_hash": "",
+    "expert_scores": {
+      "final": 0.65,
+      "novelty": 0.55,
+      "rigor": 0.7,
+      "reproducibility": 0.7,
+      "influence": 0.6,
+      "objectivity": 0.75
+    },
+    "expert_verdict": "major_revision",
+    "weight": 1.0
+  },
+  {
+    "paper_id": "2402.09353",
+    "text_hash": "",
+    "expert_scores": {
+      "final": 0.76,
+      "novelty": 0.6,
+      "rigor": 0.8,
+      "reproducibility": 0.8,
+      "influence": 0.85,
+      "objectivity": 0.8
+    },
+    "expert_verdict": "minor_revision",
+    "weight": 1.0
+  },
+  {
+    "paper_id": "2606.21847",
+    "text_hash": "",
+    "expert_scores": {
+      "final": 0.603,
+      "novelty": 0.55,
+      "rigor": 0.6,
+      "reproducibility": 0.6,
+      "influence": 0.6,
+      "objectivity": 0.7
+    },
+    "expert_verdict": "major_revision",
+    "weight": 1.0
+  }
+]

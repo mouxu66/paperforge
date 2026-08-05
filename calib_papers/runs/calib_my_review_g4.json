@@ -1,0 +1,57 @@
+[
+  {
+    "pid": "2606.27263",
+    "novelty": 0.7,
+    "rigor": 0.8,
+    "reproducibility": 0.5,
+    "influence": 0.5,
+    "objectivity": 0.8,
+    "final": 0.670,
+    "verdict": "major_revision",
+    "justification": "Genuinely novel construction of a lattice field theory directly on the Laplacian-growth process with rigorous perturbative (3-loop) and small-graph checks, though DLA/b-LRW results are deferred and reproducibility is limited by the absence of code/data."
+  },
+  {
+    "pid": "2606.26341",
+    "novelty": 0.6,
+    "rigor": 0.7,
+    "reproducibility": 0.7,
+    "influence": 0.6,
+    "objectivity": 0.7,
+    "final": 0.655,
+    "verdict": "major_revision",
+    "justification": "Solid engineering contribution (first GPU-batched NLP solver via iteration fusion and iteration-level batching) with sound multi-benchmark evaluation and open code, but the core idea is an incremental systems advance over IPOPT/MadNLP rather than a new paradigm, and speedups shrink with problem size."
+  },
+  {
+    "pid": "2606.27023",
+    "novelty": 0.55,
+    "rigor": 0.7,
+    "reproducibility": 0.7,
+    "influence": 0.6,
+    "objectivity": 0.75,
+    "final": 0.650,
+    "verdict": "major_revision",
+    "justification": "Useful incremental extension of verbalized-calibration training (e.g. ConfTuner) to multimodal medical VQA via a factorial-perturbation design and composite loss, backed by thorough ablations, though it remains a refinement of existing methods and still fails on hard multi-step reasoning."
+  },
+  {
+    "pid": "2402.09353",
+    "novelty": 0.6,
+    "rigor": 0.8,
+    "reproducibility": 0.8,
+    "influence": 0.85,
+    "objectivity": 0.8,
+    "final": 0.760,
+    "verdict": "minor_revision",
+    "justification": "Well-executed and highly influential PEFT method that adds a principled magnitude/direction decomposition analysis to LoRA, with broad rigorous experiments and open code, though the conceptual advance over LoRA is incremental rather than breakthrough."
+  },
+  {
+    "pid": "2606.21847",
+    "novelty": 0.55,
+    "rigor": 0.6,
+    "reproducibility": 0.6,
+    "influence": 0.6,
+    "objectivity": 0.7,
+    "final": 0.603,
+    "verdict": "major_revision",
+    "justification": "Reasonable incremental advance in low-rank rank allocation (local energy + global cosine-similarity metric plus rank-preserving fine-tuning) with decent experiments, but the key geometric intuition lacks rigorous derivation and the method is one of many similar compression heuristics."
+  }
+]

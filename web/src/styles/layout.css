@@ -1,0 +1,421 @@
+/* ============================================================
+   侧边栏导航 — 图标系统 + 简洁布局（2026-07-20 重构）
+   - 移除左侧彩色竖条，仅保留「图标 + 文字 + 数字」
+   - 图标默认灰色 (#666)，选中变深蓝 (#3B82F6)
+   - 悬停浅灰圆角背景，选中浅蓝圆角背景
+   ============================================================ */
+
+/* 主体横向布局容器（替代 antd 内层 Layout） */
+.pf-app-body {
+  display: flex;
+  background: transparent;
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+/* ===== 侧边栏容器 ===== */
+.pf-sidebar {
+  width: 248px;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--pf-bg-tertiary) 88%, transparent);
+  border-right: 1px solid var(--pf-border);
+  height: calc(100dvh - 64px);
+  position: sticky;
+  top: 64px;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 12px 16px;
+  overflow-y: auto;
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.pf-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 10px 12px;
+}
+
+.pf-sidebar-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--pf-text-placeholder);
+}
+
+.pf-sidebar-close {
+  display: none; /* 仅移动端显示 */
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--pf-text-muted);
+  cursor: pointer;
+  transition: background-color 0.18s ease;
+}
+.pf-sidebar-close:hover {
+  background: rgba(148, 163, 184, 0.16);
+}
+
+.pf-sidebar-close:focus-visible,
+.pf-sidebar-tab:focus-visible {
+  outline: 2px solid var(--pf-primary);
+  outline-offset: 2px;
+}
+
+/* ===== 顶部「论文 / 感悟报告」标签页指示器 ===== */
+.pf-sidebar-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 0 10px 12px;
+}
+
+.pf-sidebar-tab {
+  flex: 1;
+  padding: 6px 4px;
+  border: 1px solid var(--pf-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--pf-text-secondary);
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: center;
+  cursor: pointer;
+  transition:
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease;
+}
+
+.pf-sidebar-tab:hover {
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.pf-sidebar-tab:active {
+  transform: translateY(1px);
+}
+
+.pf-sidebar-tab.active {
+  position: relative;
+  padding-left: 10px;
+  background: var(--pf-primary-soft);
+  border-color: var(--pf-primary-soft);
+  color: var(--pf-nav-active);
+  font-weight: 600;
+}
+
+/* 顶部标签作用域标识：左侧色条 */
+.pf-sidebar-tab.active::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--pf-nav-active);
+}
+
+.pf-category-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* ===== 分类条目：图标 + 文字 ... 数字 ===== */
+.pf-category-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+  color: var(--pf-text-secondary);
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease;
+}
+
+.pf-category-item:hover {
+  background-color: rgba(148, 163, 184, 0.12); /* 浅灰圆角背景 */
+}
+
+/* 精确选中的分类保持主色背景，避免 hover 覆盖 */
+.pf-category-item.pf-category-active:hover {
+  background-color: var(--pf-primary-soft);
+}
+
+.pf-category-item:focus-visible {
+  outline: 2px solid var(--pf-primary);
+  outline-offset: 1px;
+}
+
+.pf-category-item.pf-category-active {
+  position: relative;
+  background-color: var(--pf-primary-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pf-primary) 18%, transparent);
+}
+
+.pf-category-item.pf-category-active::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--pf-primary);
+}
+
+.pf-category-item.pf-category-active .pf-category-label,
+.pf-category-item.pf-category-active .pf-category-icon,
+.pf-category-item.pf-category-active .pf-category-count {
+  color: var(--pf-primary);
+}
+
+.pf-category-item.pf-category-active .pf-category-label {
+  font-weight: 600;
+}
+
+/* 左组：图标 + 文字（保持成组，文字右侧为数字） */
+.pf-category-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.pf-category-icon {
+  flex-shrink: 0;
+  color: var(--pf-nav-icon); /* 默认灰色 #666 */
+  transition: color 0.18s ease;
+}
+
+.pf-category-label {
+  font-size: 14px;
+  line-height: 1.2;
+  color: var(--pf-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pf-category-count {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--pf-text-placeholder);
+  transition: color 0.18s ease;
+}
+
+.pf-category-item.pf-category-active .pf-category-count {
+  color: var(--pf-nav-active);
+}
+
+/* 子分类（动态分类，作为「论文」的子项展示） */
+.pf-category-subitem {
+  margin-left: 16px;
+  padding-left: 10px;
+  position: relative;
+  border-radius: 8px;
+}
+
+/* 子分类左侧引导线 */
+.pf-category-subitem::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--pf-border);
+}
+
+/* 子分类激活时引导线变为主色 */
+.pf-category-subitem.pf-category-active::before {
+  background: var(--pf-nav-active);
+}
+
+/* 未分类：不可点击，仅展示 */
+.pf-category-item--muted {
+  cursor: default;
+}
+.pf-category-item--muted:hover {
+  background-color: transparent;
+}
+
+/* ===== 分类展开/收起按钮 ===== */
+.pf-category-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  margin: 6px 0;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--pf-text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease;
+}
+
+.pf-category-toggle:hover {
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--pf-text-secondary);
+}
+
+.pf-category-toggle:focus-visible {
+  outline: 2px solid var(--pf-primary);
+  outline-offset: 1px;
+}
+
+/* ===== 侧边栏分区（如热门标签） ===== */
+.pf-sidebar-section {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--pf-border);
+}
+
+.pf-sidebar-section-title {
+  padding: 0 12px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--pf-text-placeholder);
+}
+
+/* ===== 底部系统状态 ===== */
+.pf-sidebar-footer {
+  margin-top: auto;
+  padding: 14px 12px 4px;
+  border-top: 1px solid var(--pf-border);
+}
+
+.pf-sidebar-footer-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--pf-text-placeholder);
+  margin-bottom: 8px;
+}
+
+.pf-sidebar-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--pf-success);
+}
+
+.pf-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--pf-success);
+  flex-shrink: 0;
+}
+
+/* ===== 移动端抽屉遮罩 ===== */
+.pf-sidebar-backdrop {
+  display: none;
+}
+
+/* ===== 响应式：<768px 转为抽屉 ===== */
+@media (max-width: 767px) {
+  .pf-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    height: 100dvh;
+    width: 264px;
+    max-width: 84vw;
+    z-index: 100;
+    transform: translateX(-100%);
+    box-shadow: 10px 0 32px rgba(15, 23, 42, 0.16);
+    padding-top: 14px;
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+
+  .pf-sidebar.is-open {
+    transform: translateX(0);
+  }
+
+  .pf-sidebar-close {
+    display: inline-flex;
+  }
+
+  .pf-sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.42);
+    z-index: 99;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+
+  .pf-sidebar-backdrop.is-open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/* ===== 移动端顶栏汉堡按钮（仅 <768px 显示） ===== */
+.pf-nav-toggle {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .pf-nav-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    margin-right: 8px;
+    border: 1px solid var(--pf-border);
+    border-radius: 8px;
+    background: var(--pf-bg-primary);
+    color: var(--pf-text-secondary);
+    cursor: pointer;
+    transition: background-color 0.18s ease;
+  }
+  .pf-nav-toggle:hover {
+    background: rgba(148, 163, 184, 0.12);
+  }
+
+  .pf-nav-toggle:focus-visible {
+    outline: 2px solid var(--pf-primary);
+    outline-offset: 2px;
+  }
+}
+
+/* 尊重用户的减少动效偏好 */
+@media (prefers-reduced-motion: reduce) {
+  .pf-sidebar,
+  .pf-sidebar-backdrop,
+  .pf-sidebar-tab {
+    transition: none;
+  }
+}

@@ -1,0 +1,57 @@
+[
+  {
+    "pid": "2606.26811",
+    "novelty": 0.55,
+    "rigor": 0.70,
+    "reproducibility": 0.60,
+    "influence": 0.40,
+    "objectivity": 0.70,
+    "final": 0.588,
+    "verdict": "major_revision",
+    "justification": "Provides a clean mechanistic (Poisson-process) explanation for the empirically observed Gamma statistics of Collatz upward phases with extensive large-scale numerical validation, though it remains an approximation rather than a proof and addresses a niche problem."
+  },
+  {
+    "pid": "2606.27216",
+    "novelty": 0.60,
+    "rigor": 0.75,
+    "reproducibility": 0.80,
+    "influence": 0.65,
+    "objectivity": 0.75,
+    "final": 0.700,
+    "verdict": "minor_revision",
+    "justification": "Introduces a well-defined tiled Newton-Schulz formulation for Muon with thorough theoretical, diagnostic, and end-to-end GPU evaluation, though end-to-end wall-clock gains are modest (3-8%) and the training runs are single-seed."
+  },
+  {
+    "pid": "2606.26157",
+    "novelty": 0.40,
+    "rigor": 0.50,
+    "reproducibility": 0.50,
+    "influence": 0.35,
+    "objectivity": 0.45,
+    "final": 0.438,
+    "verdict": "reject",
+    "justification": "Proposes a simple cross-class redundancy-pruning heuristic for WSI indexing that yields modest, variable storage savings but degrades minority-class F1, with abstract claims overstating robustness relative to the reported imbalanced-dataset degradation."
+  },
+  {
+    "pid": "2606.22429",
+    "novelty": 0.60,
+    "rigor": 0.70,
+    "reproducibility": 0.75,
+    "influence": 0.60,
+    "objectivity": 0.70,
+    "final": 0.663,
+    "verdict": "major_revision",
+    "justification": "Presents a novel weight-level injection paradigm (GaRA) for graph-LLM adaptation with solid theory, a norm-amplification analysis, and consistent zero-shot gains, though it remains dependent on input-level prompting and is evaluated only on standard benchmarks."
+  },
+  {
+    "pid": "2606.27294",
+    "novelty": 0.70,
+    "rigor": 0.70,
+    "reproducibility": 0.55,
+    "influence": 0.60,
+    "objectivity": 0.70,
+    "final": 0.658,
+    "verdict": "major_revision",
+    "justification": "Introduces a novel Analog Interaction System framework with principled expressivity-enhancing mechanisms and compelling energy estimates, though generative fidelity is moderate and the hardware efficiency claims rest on extrapolated power models rather than fabricated silicon."
+  }
+]

@@ -1,0 +1,156 @@
+{
+  "paper_id": "2607.20424",
+  "title": "Quantum Fisher Information in semiclassical magnon systems",
+  "has_substance": true,
+  "expectation": 0.85,
+  "q0_reasoning": "论文通过有限尺寸自旋系统和半经典模型，建立了量子费希尔信息与动量空间纠缠深度的直接联系。",
+  "q0_evidence": "证明了 QFI 量化了给定波矢下的纠缠深度及磁振子挤压程度。",
+  "paper_type": "A",
+  "secondary_type": "none",
+  "confidence": 0.95,
+  "q1_reasoning": "论文通过理论模型（有限尺寸自旋系统、半经典受阻自旋模型）阐释量子费舍尔信息在凝聚态物理中的物理意义，属于理论突破。",
+  "novelty_score": 0.65,
+  "hotspot_alignment_score": 0.72,
+  "core_contribution": "阐明量子费舍尔信息（QFI）在凝聚态多体系统中的动量分辨纠缠深度含义及其作为新兴量子相先兆的作用。",
+  "q2_reasoning": "论文通过有限尺寸自旋系统阐明了 QFI 的动量依赖纠缠深度，并揭示了其在半经典受阻磁子系统中的物理意义及相变发散行为，理论推导清晰但缺乏大规模数值模拟或实验数据验证。",
+  "rigor_score": 0.85,
+  "missing_items": [
+    "大规模数值模拟验证、具体材料实验数据对比"
+  ],
+  "q3_reasoning": "论文通过有限尺寸自旋系统阐明了 QFI 的动量依赖纠缠深度，并揭示了其在半经典受阻磁子系统中的物理意义及相变发散行为，理论推导清晰但缺乏大规模数值模拟或实验数据验证。",
+  "influence_score": 0.6,
+  "reproducibility_score": 0.45,
+  "q4_reasoning": "论文通过有限尺寸自旋系统阐明了 QFI 的动量依赖纠缠深度，并揭示了其在半经典受阻磁子系统中的物理意义及相变发散行为，理论推导清晰但缺乏大规模数值模拟或实验数据验证。",
+  "critique_points": [
+    {
+      "point": "理论推导局限于半经典自旋波理论（LSWT），未涵盖强关联或量子临界区域的非微扰效应，导致结论在极端条件下可能失效",
+      "severity": "fatal"
+    },
+    {
+      "point": "缺乏真实材料实验数据验证，仅依赖理想化模型仿真，难以证明方法在实际凝聚态系统中的普适性",
+      "severity": "minor"
+    }
+  ],
+  "defense_points": [
+    "理论推导已明确涵盖 LSWT 失效及零能戈德斯通模式下的非微扰发散行为（E4），且针对受阻自旋系统的涌现量子相及不经典存在的量子相进行了处理，展示了 QFI 在极端条件下的发散特性（E5, E6）。",
+    "原文暂未涉及，将在终稿补充"
+  ],
+  "figure_consistency_score": 0.5,
+  "figure_flags": [],
+  "figure_evidence_count": 0,
+  "figure_coverage": "missing",
+  "qf_reasoning": "无图表数据，未执行图文一致性审查",
+  "calibrated_score": 0.6325,
+  "delta": -0.02,
+  "delta_missing": false,
+  "chair_reasoning": "理论推导已涵盖非微扰效应但缺乏真实材料数据验证，辩护补充了极端条件处理，终稿需补充实验数据，建议小修后接收。",
+  "llm_verdict": "minor_revision",
+  "final_verdict": "major_revision",
+  "override_reason": "无致命缺陷（2 个 minor），按分数 0.632 对齐为 major_revision",
+  "evidence_pool": [
+    {
+      "id": "E1",
+      "content": "QFI 是见证凝聚态材料中多体量子纠缠的强大光谱学工具，并为纠缠深度提供下界。",
+      "section": "",
+      "keywords": []
+    },
+    {
+      "id": "E2",
+      "content": "在有限大小的自旋系统中，QFI 量化了波函数中动量依赖的量子纠缠程度（即给定波矢处的纠缠深度）。",
+      "section": "",
+      "keywords": []
+    },
+    {
+      "id": "E3",
+      "content": "在线性自旋波理论（LSWT）背景下，QFI 量化了基态中的动量依赖磁子压缩度。",
+      "section": "",
+      "keywords": []
+    },
+    {
+      "id": "E4",
+      "content": "在具有零能戈德斯通模式的反铁磁体中，LSWT 失效，且 QFI（和纠缠深度）在磁序波矢处发散。",
+      "section": "",
+      "keywords": []
+    },
+    {
+      "id": "E5",
+      "content": "在受阻自旋系统的涌现量子相附近，QFI 会在动量空间中的多个波矢处发生发散。",
+      "section": "",
+      "keywords": []
+    },
+    {
+      "id": "E6",
+      "content": "当出现不经典存在的涌现量子相时，半经典 QFI 会在动量空间的整个线上发散。",
+      "section": "",
+      "keywords": []
+    },
+    {
+      "id": "E7",
+      "content": "动量依赖的 QFI 可作为新兴量子相的先兆，为量子临界现象提供新的视角。",
+      "section": "",
+      "keywords": []
+    }
+  ],
+  "evidence_checks": {
+    "Q2": true,
+    "Q3": true,
+    "Q4": false,
+    "QF": true,
+    "Q5a": true,
+    "Q5b": true
+  },
+  "evidence_ids": {
+    "Q2": "E1",
+    "Q3": "E2",
+    "Q4": "",
+    "QF": "",
+    "Q5a": "E1",
+    "Q5b": "E1"
+  },
+  "base_score": 0.6525,
+  "weights": {
+    "beta": 0.5,
+    "gamma": 0.2,
+    "delta": 0.15,
+    "epsilon": 0.15
+  },
+  "node_score_stds": {
+    "QF:figure_consistency_score": 0.0,
+    "Q234:novelty_score": 0.0,
+    "Q234:hotspot_alignment_score": 0.0,
+    "Q234:rigor_score": 0.0,
+    "Q234:influence_score": 0.0,
+    "Q234:reproducibility_score": 0.0,
+    "Q5c:calibrated_score": 0.0,
+    "Q5c": 0.0
+  },
+  "node_logs": [
+    "[2026-07-23T14:55:34.480578] ======== DEPTH v4.1 审稿开始: 2607.20424 (DAG引擎) ========",
+    "[2026-07-23T14:55:34.487323] 文本分段完成: intro=1838c, full=8000c, concl=1684c",
+    "[2026-07-23T14:55:34.490781] OIM 特征: ObjectiveFeatures(ablation=0.0, repro_signal=0.0, citation_density=0.175, structure=0.2, formalism=0.0), objective_score=0.075",
+    "[2026-07-23T14:55:34.494937] [Q1] 开始调用 LLM（纯文本模式, max_tokens=4096）...",
+    "[2026-07-23T14:55:34.495616] [Q0] 开始调用 LLM（纯文本模式, max_tokens=4096）...",
+    "[2026-07-23T14:55:38.058458] [QE] 开始调用 LLM（纯文本模式）...",
+    "[2026-07-23T14:55:42.343010] [QE] 成功提取 7 条证据",
+    "[2026-07-23T14:55:42.345228] [QF] 无图表证据，跳过 LLM，返回中性图文一致性 0.5",
+    "[2026-07-23T14:55:42.345936] [Q234] 开始调用 LLM（合并多维评分, max_tokens=4096）...",
+    "[2026-07-23T14:55:47.212601] [Q5a] 开始调用 LLM（纯文本模式, max_tokens=4096）...",
+    "[2026-07-23T14:55:50.373800] [Q5a] 证据 ID 'E1' 校验通过",
+    "[2026-07-23T14:55:50.374126] [Q5b] 开始调用 LLM（纯文本模式, max_tokens=4096）...",
+    "[2026-07-23T14:55:53.217747] [Q5b] 证据 ID 'E1' 校验通过",
+    "[2026-07-23T14:55:53.219453] [Q5c] 平衡者分析:\n  #1 [fatal→minor] 辩护成功: \"理论推导局限于半经典自旋波理论（LSWT），未涵盖强关联或量...\" → 降级\n  #2 [minor] 辩护不足: \"缺乏真实材料实验数据验证，仅依赖理想化模型仿真，难以证明方法...\" → 维持原级",
+    "[2026-07-23T14:55:53.219803] [Q5c] 开始调用 LLM（纯文本模式, max_tokens=4096, delta∈[-0.10, 0.12]）...",
+    "[2026-07-23T14:55:55.061868]   节点 Q0: 3.56s",
+    "[2026-07-23T14:55:55.061875]   节点 Q1: 1.98s",
+    "[2026-07-23T14:55:55.061877]   节点 Q234: 4.87s",
+    "[2026-07-23T14:55:55.061879]   节点 Q5a: 3.16s",
+    "[2026-07-23T14:55:55.061880]   节点 Q5b: 2.84s",
+    "[2026-07-23T14:55:55.061881]   节点 Q5c: 1.84s",
+    "[2026-07-23T14:55:55.061882]   节点 QE: 4.29s",
+    "[2026-07-23T14:55:55.061884]   节点 QF: 0.00s",
+    "[2026-07-23T14:55:55.061886] 总耗时: 20.57s",
+    "[2026-07-23T14:55:55.061915] 硬编码裁决: major_revision",
+    "[2026-07-23T14:55:55.061917] ======== DEPTH v4.1 审稿完成: 2607.20424 (DAG引擎) ========"
+  ],
+  "evaluated_at": "2026-07-23T14:55:55.061960"
+}

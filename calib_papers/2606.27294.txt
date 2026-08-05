@@ -1,0 +1,1211 @@
+Generative Models on Analog Hardware with Dynamics
+Yu-Neng Wang
+wynwyn@stanford.edu
+Stanford University
+USASara Achour
+sachour@stanford.edu
+Stanford University
+USA
+Abstract
+Analog hardware platforms such as coupled oscillators and
+Analog Ising Machines naturally solve differential equations
+at a fraction of the energy cost of digital computation, mak-
+ing them attractive for low-power generative modeling, yet
+a fundamental mismatch exists: modern generative models
+assume flexible, software-defined dynamics, whereas ana-
+log hardware imposes fixed, physics-determined differential
+equations with limited approximation capacity. This paper
+introduces Analog Interaction Systems (AIS), a unified frame-
+work for hardware-implementable dynamical systems, and
+empirically characterizes their expressivity gap relative to
+neural network baselines. Two hardware-compatible mecha-
+nisms are proposed to narrow this gap — time-varying piece-
+wise parameters and hidden physical states — and a Wasser-
+stein GAN training procedure is developed to enable training
+of these models without requiring them to follow a specific
+trajectory. We characterize how area and power scale with
+connection density and precision, showing that sparse con-
+nectivity and low-bit-width quantized parameters are nec-
+essary for practical implementation, and estimate an energy
+cost of23𝜇J per generated image for the chosen architecture,
+representing a 2-orders-of-magnitude improvement over dig-
+ital baselines. On MNIST and Fashion-MNIST, our oscillator-
+based AIS achieves FID scores of 27.6 and 80.8, outperforming
+the best prior hardware-implementable analog generative
+models by3–4×with a 4-bit sparse architecture.
+1 Introduction
+Analog computing offers a fundamentally different compu-
+tational substrate. Rather than executing discrete arithmetic
+operations, analog systems allow physical state to evolve
+continuously under the natural laws governing their sub-
+strate—be it the phase dynamics of coupled oscillators [ 8],
+the amplitude relaxation of optical parametric amplifiers [ 13],
+or the spin settling of Ising machines [ 19]. Computation is
+performed by physics rather than by transistor switching,
+enabling orders-of-magnitude improvements in energy effi-
+ciency for suitable workloads. In particular, analog hardware
+based on interactions between physical elements, such as
+couplings between oscillators, has emerged as a widely stud-
+ied class of dynamics-based analog hardware platforms that
+leverage time-evolving behaviors to solve combinatorial opti-
+mization and machine learning problems [ 1,3,10,18,32,35].
+At the same time, modern generative models, such as diffu-
+sion models, incur substantial energy costs and have become
+x0NN t0,t1, …
+xT
+(a)Conventional.
+X=f(x)
+ v0
+h0t=0 T
+vT
+hT
+ (b)Analog Hardware.
+Figure 1.Comparison between conventional and analog
+hardware image generation. The conventional method runs
+discrete time steps to emulate a differential equation whose
+vector field is computed by a neural network. The analog
+hardware executes a continuous differential equation whose
+vector field is governed by physical interactions.
+a target workload for both researchers and companies invest-
+ing in energy-efficient hardware. State-of-the-art image and
+audio generation systems based on diffusion and flow match-
+ing [12,17] require iterative numerical integration of learned
+differential equations at inference time, consuming tens to
+hundreds of watts per query on modern GPU hardware. Ana-
+log hardware naturally solves differential equation systems
+with device physics at a fraction of the energy cost of digital
+hardware and has recently drawn attention for low-power ma-
+chine learning tasks. Generative models are also potentially
+amenable to analog computation, as they are described by
+systems of differential equations.Can we directly leverage the
+intrinsic, low-energy continuous dynamics of analog hardware
+to implement an energy-efficient differential equation-based
+generative model?
+1.1 Challenges with Analog Generative Models
+There is a mismatch between the generative model workload
+and dynamics supported by analog hardware: generative mod-
+els have dynamics dictated by neural networks and analog
+hardware implements physics-based differential equation sys-
+tems based in the physical behaviors of the system (Figure 1).
+These physics-based differential equation-solving hardware
+have several features that render them difficult to leverage
+for machine learning tasks:
+•Non-standard Dynamics.Because the differential equation
+structure is set for the physical system, it may not be good
+at approximating all functions. In contrast, kernels imple-
+menting neural networks are known to be good at approx-
+imating a range of functions [9, 16, 24].
+1arXiv:2606.27294v1  [cs.ET]  25 Jun 2026
+•Fixed Complexity.The complexity of the differential equa-
+tion is fixed and dictated by the degree of the interactions.
+In contrast, the complexity of neural networks can be in-
+creased by adding layers.
+•Physical Limitations.The system is subject to hardware
+constraints. Sparser interactions are easier to implement
+in hardware, parameter precision is limited, and the com-
+putation is subject to noise.
+The focus of this work is as follows:Can we come up with
+a generative model architecture amenable to implementation
+on analog hardware that overcomes these limitations?
+1.2 Analog Interaction Systems as Generative Models
+We introduce anAnalog Interaction System(AIS), a unified
+model for hardware-implementable analog dynamical sys-
+tems whose dynamics are fixed by device physics, and inves-
+tigate their viability as generative models, developing tech-
+niques for overcoming the identified challenges.
+Expressivity.The functional forms available to analog hard-
+ware are severely restricted by device physics. For example,
+oscillator networks are governed by sinusoidal coupling; Ana-
+log Ising Machines use fixed polynomial or sigmoidal non-
+linearities. We empirically characterize the expressivity gap
+between neural network-based dynamical systems and sev-
+eral AIS model classes and identify two hardware-friendly
+mechanisms to close this gap:
+•Time-piecewise parameters.We find the complexity of AIS
+behaviorcanbeeffectivelyincreasedbyusingtime-piecewise
+parameters, and provide candidate analog model architec-
+tures that can implement this behavior.
+•Hidden physical elements.We find the complexity of the
+AIS behavior can be effectively increased by introducing
+hidden physical elements that interact with the physical
+elements used to generate the image.
+We also observe that exact trajectory supervision com-
+monly used in generative model training algorithms, such
+as flow matching, is infeasible for AIS due to its limited flex-
+ibility. We instead train AIS with a Wasserstein GAN that
+penalizes only theterminalvisible state, freeing the physics
+to discover its own path from noise to data. This training
+method also supports optimizing over hidden physical el-
+ements, which lack a ground-truth trajectory to follow. On
+MNIST and Fashion-MNIST, our oscillator-based AIS achieves
+FID scores of 27.6 and 80.8, outperforming the best prior
+hardware-implementableanaloggenerativemodelsby3 –4×[32,
+35].
+Efficiency.We describe the hardware constraints gating the
+design of such systems and present a sparse AIS analog archi-
+tecture that organizes physical elements into a grid, allowing
+for neighboring interactions, and provide scaling laws for the
+power consumption of the system with increasing connectiv-
+ity and parameter bit width. This architecture also has several
+options for implementing the time-piecewise parameters inhardware. An analog core implemented with oscillators is esti-
+mated to consume approximately23 𝜇Jper generated image, a
+2-orders-of-magnitude improvement over digital alternatives.
+Organization.The remainder of the paper is organized as fol-
+lows.Section2definestheanaloginteractionsystem.Section3
+formulates the generative modeling problem and presents
+the expressivity study, including the hidden-state and time-
+varying-weight experiments. Section 4 describes the hard-
+ware architecture and GAN training procedure. Section 5 eval-
+uates generative quality against digital and analog baselines.
+Section 6 discusses related work, and Section 7 concludes.
+2 Analog Interaction Systems
+On Analog Computing.Analog computing offers compelling
+advantages over digital systems for inference workloads: en-
+ergy consumption scales with the physics of computation
+rather than with bit-precision arithmetic, enabling orders-of-
+magnitude improvements in energy efficiency [ 8]. Dedicated
+analog fabrics have demonstrated sub-milliwatt inference at
+high throughput for combinatorial optimization and matrix-
+vector products—workloads central to modern machine learn-
+ing [ 13,19]. The state of the system is retained in properties
+of physical components, such as capacitors or oscillators. In
+analog hardware that leverages time-varying dynamics, these
+properties of physical components naturally evolve over time
+in accordance with a differential equation without requiring
+digital clocking or explicit MACs. This physical execution
+operates at a fraction of the energy and latency of digital emu-
+lation. After the system has evolved for a fixed period of time,
+the computed result is obtained by measuring the states of
+the components in the system.
+Analog Interaction Systems.We introduce the concept
+of ananalog interaction system(AIS), a class of dynamical
+systems implementable with analog hardware that leverage
+interactions between devices to perform computation. In this
+class of systems, physical components, such as oscillators,
+influence one another withinteractionsgoverned by device
+physics. The behavior of these systems over time can be de-
+scribed by an ordinary differential equation system with 𝑛
+stateful variables 𝑥∈R𝑛that map to properties of the physical
+components, such as phase or amplitude:
+¤𝑥𝑖=𝐿(𝑍0
+𝜃,∑︁
+𝑗𝑍(1)
+𝜃(𝑥𝑗),∑︁
+𝑗,𝑘𝑍(2)
+𝜃(𝑥𝑗,𝑥𝑘),···)(1)
+Interactions.Each component is subject to a number ofinter-
+actions𝑍(𝑝)that are implemented with active components
+in the analog hardware substrate. The order of the interac-
+tion𝑟determines how many physical components are in-
+volved in the interaction. First-order interactions ( 𝑍(1)(𝑥𝑗))
+involve a single physical component, second-order interac-
+tions (𝑍(2)(𝑥𝑗,𝑥𝑘)) involve two physical components, and so
+on. For many hardware-implementable AIS models, only first
+and second order interactions are supported. Each interaction
+2
+Model Dynamics|𝜃|Physical substrate Ref.
+NN MLP¤𝑥=𝑊(𝐿)𝜎(···𝜎(𝑊(1)𝑥+𝑏(1))···)+𝑏(𝐿)Í𝐿
+𝑖=1(𝑛2
+𝑖+𝑛𝑖)Standard neural ODE —
+AISKuramoto ¤𝜃𝑖=𝜔𝑖+Í
+𝑗𝐾𝑖𝑗sin(𝜃 𝑗−𝜃𝑖)𝑛+𝑛(𝑛−1)Oscillators [8]
+Kuramoto+SHIL¤𝑠 𝑖=−𝜆 𝑖,0sin(2𝑠 𝑖)+𝜆𝑖,1sin(𝑠 𝑖)+Í
+𝑗𝐶𝑖𝑗sin(𝑠 𝑖−𝑠𝑗)2𝑛+𝑛·(𝑛−1)Injection-locked oscillators [31]
+PolyNet¤𝑥 𝑖=𝑘𝑖𝑥𝑖−𝑥3
+𝑖+Í
+𝑗𝐽𝑖𝑗𝑥𝑗 𝑛+𝑛2Analog Ising Machine (Poly) [2]
+TanhNet¤𝑥 𝑖=−𝑥 𝑖+tanh Í
+𝑗𝐽𝑖𝑗𝑥𝑗𝑛+𝑛2Analog Ising Machine (Tanh) [2]
+SeluNet¤𝑥 𝑖=selu(Í
+𝑗𝑊𝑖𝑗𝑥𝑗+𝑏𝑖)𝑛+𝑛2Single-layer neural ODE —
+Table 1.Interaction kernels for the model families studied. Physical models involve at most pairwise ( 𝑟=2) state interactions;
+the MLP baseline can be deepened to increase interaction order.
+is parameterized by a set of learnable parameters 𝜃, which may
+be programmed at runtime with digital-to-analog converters
+or set at fabrication time. The specific structure of the inter-
+actions is determined primarily by the physics of the system.
+Laws.The analog hardware is subject to physical laws 𝐿(..)
+which are innately present in the physical system and nat-
+urally apply to properties of the physical components and
+can act on any number of elements. Examples of laws include
+Kirchhoff’s law, which enables the summation of currents,
+and signal saturation, which saturates signals that fall outside
+a range and is implemented with a tanh function. Laws may
+operate on a subset of interactions.
+AIS Models.Table 1 presents the AIS models for five kinds
+of interaction-based analog compute platforms:
+•Oscillator-based Computing.Oscillator networks, such as
+CMOS ring oscillators and spin-torque nano-oscillators,
+solve combinatorial optimization and pattern recognition
+problems with low power. Oscillator-based fabrics use si-
+nusoidal phase coupling [ 8]. The Kuramoto model cap-
+tures standard phase coupling 𝐾𝑖𝑗sin(𝜃𝑗−𝜃𝑖), while Ku-
+ramoto+SHIL (KuraSHIL) extends the model with injection-
+locking terms that stabilize phases to superharmonics of a
+reference signal, enabling binary-valued phase states suit-
+able for Ising problems.
+•Analog Ising Machines (AIMs).Analog Ising Machines are
+physical systems engineered to minimize an Ising Hamil-
+tonian, making them natural solvers for NP-hard combi-
+natorial optimization. Coherent Ising Machines based on
+optical parametric oscillators [ 13] and degenerate optical
+cavities [ 19] have demonstrated competitive performance
+on MAX-CUT and graph partitioning at scale. Analog Ising
+machines realize this through sigmoidal or polynomial acti-
+vation functions [ 2]; in this work, we study both: TanhNet
+uses a recurrent tanh nonlinearity, and PolyNet uses a cu-
+bic soft-spin relaxation where the cubic term stabilizes
+amplitudes.
+•SeluNet.SeluNet is a single-layer neural ODE baseline, in-
+cluded as a non-physics-constrained reference. Unlike AIS
+models, its nonlinearity is not fixed by hardware physics,
+providing a lower bound on the expressivity cost of the
+physical interaction structure.AIS for Machine Learning.In this work, we focus on lever-
+aging AIS for machine learning tasks. In this setting, the pa-
+rametersofthedifferentialequationarelearnedtoperformthe
+desired computation. A key factor determining AIS’s success
+as a machine learning model lies in its ability to approximate
+a range of functions when reparametrized. Table 1 compares
+the structure of AIS models to a differential equation model
+that uses a multi-layer perceptron (MLP) of similar interaction
+complexity, which is known to be a good universal approxima-
+tor of functions[ 9]. Observe that AIS models use very different
+non-linearities than their MLP counterparts, and that these
+non-linearities are fixed since they arise from physical interac-
+tions. In contrast, MLPs are software-defined and can always
+be engineered to have higher complexity: MLPs become bet-
+ter approximators with more layers. AIS models do not have
+an equivalent mechanism for increasing the complexity of
+the right-hand side of the equation.
+3 Training AIS as Generative Models
+Generative flow matching casts learning as a problem of trans-
+porting samples from a simple prior 𝑝0to a data distribution
+𝑝1via a differential equation [17, 30]:
+𝑑x
+𝑑𝑡=𝑓𝜃(x,𝑡),(2)
+where𝑓𝜃is a parameterized vector field. An AIS model serves
+naturally as such a transport map: given an initial visible state
+𝑣(0)∼𝑝 0, the system integrates forward under its learned
+dynamics, and the terminal state 𝑣(𝑇) is read out as the gener-
+ated sample. Unlike digital flow matching—where the vector
+field is re-evaluated at every solver step—the analog system
+requires only a single physical settling period of duration
+𝑇, making inference energy cost independent of the num-
+ber of integration steps. However, AIS’s interaction kernels
+are fixed by hardware physics, and this structural constraint
+limits the set of trajectories the model can express. Three
+mechanisms recover expressivity: (1) the training objective,
+(2) time-piecewise weights, and (3) hidden state augmentation.
+We study these mechanisms on low-dimensional synthetic
+distribution datasets.
+3
+1G8G
+ Moons 8G
+ 1GMoons
+ 1GS
+p0
+p1Source𝑝 0 Target𝑝 1
+1G→8G Gaussian 8-component Gaussian mixture
+Moons→8G Two moons 8-component Gaussian mixture
+1G→Moons Gaussian Two moons
+1G→𝑆Gaussian S-curve manifold
+Figure 2.Distribution pairs used for generative fitting
+experiments. Top: source 𝑝0(black) and target 𝑝1(blue)
+scatter for each pair. Bottom: summary table.
+0.5
+ 0.0 0.50.5
+0.00.5
+MLP + OT-CFM
+0.5
+ 0.0 0.50.5
+0.00.5
+KuramotoInj + OT-CFM
+0.5
+ 0.0 0.50.5
+0.00.5
+KuramotoInj + SWD
+Source z(0)Generated z(1) Flow path
+Figure 3.Distributional fitting on1 G→8G. From left: MLP
++ OT-CFM, KuraSHIL + OT-CFM, KuraSHIL + SWD. Unlike
+the flexible MLP, the physics-constrained AIS cannot follow
+straight-line OT-CFM paths; SWD decouples trajectory
+shape from target quality and recovers transport.
+3.1 Experimental Setup
+Distribution Pairs.The four transport tasks (Figure 2) cover
+unimodal,multimodal,andmanifoldtargetdistributions.Data
+are normalized to[−0.5,0.5]2.
+Models and Conditions.Each AIS model is evaluated in two
+configurations. (a) No hidden state: the model operates on the
+2-dimensional visible state alone, with the integration inter-
+val[0,1]divided into 𝑐∈{1,2,4}equal segments, each assigned
+an independent parameter copy. (b) With hidden state: the
+state is augmented to 𝑧=[𝑣 ;ℎ]∈R2+𝑘,𝑘∈{2,4}, always with
+𝑐=4segments; the latent initial condition ℎ0∼N( 0,0.25𝐼)is
+sampled independently per forward pass, and only the vis-
+ible dimensions 𝑣(𝑇) are read out as the generated sample.
+Under OT-CFM, ℎ0is additionally conditioned on the cou-
+pled source–target pair (𝑥0,𝑥1); under SWD, the stochastic ℎ0
+alone is used since no paired supervision is available.
+Training Objective Functions.Modern generative models
+achievestate-of-the-artqualitybytrainingatime-conditioned
+vector field𝑓𝜃(x,𝑡)to transport a prior 𝑝0to a target𝑝1. Diffu-
+sion models [ 12,29] parameterize this as a stochastic reversalof a fixed noising process; flow matching methods [ 17] con-
+struct deterministic transport paths between coupled samples.
+Both imposetrajectory supervision: the model must match a
+prescribed velocity field at every intermediate time𝑡.
+For example, optimal-transport conditional flow matching
+(OT-CFM), a state-of-the-art trajectory supervision algorithm
+for generative modeling, constructs a minibatch OT coupling
+between source and target samples (𝑥0,𝑥1)at each step, and
+regresses the model velocity onto the straight-line target
+𝑢𝑡=𝑥1−𝑥0at interpolated states𝑥 𝑡=(1−𝑡)𝑥 0+𝑡𝑥 1[30]:
+LCFM(𝜃)=E𝑡,𝑥0,𝑥1
+∥𝑓𝜃(𝑥𝑡,𝑡)−(𝑥 1−𝑥0)∥2
+.(3)
+This loss constrains the model to straight paths, regardless of
+what trajectories the AIS physics would naturally produce.
+Endpoint supervisioninstead constrains only the terminal
+distribution 𝑣(𝑇)∼𝑝 1, leaving the AIS physics free to traverse
+any path from noise to data. We realize this via Sliced Wasser-
+stein Distance (SWD). The Wasserstein distance quantifies
+the minimum transport cost between two distributions—the
+minimum average displacement required to rearrange one
+into the other. The sliced variant approximates this by pro-
+jecting samples onto random unit vectors and averaging the
+resulting 1D Wasserstein distances:
+LSWD(𝜃)=E𝜔∼U(S𝑑−1)
+𝑊1(𝜔⊤𝑣(𝑇),𝜔⊤𝑥1)
+.(4)
+SWD imposes no constraint on intermediate trajectories, al-
+lowing the AIS physics to self-organize over the full integra-
+tion interval rather than being forced to produce straight-line
+paths at each instant.
+Hyperparameter Tuning and Evaluation.Each model runs an
+independent Optunastudy with30trials of4 000 trainingsteps
+each to tune the learning rate and magnitude of the randomly
+initialized weights. The dynamical system is solved with stan-
+dard Runge–Kutta solver and evaluated with the squared
+2-Wasserstein distance computed via exact optimal transport:
+𝑊2
+2(𝑝,𝑞)=inf
+𝛾∈Γ(𝑝,𝑞)E(𝑥,𝑦)∼𝛾
+∥𝑥−𝑦∥2
+,(5)
+where Γ(𝑝,𝑞) is the set of couplings with marginals 𝑝and
+𝑞. We estimate 𝑊2
+2from 256 samples over 3 random seeds.
+Lower𝑊2
+2indicates better transport quality.
+3.2 Distributional Fitting Results
+Figure 4 shows 𝑊2
+2scores on the distributional fitting tasks.
+Each panel is a heatmap: rows are distribution pairs, columns
+are model variants, and cell shade encodes 𝑊2
+2, with lighter
+cells indicating lower values (better fit). Panels are organized
+by training objective (OT-CFM top, SWD bottom) and hidden-
+state configuration (w/ and w/o hidden state).
+Improvement 1: Endpoint Supervision.SWD consistently
+outperforms OT-CFM across all distribution pairs and model
+classes. Figure 3 illustrates why: under OT-CFM, the physics-
+constrained AIS produces scattered trajectories that fail to
+reach the target shape, while SWD allows the dynamics to
+self-organize into structured transport. The gap is particularly
+4
+Kuramoto
+c=1Kuramoto
+c=2Kuramoto
+c=4KuraSHIL
+c=1KuraSHIL
+c=2KuraSHIL
+c=4T anhNet
+c=1T anhNet
+c=2T anhNet
+c=4PolyNet
+c=1PolyNet
+c=2PolyNet
+c=4SeluNet
+c=1SeluNet
+c=2SeluNet
+c=41G  8G
+Moons  8G
+1G  Moons
+1G  S-curve
+0.0280 0.0280 0.0280 0.0136 0.0136 0.0137 0.0214 0.0215 0.0215 0.0217 0.0216 0.0216 0.0289 0.0291 0.0289
+0.0347 0.0349 0.0351 0.0200 0.0197 0.0205 0.0222 0.0221 0.0224 0.0217 0.0218 0.0223 0.0147 0.0138 0.0141
+0.0112 0.0117 0.0117 0.0069 0.0066 0.0067 0.0087 0.0085 0.0086 0.0081 0.0082 0.0081 0.0070 0.0071 0.0069
+0.0147 0.0139 0.0135 0.0071 0.0069 0.0073 0.0120 0.0113 0.0125 0.0125 0.0127 0.0122 0.0189 0.0177 0.0187OT-CFM  |  No Hidden State  (c  {1,2,4}, k=0)
+Kuramoto
+k=0Kuramoto
+k=2Kuramoto
+k=4KuraSHIL
+k=0KuraSHIL
+k=2KuraSHIL
+k=4T anhNet
+k=0T anhNet
+k=2T anhNet
+k=4PolyNet
+k=0PolyNet
+k=2PolyNet
+k=4SeluNet
+k=0SeluNet
+k=2SeluNet
+k=41G  8G
+Moons  8G
+1G  Moons
+1G  S-curve
+0.0280 0.0241 0.0229 0.0137 0.0151 0.0144 0.0215 0.0220 0.0217 0.0216 0.0222 0.0218 0.0289 0.0281 0.0289
+0.0351 0.0195 0.0178 0.0205 0.0161 0.0187 0.0224 0.0179 0.0198 0.0223 0.0174 0.0200 0.0141 0.0145 0.0131
+0.0117 0.0098 0.0085 0.0067 0.0066 0.0066 0.0086 0.0087 0.0086 0.0081 0.0082 0.0081 0.0069 0.0070 0.0070
+0.0135 0.0135 0.0131 0.0073 0.0074 0.0076 0.0125 0.0122 0.0114 0.0122 0.0120 0.0113 0.0187 0.0185 0.0180OT-CFM  |  Hidden State  (c=4, k  {0,2,4})
+Kuramoto
+c=1Kuramoto
+c=2Kuramoto
+c=4KuraSHIL
+c=1KuraSHIL
+c=2KuraSHIL
+c=4T anhNet
+c=1T anhNet
+c=2T anhNet
+c=4PolyNet
+c=1PolyNet
+c=2PolyNet
+c=4SeluNet
+c=1SeluNet
+c=2SeluNet
+c=41G  8G
+Moons  8G
+1G  Moons
+1G  S-curve
+0.0287 0.0287 0.0281 0.0092 0.0069 0.0071 0.0130 0.0124 0.0061 0.0217 0.0109 0.0109 0.0269 0.0217 0.0203
+0.0364 0.0278 0.0139 0.0168 0.0117 0.0081 0.0208 0.0183 0.0121 0.0202 0.0188 0.0193 0.0132 0.0095 0.0097
+0.0109 0.0109 0.0110 0.0065 0.0054 0.0040 0.0085 0.0052 0.0047 0.0079 0.0062 0.0064 0.0069 0.0053 0.0040
+0.0128 0.0119 0.0112 0.0063 0.0059 0.0053 0.0101 0.0082 0.0066 0.0129 0.0087 0.0099 0.0180 0.0118 0.0118SWD  |  No Hidden State  (c  {1,2,4}, k=0)
+Kuramoto
+k=0Kuramoto
+k=2Kuramoto
+k=4KuraSHIL
+k=0KuraSHIL
+k=2KuraSHIL
+k=4T anhNet
+k=0T anhNet
+k=2T anhNet
+k=4PolyNet
+k=0PolyNet
+k=2PolyNet
+k=4SeluNet
+k=0SeluNet
+k=2SeluNet
+k=41G  8G
+Moons  8G
+1G  Moons
+1G  S-curve
+0.0281 0.0091 0.0097 0.0071 0.0059 0.0051 0.0061 0.0052 0.0057 0.0109 0.0074 0.0083 0.0203 0.0098 0.0074
+0.0139 0.0062 0.0061 0.0081 0.0055 0.0052 0.0121 0.0051 0.0050 0.0193 0.0090 0.0096 0.0097 0.0075 0.0063
+0.0110 0.0039 0.0030 0.0040 0.0036 0.0035 0.0047 0.0033 0.0037 0.0064 0.0046 0.0051 0.0040 0.0029 0.0018
+0.0112 0.0080 0.0073 0.0053 0.0050 0.0032 0.0066 0.0052 0.0035 0.0099 0.0077 0.0096 0.0118 0.0070 0.0062SWD  |  Hidden State  (c=4, k  {0,2,4})
+0.005 0.010 0.015 0.020 0.025 0.030 0.035W2
+2 (lower is better)Figure 4.𝑊2
+2results across all conditions, model classes, and distribution pairs (lower is better). Each panel shows one training
+condition; columns group model classes by AIS model (𝑐= chunk count,𝑘= hidden dimensions).
+pronounced on multimodal targets (D1, D2): OT-CFM forces
+near-straight-line paths that conflict with the constrained
+interaction structure, while SWD decouples trajectory shape
+from target quality. This result indicates thatendpoint supervi-
+sion is the appropriate objective for AIS-based generative models.
+Improvement 2: Time-Piecewise Weights.A model with
+fixed parameters must express the entire source-to-target
+transport with a single vector field parameterization. UnderOT-CFM the benefit is marginal: the straight-line velocity tar-
+getalreadyprovidesstrongdirectionalsupervision,leavinglit-
+tle room for chunk-wise specialization. Under SWD the gains
+are clearer. For example, KuraSHIL on Moons→ 8Gimproves
+from𝑊2
+2=0.0168at𝑐=1to𝑊2
+2=0.0081at𝑐=4because each
+chunk can adapt its vector field to a different phase of the trans-
+port without conflicting with an intermediate-step constraint.
+Improvement 3: Hidden States.Adding 𝑘hidden dimen-
+sions to the visible state directly expands the model’s effective
+5
+parameter space: the learned dynamics operate in R2+𝑘rather
+thanR2, increasing both the number of learnable weights
+and the dimensionality of the vector field. Hidden-state SWD
+consistently yields the lowest 𝑊2
+2values. For example, on
+1G→Moons with𝑘=4hidden dimensions, 𝑊2
+2drops from
+0.0040to0.0018. Hidden state increases the model’s expres-
+sivity, while freeing the objective from trajectory constraints
+allows that expressivity to be exploited.
+AIS Model Comparison.Not all AIS models perform equally.
+Among the five model classes, KuraSHIL is the strongest per-
+former under both objectives, achieving the best or near-best
+𝑊2
+2on1G→8G,1G→Moons , and1 G→𝑆 across conditions.
+Its per-node injection-locking terms provide additional de-
+grees of freedom beyond the Kuramoto model, enabling finer-
+grained control of individual oscillator phases. Kuramoto is
+the weakest on multimodal targets1 G→8GandMoons→ 8G.
+SeluNet performs well on1 G→Moons and1 G→𝑆 but poorly
+on1G→8G. TanhNet and PolyNet occupy a consistent middle
+ground, achieving moderate𝑊2
+2across all pairs.
+3.3 Training with Generative Adversarial Networks
+The distributional fitting experiments above confirm end-
+point supervision as the right training paradigm for AIS. In
+high dimensions, however, directly estimating the Wasser-
+stein distance is computationally intractable, as exact optimal
+transport scales poorly with dimensionality. The Wasserstein
+Generative Adversarial Networks (WGAN) formulation [ 11]
+addresses this by learning a discriminator to compute approxi-
+mated Wasserstein distance. The discriminator evaluates only
+the generated output (terminal state 𝑣(𝑇) ), never intermedi-
+ate trajectories, making the WGAN objective an endpoint
+supervision method by design.
+A standard GAN pits two neural networks working against
+each other: a generator that attempts to transform random
+noise into realistic data, and a discriminator that attempts to
+distinguish between the generated fakes and real data samples.
+Through this competitive process, the generator iteratively
+learns to approximate the true data distribution. In our frame-
+work, the core idea is simple: we replace the neural network
+generator with the Analog Interaction System. To compute
+the "forward pass" during training, we run a differentiable dy-
+namical system simulation (an ODE solver) from 𝑡=0to𝑡=𝑇.
+By differentiating through this simulation, we can backprop-
+agate the discriminator’s feedback directly into the physical
+coupling weights of the AIS.
+We utilize the Wasserstein GAN formulation with Gradient
+Penalty (WGAN-GP) as detailed in Algorithm 1 [ 11] .𝐷𝑤is the
+digital discriminator network, and Proj𝑣𝑖𝑠extracts the visible
+node states from the full analog system state 𝑥(𝑇) . The train-
+ing loop alternates between updating the digital discriminator
+and the analog generator parameters. First, the discriminator
+𝑤is trained for 𝑛discsteps to maximize the Wasserstein dis-
+tance between the real data batch and the generated batch ˆ𝑥,Algorithm 1WGAN-GP Training of AIS.
+Require:Batch size𝑚, learning rate𝛼, discriminator
+iterations𝑛 disc, initial discriminator parameters𝑤, initial analog
+parameters𝜃, integration time𝑇, analog dynamics function𝑓 𝜃
+1:while𝜃has not convergeddo
+2:for𝑡=1,...,𝑛 discdo
+3:for𝑖=1,...,𝑚do
+4:Sample real data{𝑥(𝑖)}𝑚
+𝑖=1∼P𝑑𝑎𝑡𝑎
+5:Sample initial states{𝑥(𝑖)
+0}𝑚
+𝑖=1∼P𝑝𝑟𝑖𝑜𝑟
+6: ˆ𝑥(𝑖)←ODESolve(𝑥(𝑖)
+0,𝑓𝜃,𝑇)
+7:𝐿 𝑤←𝐷𝑤(ˆ𝑥(𝑖))−𝐷𝑤(Proj𝑣𝑖𝑠(𝑥(𝑖)))+
+8:𝜆·GradientPenalty(𝐷 𝑤,𝑥,ˆ𝑥)
+9:end for
+10:𝑤←Adam(𝛼,𝐿 𝑤)
+11:end for
+12:Sample initial states{𝑥(𝑖)
+0}𝑚
+𝑖=1∼P𝑝𝑟𝑖𝑜𝑟
+13:𝐿𝜃←−1
+𝑚Í𝑚
+𝑖=1𝐷𝑤(Proj𝑣𝑖𝑠(ODESolve(𝑥(𝑖)
+0,𝑓𝜃,𝑇)))
+14:𝜃←Adam(𝛼,𝐿 𝜃)
+15:end while
+regularized by a gradient penalty. Subsequently, the generator
+step updates the physical analog parameters 𝜃. We sample
+initial noise, simulate the analog dynamics forward to time
+𝑇, and evaluate the generated samples using the discrimina-
+tor. We then compute the loss gradients with respect to 𝜃by
+backpropagating through the ODE solver, pulling the analog
+dynamics’ terminal states closer to the true data manifold.
+4 Hardware-Efficient AIS Architecture
+While analog computing paradigms promise benefits in en-
+ergy efficiency and computational latency, the realization of
+such systems is fundamentally governed by strict physical
+constraints. In this section, we first analyze the hardware
+constraints of analog dynamical systems, including interac-
+tion complexity, routing capacity, parameter programmabil-
+ity, and noise. We then present our hardware-efficient AIS
+architecture that operates within these constraints. Finally,
+we estimate power consumption and derive scaling laws for
+connectivity and weight precision based on published silicon
+measurements.
+4.1 Analysis of Hardware Constraints
+The dynamics of the original AIS (Equation 1) with hardware
+constraints included can be stated as follows:
+¤𝑥𝑖=𝐿(𝑍(0)
+ˆ𝜃(𝑡)(𝑥𝑖),∑︁
+𝑗∈N 𝑖𝑍(1)
+ˆ𝜃(𝑡)(𝑥𝑗),∑︁
+𝑗∈N 𝑖𝑍(2)
+ˆ𝜃(𝑡)(𝑥𝑖,𝑥𝑗),𝛿N(0,1))
+(6)
+Interaction Complexity ( 𝑍(0),𝑍(1),𝑍(2)).The model re-
+stricts state interactions to at most second-order terms. Sig-
+nals interact via the physical summation of these low-order
+terms, modeling hardware-native aggregation mechanisms
+such as Kirchhoff’s current law on a common wire. Arbitrarily
+6
+high-order multivariate interactions are physically prohibi-
+tive and therefore excluded.
+Routing Capacity ( N𝑖).Dense routing incurs high area over-
+heads. For example, in oscillator-based Ising machines utiliz-
+ing a King’s graph topology, the active oscillators occupy less
+than 5% of the total chip area, with the vast majority consumed
+by coupling and routing circuitry, even though the connectiv-
+ity is already sparse [ 21]. Increasing the connection density
+worsens the situation. Comparing a fully-connected network
+to a nearest neighbor network on the same65nm CMOS
+technology and area1 .44mm2, the former supports only 30
+oscillators, whereas the latter contains 560 oscillators [ 1,18].
+Consequently, the state 𝑥𝑖connects only to a restricted subset
+of neighborsN𝑖, comprising local connections and a limited
+number of long-distance routes.
+Parameter Programmability ( ˆ𝜃(𝑡)).High-resolution pro-
+grammability requires digital-to-analog converters (DACs)
+that consume significant die area and power. Therefore, pa-
+rameters are restricted to low resolution in both bit-width
+and time. We model a parameter ˆ𝜃as a function over 𝑐time
+chunks with quantization:
+ˆ𝜃(𝑡)=𝑐∑︁
+𝑘=1𝜃𝑘·I[𝑡𝑘,𝑡𝑘+1)(𝑡), 𝜃𝑘=Q𝑞(𝑤𝑘)(7)
+where𝑤𝑘∈Ris the target weight for the 𝑘-th interval,Q𝑞(·)
+is a𝑞-bit quantization operator, and I[𝑡𝑘,𝑡𝑘+1)(𝑡)is an indicator
+function that evaluates to1when 𝑡∈[𝑡𝑘,𝑡𝑘+1)and0otherwise.
+Noise (𝛿N( 0,1)).Analog hardware intrinsically exhibits
+noise, which introduces random and small-magnitude pertur-
+bations throughout the system. We incorporate an additive
+Gaussian noise 𝛿N( 0,1)into the dynamics to capture this
+physical phenomenon.
+4.2 Proposed Architecture
+Our approach is conceptually straightforward: design a phys-
+ical architecture to operate within the aforementioned con-
+straints while maintaining the capacity for generative mod-
+eling. The core of an AIS machine contains two types of com-
+ponents: compute nodes (Physical Elements, PE) and pro-
+grammable coupling units.
+Topology and State Partitioning.We map the system states
+onto a two-dimensional grid of physical elements, forming the
+AIS core. The physical elements are partitioned into visible
+elements, which represent the target data dimensions, and
+hidden elements. For example, in Figure 5a, the grid consists of
+repeating structural tiles where visible nodes (solid circles) are
+surrounded by hidden nodes (dotted circles). Programmable
+coupling units then wire these elements together according to
+a predefined neighborhood, and this is repeated for every PE.
+Physical Elements.The PEs store the state variables and
+evolve them natively according to their intrinsic circuit re-
+sponse or device physics, as formalized in Equation 6. From
+ AIS Core
+Sparse Interconnect
+PEPE
+PEPE
+PEPE
+PEPEPEPE
+PEPE
+PEPE
+PEPE…
+…
+… x(0) x(T) (a)AIS Architecture
+State (phase) (b)Oscillator-based PE
+State
+(voltage)
+(c)Integrator-based PE
+PE-j Jij0Jij1Jij2
+Jij0Jij1Jij2Jji2Jji1Jji0Jji2Jji1Jji0PE-i
+(d)Asymmetric Coupling with Inverter Arrays.
+Figure 5.Overview of the AIS Architecture.
+x1,..,xK-1x0 AIS Core
+Weights
+States Θ1,…,θK
+Buffer xK
+(a)Save-and-Reprogram
+x0 AIS Core
+Weights
+States Θ1,…,θK
+xKScheduler (b)State Stationary
+x0 AIS Core 1
+Weights
+States Θ1
+Buffer  AIS Core 2
+Weights
+States Θ2
+x1 AIS Core K
+Weights
+States ΘK
+...
+xK
+Buffer
+x2xK-1
+(c)Weight Stationary
+Figure 6.Architectural strategies for time-varying weights.
+an architectural perspective, a PE can be implemented us-
+ing any component that exhibits dynamics that designers
+find suitable. For example, coupled oscillators naturally real-
+ize Kuramoto dynamics (Figure 5b), and analog integrators
+with saturation non-linearities can implement the AIM-Tanh
+dynamics (Figure 5c).
+Programmable Coupling Units.The coupling units trans-
+mit interacting state information between PEs, scaled by pro-
+grammable weights. Asymmetric coupling ( 𝐽𝑖𝑗≠𝐽𝑗𝑖) is real-
+ized by deploying two independent, unidirectional coupling
+elements between interacting PEs, with each direction config-
+ured by a dedicated DAC. For example, in an oscillator-based
+AIS implementation, this unidirectional interaction is realized
+7
+using programmable inverter arrays (Figure 5d). The 𝑐-time-
+varying coupling can be implemented with three strategies,
+each with hardware trade-offs (Figure 6):
+•Save-and-reprogram: At the end of each temporal inter-
+val, the intermediate state variables are read out, and the
+weights are reprogrammed with the next set of values. This
+approach requires only a single AIS core but incurs latency
+and energy overheads due to the repeated digitization and
+writing of intermediate analog states.
+•Weight stationary: This approach utilizes spatial unrolling,
+mapping the 𝑐discrete time steps across 𝑐statically con-
+figured AIS cores. The state variables are read out and
+pipelined sequentially from one core to the next. This elim-
+inates the need to dynamically reprogram the DACs but
+necessitates inter-core state read/write operations and re-
+quires𝑐times more physical hardware.
+•State stationary: The analog state variables remain within
+a single AIS core, evolving continuously without interrup-
+tion. The local coupling units are internally scheduled to
+update their weights dynamically at predefined temporal
+boundaries. This approach avoids intermediate state digiti-
+zation but requires integrated memory with timing control
+circuitry at each coupling unit to manage the synchronous
+weight updates.
+4.3 Power Estimation
+To establish a coarse-grained power estimate, we extrapolate
+from the 28-nm coupled oscillator Ising machine presented
+by Graber and Hofmann [ 10]. Their silicon implementation
+features 1,440 nodes with an average degree of 8 couplings
+per node using 4-bit resolution DACs, consuming460.3mW
+of continuous power, giving a per-node baseline of:
+𝑃node,ref =460.3mW
+1440nodes≈320𝜇W/node (8)
+The chip’s component breakdown further reports113 .3𝜇W
+per oscillator periphery and ≈23𝜇Wper coupler; these align
+at the 8-coupling degree (113 .3+23×8≈297𝜇W), with the
+≈7%gap likely attributable to global routing overhead.
+For an AIS core with 𝑀nodes and𝐿couplings per node,
+we extrapolate by scaling the coupler count and applying a
+1.1×power penalty for global routing:
+𝑃node(𝐿)≈113.3+23×𝐿×1.1𝜇W (9)
+For a56×56AIS core generating MNIST images with 𝐿=24
+couplings per node:
+𝑃node(24)≈113.3+23×24×1.1≈721𝜇W (10)
+𝑃total=56×56×721𝜇W≈2.3W (11)
+Operating at100 MHz with1000cycles per sample, the energy
+per generated image is:
+𝐸image≈2.3W×1000cycles
+100MHz=23𝜇J (12)This is 2 orders of magnitude more energy efficient than 7–
+79mJper image estimated for digital generative models [ 4]1.
+To generalize these estimates, we parameterize an AIS ar-
+chitecture by node count 𝑀, coupling degree 𝐿, and weight
+bit-width𝑞. In programmable-inverter-based coupling, each
+additional bit doubles the number of required drive elements;
+we capture this as a2𝑞−4factor relative to the 4-bit reference:
+𝐸image(𝑀,𝐿,𝑞)≈𝑀·(113.3+23×𝐿×1.1)·2𝑞−4×10−5𝜇J (13)
+Switching to all-to-all connectivity ( 𝐿=𝑀− 1=3135) raises
+𝑃nodeby≈110×, yielding𝐸≈2.5mJ; because energy scales
+linearly with 𝐿, all-to-all connectivity causes total energy to
+grow quadratically with 𝑀, becoming physically prohibitive
+at scale. Increasing weight resolution to 𝑞=8bits multiplies
+energy by24=16×, giving𝐸≈0.36mJ. These trends confirm
+that sparse connectivity and low bit-width are fundamental re-
+quirements for energy-efficient analog generative modeling.
+5 Evaluation
+Table 2.Resource usage for the studied generative models.
+Cpl/Asym/Sym abbreviate coupling/asymmetric/symmetric,
+respectively. 𝑐is the number of chunks of time-varying
+weights.
+Arch # PE Cpl / PE # Param # Cpl
+AIS (Ours)
+Asym.,𝑐=1 56×5624 81536 75264
+Asym.,𝑐=2 56×5624 163072 75264
+Sym.,𝑐=4 56×5624 175616 37632
+Asym.,𝑐=4 56×5624 326144 75264
+Baselines
+DTM80×80×424 343008 1718784
+NLM28×28784 614656 614656
+We first conduct a design-space exploration (DSE) of the
+AIS architecture, evaluating coupling topologies and ana-
+log dynamics under simulated hardware constraints (weight
+quantization and noise). We assume the time-varying cou-
+pling is implemented in a state-stationary manner (Figure 6b).
+We solve the dynamical system using Euler’s method with
+80 steps of size0 .05and 64-bit floating-point precision. We
+sample initial states from N(0,0.25). For the discriminator, we
+employ a DCGAN architecture [ 26]. The system is trained for
+30,000 generator steps with a batch size of 64 using the Adam
+optimizer with(𝛽1,𝛽2)=(0.5,0.9). The learning rate decays
+linearly from10−4to zero during the second half of training.
+We fine-tune each configuration for 15,000 additional steps
+using the same schedule. We report the average Fréchet Incep-
+tion Distance (FID) over four random seeds on the MNIST and
+Fashion-MNIST (FMNIST) datasets [ 15,33]. Table 2 reports
+the resource utilization.
+1Precise power consumption depends heavily on layout considerations, e.g.,
+routing area growth, which are not modeled here and may increase power.
+8
+KuraSHIL KS-Nonideal Kuramoto TanhNet PolyNet SeluNet DTM NLM
+Figure 7.Generated MNIST/FMNIST samples. KS-Nonideal: Kuramoto-SHIL with𝑞=4weights and noise𝛿=0.025.
+T=0
+ T=10
+ T=20
+ T=30
+ T=40
+ T=50
+ T=60
+ T=70
+ T=80
+Figure 8.Images generation with KuraSHIL.
+5.1 Comparison with Baselines
+Thedevelopmentofhardware-implementablegenerativemod-
+els, where computation emerges naturally from the physical
+interactions of coupled elements, is still in its nascency, and
+training these systems remains challenging. Therefore, the lit-
+erature contains few comparable models. We benchmark AIS
+against recent state-of-the-art frameworks in the field, specif-
+ically the Denoising Thermodynamic Model (DTM) [ 14] and
+the Neural Langevin Machine (NLM) [ 35]. The DTM consists
+of a chain of Ising solvers to execute diffusion. Each solver
+uses a probabilistic-bit (p-bit) grid that updates based on local
+interactions. The NLM consists of a continuous dynamical
+system with a specialized learning rule designed to minimize
+the Kullback-Leibler divergence between the state distribu-
+tion and the target data. Because neither work reports FID
+scores on grayscale images, we reproduce their setups using
+their official source code.
+We configure the DTM with an80 ×80grid, 24 couplings
+per node, and 4 diffusion steps, yielding an iso-parameter
+comparison with AIS. Grayscale pixels are binary-encoded
+using three p-bits each. The DTM is trained for 60 epochs
+across four seeds, ensuring loss convergence. We follow the
+original NLM training procedure and verify loss convergence.
+For DTM, we validate that we observe better FID scores than
+what is reported in their logs.
+Parameter Counts.Table 2 summarizes the resource utiliza-
+tion for each model. Because the DTM executes diffusion, it
+requires multiple copies of its Ising solver, which quadruples
+the number of PEs and couplings. This cost can be amortized
+by pipelining. However, while the DTM logically employs
+symmetric coupling, its physical implementation relies onunidirectional resistor networks. This architectural choice
+doubles the total number of hardware couplings required to
+realize bidirectional symmetric weights. The NLM requires
+dense, all-to-all connectivity and does not utilize hidden states.
+As a result, even though the NLM operates with fewer state
+variables overall, it demands twice the parameter count of AIS.
+FidelityThe fidelity comparison is presented in Figure 7.
+DTMachievesFIDsof107.8/112.8andNLMachieves230.5/200.8
+on MNIST/FMNIST, respectively. Our model substantially out-
+performs both, achieving FIDs of 27.6/80.8 on MNIST/FMNIST
+at full precision with no noise, and 29.1/75.1 with 4-bit quanti-
+zation and𝛿=0.025. Qualitative comparisons of the generated
+samples are provided in Figure 7. Notably, even when sub-
+jected to hardware constraints (4-bit weights and transient
+noise), our model consistently generates higher-quality im-
+ages using an equivalent resource footprint.
+5.2 Design-Space Exploration
+To evaluate the effect of different design decisions, we sweep
+multiple design points, detailing the results in Table 3. We ini-
+tially assume full-precision weights and noiseless transients
+to identify promising architectures, subsequently introducing
+quantization and noise to evaluate hardware robustness.
+Analog Models.We perform initial experiments with AIS
+models in Table 1, configuring all with asymmetric and time-
+varying (𝑐=4) coupling. KuraSHIL achieves substantially
+lower FID scores on both datasets compared to the other AIS
+models (27.6/80.8 vs. 307.3/160.3, 90.7/95.4, 288.77/144.82, and
+335.76/237.11 on MNIST/FMNIST, respectively). This advan-
+tage is corroborated by qualitative visual improvements, as
+shown in Figure 7. Consequently, we select the KuraSHIL
+model as our primary analog compute primitive for all sub-
+sequent evaluations.
+Temporal and Asymmetric Weights.Increasing the num-
+ber of temporal weights from 1 to 4 consistently reduces
+the FID scores across both datasets. This highlights that time-
+varying weights enhance the model’s expressivity, even when
+limited to piecewise-constant functions. Similarly, employ-
+ing asymmetric coupling introduces additional degrees of
+9
+Table 3.FID scores of the studied models. 𝑐: Number of
+chunks in time-varying weights. 𝑞: Weight quantization bits.
+𝛿: Noise strength.
+Model Asym.?𝑐 𝑞 𝛿FID↓
+MNIST FMNIST
+AIS (Ours)
+Impact of the analog model
+KuraSHIL
+(default)✓ 464 0 27.6 80.8
+Kuramoto✓4 64 0 288.77 144.82
+PolyNet✓4 64 0 307.3 160.3
+TanhNet✓4 64 0 90.7 95.4
+SeluNet✓4 64 0 335.76 237.11
+Impact of temporal and asymmetric weights
+KuraSHIL✓1 64 0 62.7 84.4
+KuraSHIL✓2 64 0 42.5 82.6
+KuraSHIL ✓ 464 0 27.6 80.8
+KuraSHIL×4 64 0 38.4 81.3
+Impact of hidden states
+KuraSHIL ✓ 464 0 27.6 80.8
+KuraSHIL✓4 64 0 43.0 84.3(no hidden states)
+Impact of Quantization
+KuraSHIL ✓ 464 0 27.6 80.8
+KuraSHIL✓4 4 0 27.2 81.9
+KuraSHIL✓4 3 0 32.9 85.6
+KuraSHIL✓4 2 0 53.9 98.5
+Impact of Noise
+KuraSHIL ✓ 464 0 27.6 80.8
+KuraSHIL✓4 4 0.025 29.1 75.1
+KuraSHIL✓4 4 0.05 36.7 78.4
+KuraSHIL✓4 4 0.1 54.5 90.4
+Baselines
+DTM 107.8 112.8
+NLM 230.5 200.8
+freedom in the parameter space, enabling the model to learn
+more complex distributions and generate lower-FID images
+compared to symmetric constraints.
+Hidden StatesWe run an experiment with a grid of size
+28×28with𝑐=4, having only visible states. The FID score
+increases for both datasets (27.6/80.8 to 43.0/84.3). This demon-
+strates that adding hidden states increases the expressivity
+of an AIS model under sparse connection constraints.
+Quantization and Noise.We evaluate the model’s resilience
+to hardware non-idealities by varying weight precision and
+noise levels on the 4-temporal-weight configuration. To train
+the quantized models, we initialize them with hard-quantized
+weights derived from the full-precision baseline prior to fine-
+tuning. We subsequently inject varying magnitudes of noise
+andfurtherfine-tunethesequantizedmodels.Bothfine-tuning
+stages involve 15,000 generator iterations.The 4-bit quantized model achieves performance compara-
+ble to the 64-bit unquantized baseline (27.2/81.9 vs. 27.6/80.8
+FID on MNIST/FMNIST). However, further reducing precision
+noticeably degrades generation quality. Introducing minor
+transient noise ( 𝛿=0.025) to the 4-bit model yields negligible
+degradation and even shows a slight improvement on FM-
+NIST. As expected, aggressively increasing the noise level
+from 0.025 to 0.1 causes a steady decline in quality, raising
+the FID from 29.1 to 54.5 on MNIST and from 75.1 to 90.4 on
+FMNIST. Overall, the AIS demonstrates resilience to realistic
+hardware constraints.
+The generation process is visualized in Figure 8. Interest-
+ingly, the oscillators do not learn a direct interpolation path
+from the initial Gaussian noise to the final images. Instead,
+they learn a detoured trajectory that initially converges to-
+ward average pixel values before spreading out into distinct
+features. This behavior demonstrates the effectiveness of our
+GAN-based training formulation in discovering non-trivial
+dynamical paths that successfully map the Gaussian prior to
+the target data distribution.
+6 Related Work
+Oscillatory Neural NetworksRecent works leverage os-
+cillatory dynamics to overcome limitations in standard neu-
+ral networks. GraphCON and SLGNN apply second-order
+oscillatory ODEs to mitigate oversmoothing and enrich rep-
+resentations in graph neural networks [ 27,36]. AKORN and
+Kuramoto Orientation Diffusion utilize Kuramoto phase syn-
+chronizationtoimprovefeaturebindingandrobustness,show-
+ing success on image processing and generative modeling [ 20,
+28]. While these prior works inject oscillatory dynamics into
+standard neural networks, they still rely on unconstrained
+digital computing and are not realizable on analog hardware.
+Our goal is fundamentally different: we strictly constrain com-
+putation toonlyuse physical oscillatory or specific analog
+interaction systems with bounded hardware limits to enable
+physically realizable analog architecture for low-power, low-
+latency compute.
+Generative Models with Thermodynamic Computing.
+Harnessing the physical evolution of natural systems for com-
+putation is broadly categorized as thermodynamic comput-
+ing [ 7]. A prominent direction in this domain relies on Ising
+models implemented via probabilistic bits (p-bits). Recent im-
+plementations include sparse Ising machines synthesized on
+FPGAs for image tasks [ 22] and Denoising Thermodynamic
+Models (DTMs) that chain multiple Ising solvers to compute
+discrete diffusion steps [ 14]. While these architectures achieve
+low-power generation for binarized images, scaling them to
+multi-bit data (e.g., grayscale images) introduces noise due
+to the discrete integer encoding, as evaluated in [ 14] and Sec-
+tion 5. The optimal embedding of continuous variables onto
+discrete p-bit hardware remains an unresolved challenge.
+10
+Alternative approaches employ continuous physical dy-
+namics [ 32,35]. This aligns closely with our formulation,
+enabling the direct mapping of continuous data values to
+physical states. However, existing training methodologies
+for these continuous systems yield substantially higher FID
+scores (Section 5). We overcome the optimization bottleneck
+by identifying the GAN formulation as an effective training
+paradigm for physical dynamics.
+Generative Models with Non-Digital Neural Networks
+Recent efforts map generative models onto non-digital sub-
+strates, such as optical systems [ 4,6,23,25] and emerging
+memory arrays [ 5,34], demonstrating improvements in en-
+ergy efficiency. These architectures operate by emulating
+pre-defined digital algorithms, such as digital score-based dif-
+fusion processes parameterized by standard neural networks,
+and utilize the non-digital fabric as a drop-in accelerator for
+specific operations, such as matrix-vector multiplication.
+Our Analog Interaction System follows a different philoso-
+phy. We formulate the generative process natively within the
+hardware’s physics, rather than forcing analog circuits to emu-
+late a digital neural network. By employing a GAN framework
+to optimize the terminal state of this physical system, we elim-
+inate the requirement to track a predefined digital trajectory,
+which is often too complicated to fit for physical systems.
+Analog Accelerators.Extensive research has been dedicated
+todevelopinganalogaccelerators,particularlyoscillator-based
+Ising machines, engineered primarily to solve complex com-
+binatorial optimization problems such as Boolean satisfiabil-
+ity (SAT) and graph coloring [ 1,10,18,21]. A central focus
+within this community involves navigating the trade-offs in
+hardware topology and component design. Our work is com-
+plementary to these hardware endeavors. AIS opens a new
+application domain by leveraging the continuous-time dy-
+namics for generative AI, while physical innovations in circuit
+design provide the substrate to scale and implement the AIS.
+7 Conclusion
+Analog hardware offers a compelling path toward energy-
+efficient generative modeling, but realizing this potential re-
+quires bridging a fundamental mismatch between the fixed,
+physics-determined dynamics of analog substrates and the
+flexibility demanded by modern generative models. We have
+introduced Analog Interaction Systems as a unified frame-
+work for reasoning about this class of hardware, and identified
+two complementary mechanisms — hidden state augmenta-
+tion and time-varying weights — that reduce the expressivity
+gap while remaining compatible with physical implementa-
+tion constraints. To train these systems, we applied a Wasser-
+stein GAN formulation that frees the underlying physics to
+discover trajectories from noise to data. We further proposed
+a sparse, low-bit-width hardware architecture and provided
+scaling analyses showing that such a design can yield order-
+of-magnitude energy improvements over digital alternatives.Taken together, these results suggest that the limitations im-
+posedbyanaloghardwarecanbeovercometoyieldexpressive,
+energy-efficient models.
+References
+[1]Ibrahim Ahmed, Po-Wei Chiu, William Moy, and Chris H Kim. 2021.
+A probabilistic compute fabric based on coupled ring oscillators
+for solving combinatorial optimization problems.IEEE Journal of
+Solid-State Circuits56, 9 (2021), 2870–2880.
+[2]Fabian Böhm, Thomas Van Vaerenbergh, Guy Verschaffelt, and Guy
+Van der Sande. 2021. Order-of-magnitude differences in computational
+performance of analog Ising machines induced by the choice of
+nonlinearity.Communications Physics4, 1 (2021), 149.
+[3]Wenxiao Cai, Zongru Li, Iris Wang, Yu-Neng Wang, and Thomas H
+Lee. 2025. OscNet v1. 5: energy efficient hopfield network on CMOS
+oscillators for image classification. InProceedings of the IEEE/CVF
+International Conference on Computer Vision. 4733–4741.
+[4]Shiqi Chen, Yuhang Li, Yuntian Wang, Hanlong Chen, and Aydogan Oz-
+can. 2025. Optical generative models.Nature644, 8078 (2025), 903–911.
+[5]Yang Cheng, Qingyuan Shu, Albert Lee, Haoran He, Ivy Zhu, Minzhang
+Chen, Renhe Chen, Zirui Wang, Hantao Zhang, Chih-Yao Wang, et al .
+2025. Voltage-controlled magnetoelectric devices for neuromorphic
+diffusion process.Nature Communications16, 1 (2025), 5022.
+[6]Jiaqi Chu, Heiner Kremer, Fabian Falck, Grace Brennan, Burcu Canakci,
+James Clegg, Daniel Cletheroe, Doug Kelly, Christos Gkantsidis,
+Michael Hansen, et al. 2026. Analog Diffusion Models. (2026).
+[7]Tom Conte, Erik DeBenedictis, Natesh Ganesh, Todd Hylton, John Paul
+Strachan, R Stanley Williams, Alexander Alemi, Lee Altenberg, Gavin
+Crooks, James Crutchfield, et al .2019. Thermodynamic computing.
+arXiv preprint arXiv:1911.01968(2019).
+[8]Gyorgy Csaba and Wolfgang Porod. 2020. Coupled oscillators for com-
+puting: A review and perspective.Applied physics reviews7, 1 (2020).
+[9]George Cybenko. 1989. Approximation by superpositions of a
+sigmoidal function.Mathematics of control, signals and systems2, 4
+(1989), 303–314.
+[10] Markus Graber and Klaus Hofmann. 2024. An integrated coupled
+oscillator network to solve optimization problems.Communications
+Engineering3, 1 (2024), 116.
+[11] Ishaan Gulrajani, Faruk Ahmed, Martin Arjovsky, Vincent Dumoulin,
+and Aaron C Courville. 2017. Improved training of wasserstein gans.
+Advances in neural information processing systems30 (2017).
+[12] Jonathan Ho, Ajay Jain, and Pieter Abbeel. 2020. Denoising diffusion
+probabilistic models.Advances in neural information processing systems
+33 (2020), 6840–6851.
+[13] Takahiro Inagaki, Kensuke Inaba, Ryan Hamerly, Kyo Inoue, Yoshihisa
+Yamamoto, and Hiroki Takesue. 2016. Large-scale Ising spin network
+based on degenerate optical parametric oscillators.Nature Photonics
+10, 6 (2016), 415–419.
+[14] Andraž Jelinčič, Owen Lockwood, Akhil Garlapati, Peter Schillinger,
+Isaac Chuang, Guillaume Verdon, and Trevor McCourt. 2025. An
+efficient probabilistic hardware architecture for diffusion-like models.
+arXiv preprint arXiv:2510.23972(2025).
+[15] Yann LeCun, Léon Bottou, Yoshua Bengio, and Patrick Haffner. 2002.
+Gradient-based learning applied to document recognition.Proc. IEEE
+86, 11 (2002), 2278–2324.
+[16] Moshe Leshno, Vladimir Ya Lin, Allan Pinkus, and Shimon Schocken.
+1993. Multilayer feedforward networks with a nonpolynomial
+activation function can approximate any function.Neural networks
+6, 6 (1993), 861–867.
+[17] Yaron Lipman, Ricky TQ Chen, Heli Ben-Hamu, Maximilian Nickel,
+and Matt Le. 2022.arXiv preprint arXiv:2210.02747(2022).
+11
+[18] Antik Mallick, Mohammad Khairul Bashar, Daniel S Truesdell,
+Benton H Calhoun, Siddharth Joshi, and Nikhil Shukla. 2021. Graph col-
+oring using coupled oscillator-based dynamical systems. In2021 IEEE
+International Symposium on Circuits and Systems (ISCAS). IEEE, 1–5.
+[19] Peter L McMahon, Alireza Marandi, Yoshitaka Haribara, Ryan Hamerly,
+Carsten Langrock, Shuhei Tamate, Takahiro Inagaki, Hiroki Takesue,
+Shoko Utsunomiya, Kazuyuki Aihara, et al .2016. A fully programmable
+100-spin coherent Ising machine with all-to-all connections.Science
+354, 6312 (2016), 614–617.
+[20] Takeru Miyato, Sindy Löwe, Andreas Geiger, and Max Welling. 2024.
+Artificial kuramoto oscillatory neurons.arXiv preprint arXiv:2410.13821
+(2024).
+[21] William Moy, Ibrahim Ahmed, Po-wei Chiu, John Moy, Sachin S
+Sapatnekar, and Chris H Kim. 2022. A 1,968-node coupled ring
+oscillator circuit for combinatorial optimization problem solving.
+Nature Electronics5, 5 (2022), 310–317.
+[22] Shaila Niazi, Shuvro Chowdhury, Navid Anjum Aadit, Masoud
+Mohseni, Yao Qin, and Kerem Y Camsari. 2024. Training deep
+Boltzmann networks with sparse Ising machines.Nature Electronics
+7, 7 (2024), 610–619.
+[23] Ilker Oguz, Niyazi U Dinc, Mustafa Yildirim, Junjie Ke, Innfarn Yoo,
+Qifei Wang, Feng Yang, Christophe Moser, and Demetri Psaltis. 2024.
+Optical diffusion models for image generation.Advances in Neural
+Information Processing Systems37 (2024), 59150–59173.
+[24] Jooyoung Park and Irwin W Sandberg. 1991. Universal approximation
+using radial-basis-function networks.Neural computation3, 2 (1991),
+246–257.
+[25] Jumin Qiu, Ganqing Lu, Tingting Liu, Dejian Zhang, Shuyuan Xiao,
+and Tianbao Yu. 2025. Optoelectronic generative adversarial networks.
+Communications Physics8, 1 (2025), 162.
+[26] Alec Radford, Luke Metz, and Soumith Chintala. 2015. Unsupervised
+representation learning with deep convolutional generative adversarial
+networks.arXiv preprint arXiv:1511.06434(2015).
+[27] T Konstantin Rusch, Ben Chamberlain, James Rowbottom, Siddhartha
+Mishra, and Michael Bronstein. 2022. Graph-coupled oscillator
+networks. InInternational conference on machine learning. PMLR,
+18888–18909.
+[28] Yue Song, T Anderson Keller, Sevan Brodjian, Takeru Miyato, Yisong
+Yue, Pietro Perona, and Max Welling. 2025. Kuramoto Orientation
+Diffusion Models.arXiv preprint arXiv:2509.15328(2025).
+[29] Yang Song, Jascha Sohl-Dickstein, Diederik P Kingma, Abhishek
+Kumar, Stefano Ermon, and Ben Poole. 2020. Score-based generative
+modeling through stochastic differential equations.arXiv preprint
+arXiv:2011.13456(2020).
+[30] Alexander Tong, Kilian Fatras, Nikolay Malkin, Guillaume Huguet,
+Yanlei Zhang, Jarrid Rector-Brooks, Guy Wolf, and Yoshua Bengio.
+2023. Improving and generalizing flow-based generative models with
+minibatch optimal transport.arXiv preprint arXiv:2302.00482(2023).
+[31] Tianshi Wang and Jaijeet Roychowdhury. 2017. Oscillator-based Ising
+machine.arXiv preprint arXiv:1709.08102(2017).
+[32] Stephen Whitelam. 2026. Generative thermodynamic computing.
+Physical Review Letters136, 3 (2026), 037101.
+[33] Han Xiao, Kashif Rasul, and Roland Vollgraf. 2017. Fashion-mnist: a
+novel image dataset for benchmarking machine learning algorithms.
+arXiv preprint arXiv:1708.07747(2017).
+[34] Jichang Yang, Hegan Chen, Jia Chen, Songqi Wang, Shaocong Wang,
+Yifei Yu, Xi Chen, Bo Wang, Xinyuan Zhang, Binbin Cui, et al .2024.
+Resistive memory-based neural differential equation solver for
+score-based diffusion model.arXiv preprint arXiv:2404.05648(2024).
+[35] Zhendong Yu, Weizhong Huang, and Haiping Huang. 2025. Neural
+Langevin Machine: a local asymmetric learning rule can be creative.
+arXiv preprint arXiv:2506.23546(2025).
+[36] Kaicheng Zhang, David N Reynolds, Piero Deidda, and Francesco
+Tudisco. 2025. Stuart-Landau Oscillatory Graph Neural Network.arXiv preprint arXiv:2511.08094(2025).
+12

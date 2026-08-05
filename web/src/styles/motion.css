@@ -1,0 +1,100 @@
+/* ============================================================
+   PaperForge 动效系统（轻量 / GPU 友好 / 尊重 reduced-motion）
+   - 滚动淡入 reveal
+   - 卡片 / 列表项悬浮抬升
+   - 按钮悬停微交互（缩放 + 阴影 + 按压缩放）
+   - 路由切换淡入
+   仅使用 transform / opacity，避免触发重排。
+   ============================================================ */
+
+/* ---------- 滚动淡入 ---------- */
+.pf-reveal {
+  opacity: 0;
+  transform: translateY(16px);
+  transition:
+    opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+}
+.pf-reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* ---------- 通用悬浮抬升（卡片 / 列表容器） ---------- */
+.pf-lift {
+  transition:
+    transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.pf-lift:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 28px rgba(30, 64, 175, 0.12);
+}
+
+/* 历史 / 上传等列表项：在原有 hover 背景之上叠加轻微抬升 */
+.pf-history-item,
+.pf-upload-item {
+  transition:
+    background-color 0.2s ease,
+    transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.pf-history-item:hover,
+.pf-upload-item:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+}
+
+/* ---------- 按钮悬停微交互 ---------- */
+.ant-btn:not(.ant-btn-link):not(.ant-btn-text):not([disabled]) {
+  transition:
+    transform 0.15s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.15s ease,
+    background-color 0.15s ease;
+}
+.ant-btn:not(.ant-btn-link):not(.ant-btn-text):not([disabled]):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(30, 64, 175, 0.18);
+}
+.ant-btn:not(.ant-btn-link):not(.ant-btn-text):not([disabled]):active {
+  transform: translateY(0);
+}
+
+/* ---------- 路由切换淡入 ---------- */
+.pf-route-view {
+  animation: pf-route-enter 0.34s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes pf-route-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---------- 减少动效偏好：全部关闭，内容直接可见 ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .pf-reveal,
+  .pf-lift,
+  .pf-history-item,
+  .pf-upload-item,
+  .ant-btn,
+  .pf-route-view,
+  .pf-paper-card,
+  .pf-paper-card::before,
+  .pf-paper-card-title .pf-link,
+  .pf-workbench-action,
+  .pf-workbench-action-arrow,
+  .pf-hero-material,
+  .pf-hero-material-mark {
+    transition: none !important;
+    animation: none !important;
+    transform: none !important;
+    opacity: 1 !important;
+    will-change: auto !important;
+  }
+}

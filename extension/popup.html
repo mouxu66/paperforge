@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PaperForge Clipper</title>
+  <style>
+    body {
+      width: 280px;
+      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 0;
+    }
+    h1 {
+      font-size: 16px;
+      margin: 0 0 8px;
+      color: #1e293b;
+    }
+    p {
+      font-size: 13px;
+      color: #64748b;
+      margin: 0 0 12px;
+      line-height: 1.5;
+    }
+    button {
+      width: 100%;
+      padding: 10px;
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #1d4ed8;
+    }
+    button:disabled {
+      background: #94a3b8;
+      cursor: not-allowed;
+    }
+    #status {
+      margin-top: 12px;
+      font-size: 12px;
+      min-height: 18px;
+      line-height: 1.4;
+    }
+    .success { color: #16a34a; }
+    .error { color: #dc2626; }
+    .info { color: #2563eb; }
+    .source-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .source-arxiv { background: #dbeafe; color: #1e40af; }
+    .source-cnki { background: #fef3c7; color: #92400e; }
+    .source-scholar { background: #d1fae5; color: #065f46; }
+    .source-other { background: #f3f4f6; color: #4b5563; }
+    .config {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid #e5e7eb;
+    }
+    .config label {
+      display: block;
+      font-size: 12px;
+      color: #64748b;
+      margin-bottom: 4px;
+    }
+    .config input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 6px;
+      font-size: 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+    }
+    .config button {
+      margin-top: 8px;
+      padding: 6px;
+      font-size: 12px;
+    }
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+      font-size: 12px;
+      color: #1e293b;
+      cursor: pointer;
+    }
+    .toggle-row input[type="checkbox"] {
+      width: auto;
+      margin: 0;
+    }
+    .toggle-hint {
+      font-size: 11px;
+      color: #94a3b8;
+      margin: 4px 0 8px;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <h1>PaperForge Clipper</h1>
+  <div id="sourceBadge" class="source-badge source-other">Detecting...</div>
+  <p id="sourceDesc">Save the current paper to your local PaperForge library.</p>
+  <button id="saveBtn">Save Current Page</button>
+  <div id="status"></div>
+
+  <div class="config">
+    <label for="tags">Tags (comma-separated)</label>
+    <input id="tags" type="text" placeholder="e.g., important, to-read" />
+    <label class="toggle-row">
+      <input id="cnkiPdfToggle" type="checkbox" />
+      <span>允许导入知网 PDF</span>
+    </label>
+    <p class="toggle-hint">开启后在知网论文页显示「保存」按钮，借浏览器登录态一键下载 PDF 存入 PaperForge。默认关闭。</p>
+    <label for="apiBase">PaperForge API Base URL</label>
+    <input id="apiBase" type="text" value="http://localhost:8770" />
+    <button id="saveConfig">Save Settings</button>
+  </div>
+
+  <script src="utils.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

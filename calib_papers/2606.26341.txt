@@ -1,0 +1,973 @@
+Scaling Nonlinear Optimization: Many Problems One GPU
+John Viljoen1, Johanna Haffner 2, Masayoshi Tomizuka 1, and Negar Mehr 1 ,
+Abstract— Many robotics problems, including trajectory op-
+timization, inverse kinematics, and contact-rich motion plan-
+ning, reduce to nonlinear programs (NLPs). Mature NLP
+solvers such as IPOPT can solve these problems, offering
+hard constraint satisfaction, optimality guarantees, and favor-
+able scaling with problem dimension. These solvers underpin
+gradient-based methods in robotics, yet remain CPU-bound and
+solve only one problem at a time, preventing their integration
+into GPU-batched learning pipelines. On the other hand,
+sampling-based approaches such as reinforcement learning,
+model predictive path integral, and imitation learning have
+become the core of modern robotics research due to their
+ability to leverage GPU-batched simulators. These simulators
+can generate orders of magnitude more dynamics rollouts
+per second than was previously possible. If a GPU-batched
+NLP solver existed, it would unlock similar speedups in the
+number of constrained, locally optimal solutions generated per
+second. This regime of solving many problems concurrently
+versus solving a single problem at a time is a key requirement
+for integrating NLP solvers in modern GPU-batched robotics
+frameworks. To this end, we introducejaxipm, the first GPU-
+batched NLP solver, based on IPOPT, and implemented in
+JAX. We accomplish this by redesigning IPOPT’s algorithm
+to eliminate control flow withheterogeneous iteration fusion,
+and by minimizing GPU idle time withiteration level batching.
+We evaluatejaxipmon a variety of quadrotor nonlinear model
+predictive control benchmarks, including reference tracking in
+the presence of obstacles, multi-quadrotor navigation without
+collision, and navigation in a cluttered environment. We demon-
+strate up to a32.85×increase in throughput over IPOPT.
+Our complete open-source codebase is available athttps:
+//github.com/johnviljoen/jaxipm.
+I. INTRODUCTION
+Many core problems in robotics, such as trajectory op-
+timization, inverse kinematics, and contact-rich manipula-
+tion, reduce to nonlinear programs (NLPs) [1], [2], [3],
+[4]. Two broad approaches solve these problems: sampling-
+based (SB) methods, such as reinforcement learning (RL),
+model predictive path integral control (MPPI) [5], and the
+cross-entropy method [6]; and gradient-based (GB) methods,
+which use mature, well-tested, CPU-based optimizers such
+as IPOPT [7], KNITRO [8], and SNOPT [9]. In recent years,
+GPU-batched simulators [10], [11], [12] have driven SB
+methods to dominance by generating synthetic data orders
+of magnitude faster than classical CPU-based alternatives.
+1J. Viljoen, M. Tomizuka, and N. Mehr are with the Department of
+Mechanical Engineering, University of California, Berkeley, CA, USA.
+{john viljoen, tomizuka, negar}@berkeley.edu
+2J. Haffner was with the Department of Biosystems Science and En-
+gineering, ETH Z ¨urich, Switzerland, during the completion of this work.
+johanna@haffner.dev
+This work has been submitted to the IEEE for possible publication.
+Copyright may be transferred without notice, after which this version may
+no longer be accessible.
+Despite this shift, GB methods offer several advantages
+over SB methods [13]. For instance, GB methods enforce
+hard constraints directly and converge to solutions satis-
+fying optimality conditions, whereas SB methods encode
+constraints as soft penalties, providing neither feasibility
+nor optimality guarantees. GB methods also scale well with
+problem dimension and exploit model information to refine
+solutions to arbitrary precision. By contrast, SB methods
+require exponentially more samples as state and action
+dimensions grow and cannot improve beyond the resolution
+of their samples [14], [13]. However, GB methods carry
+their own limitations. They typically require known twice-
+differentiable dynamics models and struggle to execute in
+real time, both areas of active research [15], [16], [17]. Most
+critically, NLP optimizers used in GB methods remain CPU-
+bound, preventing their integration into modern GPU-batched
+robotics workflows. Generating dataset-scale collections of
+solutions stalls at single-process throughput, and inside any
+larger GPU pipeline, the optimizer becomes the slowest link,
+throttling the entire batch to a single problem at a time while
+the rest of the GPU sits idle. As a result, GB methods miss
+the orders-of-magnitude parallelism speedups that drove SB
+methods to dominance.
+To bridge this gap, we introducejaxipm, a first-of-its-
+kind, open-source, GPU-batched NLP optimizer. We base
+jaxipmon IPOPT [7], one of the most widely used NLP
+optimizers [18], [19], [20], [21]. We chose IPOPT for its
+broad applicability to NLPs and its robustness, which to-
+gether have made it the default in much of the robotics and
+engineering community. IPOPT solves an NLP through a
+sequence of iterations, each of which may resort to a variety
+of fallbacks for known edge cases. This machinery underlies
+IPOPT’s robustness, but poses unique challenges for GPU-
+based execution. Within a batch, every problem can take a
+different control flow branch at each iteration and terminate
+at a different iteration count. This conflicts with the uniform
+execution model that GPUs rely on for parallelism. We get
+around this issue injaxipmwith our two contributions.
+The first isheterogeneous iteration fusion, where we
+rework every possible fallback into one iteration type. This
+means that where IPOPT would have computed different
+control flow branches conditioned on the optimization state,
+we instead compute the same thing for every iteration with-
+out sacrificing any benefits IPOPT gained from its control
+flow. Our key insight is that most of IPOPT’s control flow
+branchesshare a common set of expensive computations,
+meaning that we can compute these shared computations
+concurrently across an entire batch. For the small remainder
+of truly unique computations, we run them for all problems
+arXiv:2606.26341v1  [cs.RO]  24 Jun 2026
+Feasibility
+Restoration
+Second Order
+Correction
+Backtrack Line
+Search
+Initialize
+Optimizations
+Keep Iterating Non-Converged Problems
+Start New Optimizations From Converged Problems
+jaxipm
+Compute
+Common Quantities
+Compute
+Unique Quantities
+ Save Converged
+Optimizations
+Fig. 1: We summarizejaxipm: each color represents a different optimization problem being executed in batch. At each
+iteration, every problem can take different paths, including but not limited to: backtracking line search, second order
+correction, and feasibility restoration. Each of these heterogeneous paths shares some common quantities in their calculation,
+which we compute in parallel, followed by the remaining unique quantities sequentially.
+regardless of the branch IPOPT would have taken, and select
+the correct output afterward.
+The second isiteration level batching, where we hot-
+restart finished optimization problems without interrupting
+ongoing ones to minimize GPU downtime. A naive parallel
+implementation would batch at the solve level, requiring
+every problem to complete before the next batch can begin
+and leaving the GPU idle until the slowest solve finishes.
+To minimize this idling, we designedjaxipmaround finer-
+grained iteration level batching, which synchronizes at it-
+eration boundaries and lets completed problems be replaced
+with new ones mid-batch while unfinished problems continue
+iterating.
+We wrotejaxipmin JAX [22], both to achieve high
+performance and to allow for native interoperability with
+GPU-batched learning frameworks used in modern robotics
+research [10], [11], [12].
+We evaluatejaxipmon three different quadrotor Nonlin-
+ear Model Predictive Control (NMPC) benchmarks, namely
+single-quadrotor navigation, multi-quadrotor consensus, and
+reference tracking with time-varying obstacles, where we
+achieve up to32.85×throughput acceleration over IPOPT.
+We also demonstrate bit-parity with IPOPT on a per-iteration
+level across an optimization that utilizes most of IPOPT’s
+control flow branches.
+Our Contribution:We presentjaxipm, the first GPU-
+batched NLP solver, capable of solving thousands of NLPs
+concurrently throughheterogeneous iteration fusionandit-
+eration level batching.
+II. RELATEDWORKS
+NLP solvers.Decades of work have produced mature NLP
+solvers that implement sequential quadratic programming
+(SNOPT [9]) and interior point methods (IPOPT [7]), with
+hybrid implementations such as KNITRO [8] supporting
+both. These solvers handle general equality and inequality
+constrained problems, scale to thousands of variables, and
+provide convergence guarantees that have made them the
+backbone of model-based robotics and engineering optimiza-
+tion [18], [19], [20], [21], [23]. However, SNOPT, IPOPT,
+and KNITRO all target the CPU and execute their iterations
+sequentially.
+GPU acceleration of NLP solvers.A recent line of work
+now targets IPOPT-like solvers by porting their dominant
+per-iteration cost onto the GPU. These are: the solution of
+a highly sparse symmetric indefinite linear system known
+as the KKT system, and the sparse derivative evaluation
+that constructs that linear system. HyKKT [24] was the
+first to apply a positive-definite reformulation of the in-
+definite KKT system as a GPU-acceleration strategy for
+general NLPs. MadNLP [25] reimplements IPOPT in Julia
+and achieves GPU acceleration in two ways. Firstly, it
+supports its own positive-definite KKT system reformulation
+[26] solved by GPU-accelerated linear solver cuDSS [27].
+Secondly, MadNLP accelerated the evaluation of sparse
+derivatives through ExaModels [25]. Despite achieving GPU-
+acceleration, MadNLP does not achieve GPU-batchingas
+its algorithmic logic, including its control flow branches,
+remains CPU-bound.
+Batched convex solvers.Another line of work is GPU-
+batched solvers for convex optimization problems, which do
+not require the control flow branches that kept NLP solvers
+CPU-bound. A number of approaches have been used for
+these, such as interior-point methods [28], [29], [30], primal-
+dual hybrid-gradient methods [31], and operator-splitting
+methods [32]. None of them, however, extends to NLPs,
+leaving applications with nonlinear dynamics or constraints
+without a batched GPU solver.
+Demand for batched NLP data generation.Recent robotics
+research reveals a growing demand for large datasets of
+high-quality optimization solutions. Opt2Skill [33] trains
+humanoid RL policies on reference trajectories that an opti-
+mizer generates offline, showing that model-based optimiza-
+tion produces better training data than human demonstrations
+or inverse kinematics baselines. In [34], the authors take the
+same approach for legged locomotion, distilling an MPC
+controller into a quadruped policy via behavior cloning,
+where every demonstration in the training set is an NLP
+solution. In [35], the authors argue more broadly that closing
+the robot learning data gap requires hybrid pipelines com-
+bining model-free learning with model-based optimization at
+scale. These works point to the same bottleneck: no current
+solver produces NLP solutions at the scale these pipelines
+demand. We aim to close this gap withjaxipm, which runs
+thousands of solves concurrently on a GPU.
+III. PROBLEMSTATEMENT
+In this section, we define our notation used in this paper,
+the class of optimization problems that we target, and the
+batched generalization that our optimizerjaxipmis de-
+signed to solve. We first introduce a parametric nonlinear
+program, and then describe a batch as a collection of such
+programs that share the same structure but differ in their
+internal parameters.
+Notation.Thei-th row of a matrixM∈R n×m is written
+asM i. Thei-th element of a vectorv∈R n is written as
+v(i). We define the diag operator on a vectorv∈R n as
+the diagonal matrix diag(v)∈R n×n withvon its diagonal,
+and zeros elsewhere. We also defineeas the vector of all
+ones for the appropriate dimension, as well asn x andn c to
+be the number of primal optimization variables and equality
+constraints, respectively.
+Single instance.We consider parametric nonlinear programs
+of the form:
+min
+x∈Rnx
+f(x, θ)(1a)
+s.t.c(x, θ) = 0(1b)
+xL ≤x≤x U .(1c)
+wherex∈R nx is the decision variable, andθ∈R nθ is
+a parameter vector that defines the optimization problem,
+wheren θ is the number of parameters. Here,f:R nx ×
+Rnθ →Ris the objective,c:R nx ×R nθ →R nc collects
+the equality constraints, andx L, xU ∈R nx are elementwise
+lower and upper bounds onx. We assumefandcare twice
+continuously differentiable inxfor everyθof interest. Note
+that general inequality constraints can also be included in
+this formulation through slack variables.
+Batched instances.A batch collectsNinstances of prob-
+lem (1) that share the functionsfandcand the bounds
+xL,x U , and that differ only in the parameterθ. We write
+the decision variable and parameter of thei-th instance as
+Xi ∈R nx andΘ i ∈R nθ, respectively. Here,X∈R N×n x is
+the stack of decision variables for the batch, andΘ∈R N×n θ
+is the stack of parameters for the batch. We can now define
+the batched problem:
+min
+Xi∈Rnx
+f(X i,Θ i)
+s.t.c(X i,Θ i) = 0
+XiL ≤X i ≤X iU ,
+i= 1, . . . , N(2)
+where each rowX i is solved as an independent program.
+Here,X iL andX iU are the lower and upper bounds for the
+i-th instance, which equal the shared boundsx L andx U for
+everyi. Instances are decoupled in their decision variables,
+so a batch ofNprograms is mathematically equivalent toN
+separate calls to a single instance solver. Our solverjaxipm
+is built to exploit this structure on GPU hardware by adapting
+IPOPT, the most widely used solver for problems of the
+form (1). We review the IPOPT algorithm in the next section
+before detailing our contribution.
+IV. IPOPT BACKGROUND
+In this section, we provide a brief background to IPOPT
+for solving (1) and explain why it cannot trivially scale to
+solve (2). We first introduce how it calculates step directions,
+then its techniques for handling edge cases throughout its
+optimization, and finally explain why this makes it ineffective
+at solving the batched problem (2). When solving (1), for
+simplicity, we assume that everyx (i) is upper and lower
+bounded byx (i)
+L ,x (i)
+U
+1. Since the parametersθare fixed
+within a single solve, we suppress them and writef(x)and
+c(x)forf(x, θ)andc(x, θ).
+Prerequisites.IPOPT is a primal-dual interior-point method.
+Like [36], [37], [38], it enforces the bound constraints (1c)
+with a logarithmic barrier, forming the barrier objective:
+φµ(x) :=f(x)−µ
+nxX
+i=1
+ln(x(i) −x (i)
+L )−µ
+nxX
+i=1
+ln(x(i)
+U −x (i)),
+(3)
+with barrier parameterµ >0, and solves a sequence of
+barrier problems while drivingµto zero [7]. It maintains a
+primal-dual iterate(x, yc, zL, zU )wherey c,z L andz U are
+the Lagrange multipliers for (1b), the lower bounds, and the
+upper bounds of (1c), respectively. We write the Lagrangian
+as:
+L(x, yc, zL, zU ) :=f(x)+y ⊤
+c c(x)−z⊤
+L (x−xL)−z⊤
+U (xU −x).
+(4)
+For convenience, letW:=∇ 2
+xxL(x, yc, zL, zU )denote the
+Lagrangian Hessian andA:=∇c(x)the constraint Jacobian,
+and writeS L :=diag(x−x L),S U :=diag(x U −x),Z L :=
+diag(zL), andZ U :=diag(z U ). All references to “iterate”
+henceforth refer to the primal-dual iterate(x, y c, zL, zU ).
+Step direction.At each iteration, IPOPT computes a search
+step from the following optimality conditions for the barrier
+subproblem:
+1Note that the changes necessary to handle the one-sided bounds are
+outlined in Section 3.4 in [7].
+∇f(x) +∇c(x) ⊤yc −z L +z U = 0(5a)
+c(x) = 0(5b)
+SLzL −µe= 0(5c)
+SU zU −µe= 0,(5d)
+where (5a) is∇ xL(x, yc, zL, zU ) = 0, (5b) is
+∇yc L(x, yc, zL, zU ) = 0, and (5c)-(5d) represent the
+relaxed complementarity conditions for the two bounds.
+Note that equations (5) forµ= 0together withz L, zU ≥0,
+andx L ≤x≤x U are the KKT conditions for the
+original problem (1) 2. To compute the step, IPOPT applies
+Newton’s method to (5). The Newton system for the step
+(∆x,∆y c,∆z L,∆z U )is:
+
+
+W A ⊤ −I I
+A0 0 0
+ZL 0S L 0
+−ZU 0 0S U
+
+
+
+
+∆x
+∆yc
+∆zL
+∆zU
+
+ =−
+
+
+∇xL(x, yc, zL, zU )
+c(x)
+SLzL −µe
+SU zU −µe
+
+ .
+(6)
+The last two rows of (6) give∆z L =S −1
+L (µe−S LzL −
+ZL∆x)and∆z U =S −1
+U (µe−S U zU +Z U ∆x), which we
+substitute into the first row to eliminate the bound-multiplier
+steps. This substitution producesΣ :=S −1
+L ZL +S −1
+U ZU ,
+and collapses the first right-hand side to the barrier gra-
+dient∇φ µ(x) =∇f(x)−µ S −1
+L e+µ S −1
+U e. This forms
+the following “augmented” system (7), which produces the
+“augmented” step(∆x,∆y c)when solved 3.
+
+W+ ΣA ⊤
+A0
+ ∆x
+∆yc
+
+=−
+
+∇φµ(x) +A ⊤yc
+c(x)
+
+.(7)
+IPOPT solves a system of the form (7) by computing a
+symmetric indefinite factorizationLDL ⊤ of the left-hand
+side matrix, from which the step(∆x,∆y c)is obtained. This
+serves a purpose beyond finding the step; the factorization
+reports the matrixinertia, the triple(n +, n−, n0)counting
+its positive, negative, and zero eigenvalues. For the step to
+be a descent direction on the barrier objective, the matrix
+must have inertia(n x, nc,0), that is,n x positive andn c
+negative eigenvalues and no zero eigenvalues [39]. The
+matrix in (7) may not satisfy this, and so IPOPT can add
+perturbation termsδ xIand−δ cIwithδ x, δc ≥0to the top-
+left and bottom-right diagonal blocks, respectively, such that
+the inertia requirement is satisfied.
+The factorization of (7) dominates the per-iteration cost,
+and so its efficiency governs the wall-clock time of the entire
+solve. Because of this, in our method, we have focused
+on making this factorization as fast as possible on GPU
+hardware.
+2We are able to ignore these affine inequality constraints in the optimality
+conditions as we enforce them by construction throughout the optimization
+via the fraction to boundary rule. For more information, see Section 2.2 in
+[7].
+3The remaining steps∆z L,∆z U can be recovered from equations
+detailed in Section 2.2 in [7].
+Question Branch
+(1) What if the trial is rejected?Backtracking line searchshortens
+the step along the Newton direction
+and retests.
+(2) What if the linearization at the
+current iterate disagrees with the
+constraints at the trial?
+Asecond order correctionchanges
+the step direction based on informa-
+tion gathered at the original trial.
+(3) What if a short run of rejections
+is hiding longer-horizon progress?
+Thewatchdogaccepts a small se-
+quence of trial steps unconditionally,
+either accepting the resultant iterate,
+or reverting to the entry iterate.
+(4) What if the step is already too
+small for backtracking to refine?
+Atiny-steprule accepts it uncondi-
+tionally.
+(5) What if repeated rejections sug-
+gest infeasibility?
+Soft feasibility restorationchanges
+the acceptance criteria, and continues
+until original criteria are fulfilled or
+an iteration limit is reached.
+(6) What if the iterate cannot make
+progress on the original problem?
+Hard feasibility restorationsolves a
+new problem whose objective is the
+constraint violation, returning once
+an acceptable point is found (which
+itself contains another copy of ev-
+ery control flow branch in this table,
+including a nested hard feasibility
+restoration).
+(7) What if our barrier parameterµ
+adaptations seem too aggressive?
+Switch from anadaptiverule that re-
+acts to the current iterate to amono-
+toneschedule that decreasesµonce
+the current subproblem converges.
+TABLE I: We show a very simplified overview of the
+branches available after each Newton step, including some
+intuition behind what question they are the answer to. We
+note that hard feasibility restoration is itself an indepen-
+dent optimization problem, which can contain all of these
+branches as well (including its own nested hard feasibility
+restoration).
+Edge case handling.The Newton step from (7) may be a
+poor choice for a number of reasons. This is why IPOPT
+has several fallback mechanisms for common failure modes,
+which we list in Table I. For example, row (1) of Table I asks:
+What if the trial(Newton step)is rejected? This typically
+means that the landscape of the optimality conditions (5) is
+rapidly changing, and so the linearization used to form (7)
+is only locally accurate. To combat this, the size of the step
+is reduced according to a backtracking scheme, bringing the
+step closer to where the linearization was accurate. Similarly,
+there are other failure modes with designed fallbacks that we
+provide some intuition for in Table I.
+Why is IPOPT hard to batch?What we have spoken about
+so far is how IPOPT goes about solving a single problem.
+Now, if we want to solve multiple problems concurrently,
+as is the case in (2), IPOPT could not select different
+control flow branches (Table I) for different problems. This
+is because IPOPT’s control flow assumes a single iterate,
+so a naive batch would have to force every member onto
+the same branch each step. At best, this would inflate
+iteration counts; at worst, it would cause individual solves to
+fail. Retaining independent branching with IPOPT therefore
+requires solving (1) sequentially overΘ.
+Solve-level
+Opt 1 Opt 2 Opt 3
+iter 1
+2
+3
+4
+5
+3 solutions
+Iteration-level
+Opt 1 Opt 2 Opt 3
+iter 1
+2
+3
+4
+5
+5 solutions
+converged solve still iterating
+ idle
+Fig. 2: We visualize the throughput advantages of iteration
+level batching versus solve level batching. Left: We show
+solve level batching achieving 3 solutions within 5 iterations,
+with substantial compute idle time. Right: We show iteration
+level batching achieving 5 solutions within 5 iterations, with
+no compute idle time.
+V. BATCHEDINTERIORPOINTMETHOD
+In this section, we will describe how we rebuilt IPOPT
+from scratch to enable high throughput batch solving whilst
+maintaining per-optimization control flow. We will go over
+how we fused all control flow branches viaheterogeneous
+iteration fusion, and then how we accelerated throughput via
+iteration level batching.
+Heterogeneous iteration fusion.We could not use IPOPT
+to directly solve (2) effectively because we could not select
+different control flow branches forX i andX j fori̸=j.
+This means that even whenX i andX j would benefit from
+different control flow branches, which we call heterogeneous
+iterations, they would not be able to. This problem would
+be solved if we could somehow remove all control flow
+branches so that every optimization in the batch always did
+the same operation. We have done exactly this injaxipm
+by walking through each control flow branch in Table I
+and splitting its work into two parts: computation that is
+shared across branches and computation that is unique to
+branches. Shared work is computed once per iteration. For
+the remaining branch-unique work, we compute all branches
+for all optimizations and select from the outputs based on
+which branch was taken. For example, consider the situation
+whereX i andX j wish to perform a second order correction,
+and a backtracking line search, respectively. The second
+order correction and the backtracking line search require
+additional linear solves and scalar-vector multiplications,
+respectively. In this example, we will compute the linear
+solves and the scalar-vector multiplications for bothX i and
+Xj. Although neitherX i norX j requires the computation
+of both branches, doing this ensures that both optimizations
+perform the same computation. The result of this is an
+optimizer that takesheterogeneous iterationsandfusesthem
+into a single iteration body that is identical for all members.
+Because every iteration is now the same computation, an
+entire batch of NLPs can advance in lockstep.
+Iteration level batching.While effective, what we have
+0 2 4
+X
+0
+2
+4Y
+jaxipm — 90° sector
+starts
+goal
+0 5
+X
+−4
+−2
+0
+2
+4
+6
+Y
+jaxipm — 180° sector
+starts
+goal
+0 40 80 120
+IPM iterations
+0
+50
+100
+150count
+0 40 80 120
+IPM iterations
+0
+50
+100
+150count
+Fig. 3: We plot the top-down view of a batch of optimiza-
+tion solutions (80/2000) from two different initial position
+distributions, all of which must navigate to a common goal
+position whilst avoiding obstacles. On the left and right sides,
+we initialize quadrotors in 90 and 180 degree arcs around the
+destination, respectively. The bottom plots show the iteration
+count distributions corresponding to the above plots.
+discussed so far still leaves one inefficiency: the batch only
+advances as fast as its slowest member. If one problem
+converges in 10 iterations and another 100, then the faster
+problem must wait for the slower one to complete before the
+next batch can begin. Rather than letting the throughput of
+our batch optimizer be determined by the pace of its slowest
+member, upon convergence of one member, we hot-restart a
+new optimization in its place. When a member converges, we
+initialize a fresh problem in its place on the next iteration,
+while all other members continue iterating uninterrupted. See
+Figure 2 for a graphical illustration of this. This means that
+webatchat theiteration levelrather than the solve level.
+VI. RESULTS
+In this section, we will outline our results. We create
+three NMPC scenarios designed to demonstrate our optimizer
+jaxipmon robotics scenarios. We first demonstrate raw
+throughput, and the benefit of iteration level batching. Then,
+we testscalabilityboth in terms of difficulty and dimension-
+ality. Finally, we evaluatecorrectnessagainst IPOPT.
+We use quadrotors in all of these experiments due to
+their nonlinear, smoothly second order differentiable dy-
+namics. We consider 13 DoF quadrotors whose statex=
+(p, q, v, ω)∈R3 ×R 4 ×R 3 ×R 3, stacks position, attitude
+quaternion, and body linear and angular velocities. The
+dynamics˙x=f(x, u)combine standard quadrotor transla-
+tional and rotational kinematics [40] with four rotor angular
+velocity inputsu∈R 4. In all tests, we use NMPC to perform
+trajectory optimization on quadrotors with a timestep of
+0.1s and a prediction horizon of 30. This means that each
+−4
+−2
+0
+2
+4
+X −4
+−2
+0
+2
+4
+Y
+−4
+−2
+0
+2
+4
+Z
+Fig. 4: We visualize the reference tracking with time-varying
+obstacles task at¯v= 1.5m/s. We vary¯vbetween 1.0 and
+2.0 to demonstrate how our method’s throughput is robust
+to problem difficulty, as the quadrotor must fly near actuator
+limits at optimum.
+quadrotor optimization has a minimum of 506 optimization
+variables, excluding slacks from inequality constraints.
+Although the quadrotor represents a small fraction of
+robotics problems our general-purpose NLP optimizer can
+handle, it is sufficient to demonstrate the benefits of our
+contributions in this paper: iteration level batching and het-
+erogeneous iteration fusion. We also demonstrate algorithmic
+parity with IPOPT, and therefore claim that our method can
+be used wherever IPOPT has been used before. With this
+in mind, we have designed a set of experiments centered
+around quadrotors that stress testthroughput,scalability, and
+correctness.
+We compare against CasADi/IPOPT [18], [7] and ExaM-
+odels/MadNLP [25]. MadNLP is a GPU-acceleratedversion
+of IPOPT that utilizes cuDSS as its linear solver, the same as
+jaxipm. Specifically, MadNLP accelerates the linear solves
+of (7) with cuDSS, and accelerates the evaluation of sparse
+derivatives using ExaModels. Crucially, however, it uses the
+CPU for all algorithmic logic, preventing it from being able
+to batch solve NLPs asjaxipmcan, and therefore limiting
+its throughput advantages over IPOPT.
+Throughput.We test throughput by setting up a batch of
+Problem Solver solves/s speedup avg. cost avg. iters
+Sector 90 ◦
+IPOPT 3.97 1.00×516.96 22.5
+MadNLP 3.92 0.99×516.67 45.3
+jaxipm 100.23 25.25×515.96 31.0
+Sector 180 ◦
+IPOPT 4.57 1.00×507.54 20.6
+MadNLP 4.70 1.03×507.54 31.1
+jaxipm 113.10 24.74×505.87 33.1
+TABLE II: We demonstrate our solver’s throughput advan-
+tage over IPOPT in terms of solves per second. We also
+note the average final cost function value and iteration count
+of every optimization to demonstrate that the quality of our
+solutions is comparable with baselines in batch, and we do
+not require excessive iterations to achieve them.
+−2 0 2
+X
+−3
+−2
+−1
+0
+1
+2
+3
+Z
+start
+goal
+−2 0 2
+X
+−3
+−2
+−1
+0
+1
+2
+3
+Y
+start
+goal
+Fig. 5: We visualize the multi-quadrotor consensus task
+running on our method with 2 and 4 quadrotors. Each colored
+trajectory shows one quadrotor’s path from its start to its
+assigned goal. The quadrotors must swap positions while
+maintaining a minimum separation distance with every other
+quadrotor throughout.
+quadrotors that must each navigate to a common position
+from varying initial positions. The initial positions are a
+circular arc of90 ◦ or180 ◦ as can be seen in Figure 3. We
+placed the obstacles in such a way that they only interact
+with the trajectories in the central90 ◦ section of the arc of
+initial positions.
+We observe the180 ◦ scenario has two types of opti-
+mizations, ones that interact with the obstacles, and ones
+that don’t, leading to two distinct peaks in the iteration
+count distributions, as can be seen in Figure 2. If our
+iteration level batching is working correctly, we expect to see
+similar throughput speedups over IPOPT in both the more
+homogeneous90 ◦ and heterogeneous180 ◦ scenarios, and
+this is exactly what we see in Table II, where we achieved
+25.25×and24.74×throughput improvements over IPOPT,
+respectively.
+Scalability.We test scalability in two ways: firstly, we create
+a test that scales difficulty, and secondly, we create a test that
+scales dimensionality.
+How does scaling difficulty affectjaxipm?Our first test for
+scaling consists of a reference tracking task whilst simulta-
+neously avoiding time-varying obstacles, whose trajectories
+are known to the optimizer a priori. We increase difficulty
+by increasing the velocity of the reference being tracked¯v,
+which is constant for each optimization. We provide each
+quadrotor instance with its own time-varying reference, and
+a visualization of a batch of solutions can be seen in Figure
+4.
+We observe in Table III that our method always has the
+highest throughput, and appears to improve against baselines
+as difficulty increases. Empirically, this seems to be due to
+our method requiring a similar number of iterations at each
+difficulty level.
+How does scaling dimensionality affectjaxipm?Our sec-
+ond test for scaling consists of a multi-quadrotor consensus
+task, where multiple quadrotors are asked to switch positions
+whilst maintaining a minimum separation distance with every
+other quadrotor throughout. We scale dimensionality by
+10−14 10−13 10−12 10−11 10−10 10−9 10−8
+scaled single-step deviation
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0empirical CDF
+Fig. 6: We visualize the ECDF of the step-wise discrepancies
+between our methodjaxipmand IPOPT across a full
+optimization; we use different colors to represent different
+iteration types.
+increasing the number of quadrotors in a scene from 2 to 4 as
+seen in Figure 5. This means that the 2 and 4 quadrotor cases
+have 1012 and 2024 optimization variables, respectively,
+excluding slack variables from inequality constraints.
+We observe that although we have at least an order of
+magnitude throughput advantage over IPOPT, our speedup
+is halved from32.85×to16.03×when moving from2to
+4quadrotors. This is because we cannot fit as many large
+problems in the limited GPU memory, and so we saturate
+the GPU with a smaller batch size. Therefore, although still
+over an order of magnitude faster, our speedups over IPOPT
+diminish with problem dimension.
+Correctness.We set up one additional test to validate our
+algorithmic parity with IPOPT. Here we run IPOPT to
+convergence from a single challenging starting point in the
+navigation task that we plotted in Figure 3. Specifically,
+we consider the (x= 4,y= 4) starting point. Among
+all tests in this section, this optimization goes through
+the most control flow branches of IPOPT. These include
+second order correction, soft/hard feasibility restoration, and
+free/monotone barrier update switches (see Table I). We save
+the complete IPOPT state at every iteration. We then load
+¯v(m/s) Solver solves/s speedup avg. cost avg. iters
+1.0
+IPOPT 3.41 1.00×262.50 23.3
+MadNLP 6.73 1.97×251.94 30.6
+jaxipm 15.77 4.63×252.75 52.1
+1.5
+IPOPT 2.39 1.00×537.44 28.2
+MadNLP 1.69 0.71×537.62 37.5
+jaxipm 22.54 9.43×554.22 45.3
+2.0
+IPOPT 1.80 1.00×1134.16 47.9
+MadNLP 4.82 2.68×1133.32 44.8
+jaxipm 22.10 12.28×1146.49 49.8
+TABLE III: Per-solve throughput and solution quality on
+the quadrotor reference-tracking problem with three time-
+varying obstacles. We control difficulty by varying the aver-
+age velocity¯vof the reference trajectory.
+Nquads Solver solves/s speedup avg. cost avg. iters
+2
+IPOPT 0.230 1.00×756.31 177.0
+MadNLP 1.218 5.30×756.31 150.9
+jaxipm 7.56 32.85×756.31 128.4
+4
+IPOPT 0.058 1.00×1537.69 216.0
+MadNLP 0.353 6.05×1537.70 279.7
+jaxipm 0.93 16.03×1537.70 222.0
+TABLE IV: Per-solve throughput and solution quality on the
+multi-quadrotor consensus problem, where every quadrotor
+maintains a minimum separation from every other in the fleet.
+this complete state intojaxipmand stepjaxipmonce.
+We then convert the newjaxipmstate and the next IPOPT
+state into vectorsv jaxipm andv IPOPT, respectively. We then
+find the largest scaled elementwise deviatione v using the
+following formula (restricted to quantities IPOPT computes,
+fields with no IPOPT counterpart are excluded):
+ev = max
+i
+vjaxipm
+i −v IPOPT
+i
+
+1 +
+vIPOPT
+i
+ .(8)
+By normalizing the deviation by1 +
+vIPOPT
+i
+, this metric
+measures the relative deviation without incurring a singular-
+ity at zero 4. We then reporte v for each iteration in Figure
+6.
+As we can see from Figure 6, all deviations fall beneath
+10−8. This tests an entire optimization directly against
+IPOPT, and verifies our solver’s algorithmic parity with
+IPOPT across all control flow branches activated in this opti-
+mization. Beyond this test, we have evaluated the remaining
+untested parts ofjaxipmwith further unit tests. Figure 6
+provides empirical evidence forjaxipmbeing a feature-
+complete recreation of IPOPT, built from the ground up with
+GPU-batching in mind.
+VII. CONCLUSION
+We presentjaxipm, the first GPU-batched NLP op-
+timizer, which can run thousands of independent IPOPT
+optimizations concurrently on a single GPU. Our two con-
+tributions that enable this areheterogeneous iteration fusion,
+which collapses IPOPT’s branching recovery mechanisms
+into a single iteration type for all optimizations, anditeration
+level batching, which minimizes GPU idle time. We evaluate
+jaxipm’s throughput, scalability, and correctness across a
+variety of NMPC quadrotor tasks and outperform IPOPT and
+MadNLP in terms of throughput at every problem tested.
+We see several future directions forjaxipm. Imitation-
+learning pipelines could leveragejaxipmto build datasets
+of optimal trajectories at scales currently impractical on
+CPU. Hybrid MPPI-MPC schemes could become realiz-
+able with the batch solution of many NLPs. GPU-based
+reinforcement-learning frameworks could integrate NLPs na-
+tively into their training loops.
+4This error metric underpinsnumpy.isclosewhenrtol==atol.
+REFERENCES
+[1] M. Kelly, “An introduction to trajectory optimization: How to do your
+own direct collocation,”SIAM review, vol. 59, no. 4, pp. 849–904,
+2017.
+[2] F. Allgower, R. Findeisen, Z. K. Nagyet al., “Nonlinear model pre-
+dictive control: From theory to application,”Journal-Chinese Institute
+Of Chemical Engineers, vol. 35, no. 3, pp. 299–316, 2004.
+[3] U. Pattacini, F. Nori, L. Natale, G. Metta, and G. Sandini, “An
+experimental evaluation of a novel minimum-jerk cartesian controller
+for humanoid robots,” in2010 IEEE/RSJ international conference on
+intelligent robots and systems. IEEE, 2010, pp. 1668–1674.
+[4] M. Posa, C. Cantu, and R. Tedrake, “A direct method for trajectory op-
+timization of rigid bodies through contact,”The International Journal
+of Robotics Research, vol. 33, no. 1, pp. 69–81, 2014.
+[5] G. Williams, A. Aldrich, and E. A. Theodorou, “Model predictive
+path integral control: From theory to parallel computation,”Journal
+of Guidance, Control, and Dynamics, vol. 40, no. 2, pp. 344–357,
+2017.
+[6] P.-T. De Boer, D. P. Kroese, S. Mannor, and R. Y . Rubinstein, “A
+tutorial on the cross-entropy method,”Annals of operations research,
+vol. 134, no. 1, pp. 19–67, 2005.
+[7] A. W ¨achter and L. T. Biegler, “On the implementation of an interior-
+point filter line-search algorithm for large-scale nonlinear program-
+ming,”Mathematical programming, vol. 106, pp. 25–57, 2006.
+[8] R. H. Byrd, J. Nocedal, and R. A. Waltz, “Knitro: An integrated pack-
+age for nonlinear optimization,” inLarge-scale nonlinear optimization.
+Springer, 2006, pp. 35–59.
+[9] P. E. Gill, W. Murray, and M. A. Saunders, “Snopt: An sqp algorithm
+for large-scale constrained optimization,”SIAM review, vol. 47, no. 1,
+pp. 99–131, 2005.
+[10] MuJoCo XLA Authors, “MuJoCo XLA (MJX),” https://mujoco.
+readthedocs.io/en/stable/mjx.html, 2024, accessed: March 25, 2026.
+[11] M. Mittal, P. Roth, J. Tigue, A. Richard, O. Zhang, P. Du, A. Serrano-
+Munoz, X. Yao, R. Zurbr ¨ugg, N. Rudinet al., “Isaac lab: A gpu-
+accelerated simulation framework for multi-modal robot learning,”
+arXiv preprint arXiv:2511.04831, 2025.
+[12] C. D. Freeman, E. Frey, A. Raichuk, S. Girgin, I. Mordatch, and
+O. Bachem, “Brax–a differentiable physics engine for large scale rigid
+body simulation,”arXiv preprint arXiv:2106.13281, 2021.
+[13] R. Reiter, J. Hoffmann, D. Reinhardt, F. Messerer, K. Baumg ¨artner,
+S. Sawant, J. Boedecker, M. Diehl, and S. Gros, “Synthesis of model
+predictive control and reinforcement learning: Survey and classifica-
+tion,”Annual Reviews in Control, vol. 61, p. 101045, 2026.
+[14] J. Liu, Z. Shen, Y . He, X. Zhang, R. Xu, H. Yu, and P. Cui,
+“Towards out-of-distribution generalization: A survey,”arXiv preprint
+arXiv:2108.13624, 2021.
+[15] W. Jin, “Complementarity-free multi-contact modeling and optimiza-
+tion for dexterous manipulation,”arXiv preprint arXiv:2408.07855,
+2024.
+[16] A. Hereid, E. A. Cousineau, C. M. Hubicki, and A. D. Ames,
+“3d dynamic walking with underactuated humanoid robots: A direct
+collocation framework for optimizing hybrid zero dynamics,” in2016
+IEEE International Conference on Robotics and Automation (ICRA).
+IEEE, 2016, pp. 1447–1454.
+[17] Y . Mao, D. Dueri, M. Szmuk, and B. Ac ¸ıkmes ¸e, “Convexification
+and real-time optimization for mpc with aerospace applications,” in
+Handbook of model predictive control. Springer, 2018, pp. 335–358.
+[18] J. Andersson, J. Gillis, G. Horn, J. Rawlings, and M. Diehl, “Casadi—a
+software framework for nonlinear optimization and optimal control,”
+Mathematical Programming Computation, vol. 11, no. 1, pp. 1–36,
+2018.
+[19] R. Tedrake and the Drake Development Team, “Drake: Model-based
+design and verification for robotics,” 2019. [Online]. Available:
+https://drake.mit.edu
+[20] W. E. Hart, J.-P. Watson, and D. L. Woodruff, “Pyomo: modeling and
+solving mathematical programs in python,”Mathematical Program-
+ming Computation, vol. 3, no. 3, pp. 219–260, 2011.
+[21] M. Lubin, O. Dowson, J. Dias Garcia, J. Huchette, B. Legat, and J. P.
+Vielma, “JuMP 1.0: Recent improvements to a modeling language
+for mathematical optimization,”Mathematical Programming Compu-
+tation, 2023.
+[22] J. Bradbury, R. Frostig, P. Hawkins, M. J. Johnson, C. Leary,
+D. Maclaurin, G. Necula, A. Paszke, J. VanderPlas, S. Wanderman-
+Milne, and Q. Zhang, “JAX: composable transformations of
+Python+NumPy programs,” http://github.com/jax-ml/jax, 2018.
+[23] M. Bhatt, Y . Jia, and N. Mehr, “Strategic decision-making in multi-
+agent domains: A weighted constrained potential dynamic game
+approach,”IEEE Transactions on Robotics, 2025.
+[24] S. Regev, N.-Y . Chiang, E. Darve, C. G. Petra, M. A. Saunders,
+K. ´Swirydowicz, and S. Peleˇs, “Hykkt: a hybrid direct-iterative method
+for solving kkt linear systems,”Optimization Methods and Software,
+vol. 38, no. 2, pp. 332–355, 2023.
+[25] F. Pacaud and S. Shin, “Gpu-accelerated dynamic nonlinear optimiza-
+tion with examodels and madnlp,” in2024 IEEE 63rd Conference on
+Decision and Control (CDC). IEEE, 2024, pp. 5963–5968.
+[26] S. Shin, M. Anitescu, and F. Pacaud, “Accelerating optimal power flow
+with gpus: Simd abstraction of nonlinear programs and condensed-
+space interior-point methods,”Electric Power Systems Research, vol.
+236, p. 110651, 2024.
+[27] NVIDIA, “NVIDIA cuDSS (Preview): A High-Performance CUDA
+Library for Direct Sparse Solvers,” https://docs.nvidia.com/cuda/cudss/
+index.html, accessed: 2025.
+[28] B. Amos and J. Z. Kolter, “Optnet: Differentiable optimization as a
+layer in neural networks,”arXiv preprint arXiv:1703.00443, 2017.
+[29] J. Arrizabalaga, K. Tracy, and Z. Manchester, “A differentiable
+interior-point method in single precision,” 2026. [Online]. Available:
+https://arxiv.org/abs/2605.17913
+[30] S. Barratt, P. Nobel, and S. Diamond, “Moreau: GPU-native differen-
+tiable optimization,” https://moreau.so, 2026.
+[31] H. Lu, Z. Peng, and J. Yang, “Mpax: Mathematical programming in
+jax,”arXiv preprint arXiv:2412.09734, 2024.
+[32] M. Blondel, Q. Berthet, M. Cuturi, R. Frostig, S. Hoyer, F. Llinares-
+L´opez, F. Pedregosa, and J.-P. Vert, “Efficient and modular implicit
+differentiation,”arXiv preprint arXiv:2105.15183, 2021.
+[33] F. Liu, Z. Gu, Y . Cai, Z. Zhou, H. Jung, J. Jang, S. Zhao, S. Ha,
+Y . Chen, D. Xuet al., “Opt2skill: Imitating dynamically-feasible
+whole-body trajectories for versatile humanoid loco-manipulation,”
+IEEE Robotics and Automation Letters, 2025.
+[34] A. Reske, J. Carius, Y . Ma, F. Farshidian, and M. Hutter, “Imitation
+learning from mpc for quadrupedal multi-gait control,” in2021 IEEE
+International Conference on Robotics and Automation (ICRA). IEEE,
+2021, pp. 5014–5020.
+[35] K. Goldberg, “Good old-fashioned engineering can close the 100,000-
+year “data gap” in robotics,” p. eaea7390, 2025.
+[36] R. H. Byrd, J. C. Gilbert, and J. Nocedal, “A trust region method
+based on interior point techniques for nonlinear programming,”Math-
+ematical programming, vol. 89, no. 1, pp. 149–185, 2000.
+[37] A. R. Conn, N. I. Gould, D. Orban, and P. L. Toint, “A primal-
+dual trust-region algorithm for non-convex nonlinear programming,”
+Mathematical programming, vol. 87, no. 2, pp. 215–249, 2000.
+[38] A. V . Fiacco and G. P. McCormick,Nonlinear programming: sequen-
+tial unconstrained minimization techniques. SIAM, 1990.
+[39] A. W ¨achter and L. T. Biegler, “Line search filter methods for nonlinear
+programming: Motivation and global convergence,”SIAM Journal on
+Optimization, vol. 16, no. 1, pp. 1–31, 2005.
+[40] C. Powers, D. Mellinger, and V . Kumar, “Quadrotor kinematics and
+dynamics,”Handbook of unmanned aerial vehicles, pp. 307–328,
+2015.

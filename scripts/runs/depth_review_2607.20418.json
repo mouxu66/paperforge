@@ -1,0 +1,157 @@
+{
+  "paper_id": "2607.20418",
+  "title": "Pure-DP Statistical Query Release at the Conjectured Square-Root Rate",
+  "has_substance": true,
+  "expectation": 0.85,
+  "q0_reasoning": "论文证明了统计查询在纯差分隐私下的最优误差上界，构建了信息论机制并通过了形式化验证。",
+  "q0_evidence": "证明了 Nikolov and Ullman 猜想的上界，且误差率匹配标准高维情况下的下界依赖关系。",
+  "paper_type": "A",
+  "secondary_type": "C",
+  "confidence": 0.92,
+  "q1_reasoning": "论文在差分隐私统计查询领域提出了新的机制构造并证明了理论上限，属于理论突破，同时应用于高维数据发布场景。",
+  "novelty_score": 0.75,
+  "hotspot_alignment_score": 0.62,
+  "core_contribution": "证明了 Nikolov 和 Ullman 关于纯差分隐私下 k 个统计查询平方根速率发布的猜想上界",
+  "q2_reasoning": "论文在纯差分隐私统计查询发布领域证明了猜想的上界，理论证明完整且包含 Lean 4 机器验证，但缺乏真实场景应用验证及大规模数据下的实证分析。",
+  "rigor_score": 0.88,
+  "missing_items": [
+    "真实场景应用验证，大规模数据可扩展性讨论"
+  ],
+  "q3_reasoning": "论文在纯差分隐私统计查询发布领域证明了猜想的上界，理论证明完整且包含 Lean 4 机器验证，但缺乏真实场景应用验证及大规模数据下的实证分析。",
+  "influence_score": 0.65,
+  "reproducibility_score": 0.85,
+  "q4_reasoning": "论文在纯差分隐私统计查询发布领域证明了猜想的上界，理论证明完整且包含 Lean 4 机器验证，但缺乏真实场景应用验证及大规模数据下的实证分析。",
+  "critique_points": [
+    {
+      "point": "缺乏真实数据场景验证，仅依赖理论构造与仿真",
+      "severity": "fatal"
+    },
+    {
+      "point": "高维标准模式下的下界匹配性证明未涵盖所有退化参数假设",
+      "severity": "minor"
+    }
+  ],
+  "defense_points": [
+    "论文已提供 Lean 4 机器检查版本以验证有限构造与纯隐私性，且理论证明涵盖标准高维模式下的全参数范围（无需额外假设）",
+    "原文暂未涉及，将在终稿补充"
+  ],
+  "figure_consistency_score": 0.5,
+  "figure_flags": [],
+  "figure_evidence_count": 0,
+  "figure_coverage": "missing",
+  "qf_reasoning": "无图表数据，未执行图文一致性审查",
+  "calibrated_score": 0.856,
+  "delta": 0.08,
+  "delta_missing": false,
+  "chair_reasoning": "论文在理论证明上具有显著创新，Lean 4 机器检查增强了可信度，辩护有效回应了主要质疑，尽管缺乏真实数据场景但理论完备性已得到验证。",
+  "llm_verdict": "accept",
+  "final_verdict": "accept",
+  "override_reason": "无致命缺陷（2 个 minor），按分数 0.856 对齐为 accept",
+  "evidence_pool": [
+    {
+      "id": "E1",
+      "content": "论文证明了 Nikolov 和 Ullman 关于 k 个统计查询在大小为 T 的宇宙下能以平方根速率进行纯差分隐私发布的猜想上界。",
+      "section": "",
+      "keywords": []
+    },
+    {
+      "id": "E2",
+      "content": "对于每个数据库大小 n 和隐私参数 ε > 0，存在一个 ε-差分隐私机制，其期望误差为 O(min(1, r log(2T) log(2k) / εn))。",
+      "section": "",
+      "keywords": []
+    },
+    {
+      "id": "E3",
+      "content": "该构造基于选择性的私有乘法权重（PMW）转录本，并通过用距离惩罚似然包络替换其概率质量函数来实现纯 DP。",
+      "section": "",
+      "keywords": []
+    },
+    {
+      "id": "E4",
+      "content": "通过用数据库的真实输入汉明距离对最大似然进行指数折扣，并经过归一化后，得到了纯 DP 所需的逐点似然比界限。",
+      "section": "",
+      "keywords": []
+    },
+    {
+      "id": "E5",
+      "content": "为了证明修改后的准确性，使用 Maurey 论证在似然级别将每个汉明球的最大值上界限制为一个小辅助 PMW 律族。",
+      "section": "",
+      "keywords": []
+    },
+    {
+      "id": "E6",
+      "content": "该机制是信息论性质的，并且有一个 Lean 4 开发版本可以机器检查其有限构造、确定性解码后的纯隐私性以及显示的全局上界。",
+      "section": "",
+      "keywords": []
+    },
+    {
+      "id": "E7",
+      "content": "在标准高维模式下，该上界与已知的下界依赖性相匹配，且无需额外的参数假设即可成立。",
+      "section": "",
+      "keywords": []
+    }
+  ],
+  "evidence_checks": {
+    "Q2": true,
+    "Q3": true,
+    "Q4": true,
+    "QF": true,
+    "Q5a": true,
+    "Q5b": true
+  },
+  "evidence_ids": {
+    "Q2": "E1",
+    "Q3": "E6",
+    "Q4": "E6",
+    "QF": "",
+    "Q5a": "E7",
+    "Q5b": "E6"
+  },
+  "base_score": 0.776,
+  "weights": {
+    "beta": 0.5,
+    "gamma": 0.2,
+    "delta": 0.15,
+    "epsilon": 0.15
+  },
+  "node_score_stds": {
+    "QF:figure_consistency_score": 0.0,
+    "Q234:novelty_score": 0.0,
+    "Q234:hotspot_alignment_score": 0.0,
+    "Q234:rigor_score": 0.0,
+    "Q234:influence_score": 0.0,
+    "Q234:reproducibility_score": 0.0,
+    "Q5c:calibrated_score": 0.0,
+    "Q5c": 0.0
+  },
+  "node_logs": [
+    "[2026-07-23T14:16:15.098471] ======== DEPTH v4.1 审稿开始: 2607.20418 (DAG引擎) ========",
+    "[2026-07-23T14:16:15.102804] 文本分段完成: intro=1793c, full=8000c, concl=1407c",
+    "[2026-07-23T14:16:15.105864] OIM 特征: ObjectiveFeatures(ablation=0.0, repro_signal=0.0, citation_density=0.0, structure=0.8, formalism=0.3333), objective_score=0.210",
+    "[2026-07-23T14:16:15.109554] [Q0] 开始调用 LLM（纯文本模式, max_tokens=4096）...",
+    "[2026-07-23T14:16:15.110164] [Q1] 开始调用 LLM（纯文本模式, max_tokens=4096）...",
+    "[2026-07-23T14:16:18.392159] [QE] 开始调用 LLM（纯文本模式）...",
+    "[2026-07-23T14:16:23.772149] [QE] 成功提取 7 条证据",
+    "[2026-07-23T14:16:23.774624] [QF] 无图表证据，跳过 LLM，返回中性图文一致性 0.5",
+    "[2026-07-23T14:16:23.774805] [Q234] 开始调用 LLM（合并多维评分, max_tokens=4096）...",
+    "[2026-07-23T14:16:27.143917] [Q5a] 开始调用 LLM（纯文本模式, max_tokens=4096）...",
+    "[2026-07-23T14:16:29.258725] [Q5a] 证据 ID 'E7' 校验通过",
+    "[2026-07-23T14:16:29.259075] [Q5b] 开始调用 LLM（纯文本模式, max_tokens=4096）...",
+    "[2026-07-23T14:16:31.419401] [Q5b] LLM 仅返回 1 条辩护，预期 2 条，补齐默认答复",
+    "[2026-07-23T14:16:31.419413] [Q5b] 证据 ID 'E6' 校验通过",
+    "[2026-07-23T14:16:31.421344] [Q5c] 平衡者分析:\n  #1 [fatal→minor] 辩护成功: \"缺乏真实数据场景验证，仅依赖理论构造与仿真...\" → 降级\n  #2 [minor] 辩护不足: \"高维标准模式下的下界匹配性证明未涵盖所有退化参数假设...\" → 维持原级",
+    "[2026-07-23T14:16:31.421387] [Q5c] 开始调用 LLM（纯文本模式, max_tokens=4096, delta∈[-0.10, 0.12]）...",
+    "[2026-07-23T14:16:33.199005]   节点 Q0: 1.99s",
+    "[2026-07-23T14:16:33.199012]   节点 Q1: 3.28s",
+    "[2026-07-23T14:16:33.199014]   节点 Q234: 3.37s",
+    "[2026-07-23T14:16:33.199015]   节点 Q5a: 2.12s",
+    "[2026-07-23T14:16:33.199017]   节点 Q5b: 2.16s",
+    "[2026-07-23T14:16:33.199018]   节点 Q5c: 1.78s",
+    "[2026-07-23T14:16:33.199019]   节点 QE: 5.38s",
+    "[2026-07-23T14:16:33.199020]   节点 QF: 0.00s",
+    "[2026-07-23T14:16:33.199022] 总耗时: 18.09s",
+    "[2026-07-23T14:16:33.199047] 硬编码裁决: accept",
+    "[2026-07-23T14:16:33.199049] ======== DEPTH v4.1 审稿完成: 2607.20418 (DAG引擎) ========"
+  ],
+  "evaluated_at": "2026-07-23T14:16:33.199085"
+}

@@ -1,0 +1,186 @@
+name: CI
+
+# 触发策略（优化依据：deliverables/qa-workflow-optimization-2026-07-16.md Phase 1）：
+# - push/pull_request：PR 快速通道（单 Python 3.12，5 job 并行）
+# - schedule nightly + workflow_dispatch：全矩阵兼容性回归（3.10/3.11/3.12 + slow）
+# 优化点：① PR 单矩阵取代 3 矩阵（矩阵放大耗时下放 nightly）
+#         ② 5 job 并行取代串行（ruff→mypy→pytest→critical 串行链拆开）
+#         ③ mypy 增量门禁（只查改动文件，绕开 335 存量错误，从 continue-on-error 无效门禁转真门禁）
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  schedule:
+    # 每天 02:00 UTC（北京时间 10:00）跑全矩阵兼容性回归
+    - cron: '0 2 * * *'
+  workflow_dispatch: # 支持手动触发 nightly 全矩阵
+
+jobs:
+  # ============================================================
+  # PR 快速通道（5 job 并行，单 Python 3.12）
+  # 目标：反馈时长从 8-12min 压到 2-4min
+  # ============================================================
+
+  # Lint 速查（秒级）：格式 + 结构规则 + inline worker 守卫
+  lint-fast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ruff
+        run: pip install ruff
+      - name: Ruff lint
+        run: ruff check mock_api
+      - name: Check no inline workers in main.py
+        run: python scripts/diagnostics/check_no_inline_workers.py mock_api/main.py
+
+  # 红绿灯：critical 用例快速反馈（~1min，不含覆盖率）
+  # 注：critical 会在 test-backend 再跑一次（覆盖率统计需要），此处为快速红绿灯，故意重复
+  test-critical:
+    runs-on: ubuntu-latest
+    env:
+      # 🛡️ 预防原生资源检测触发 C 级崩溃（incident SEV-2）
+      PAPERFORGE_DISABLE_RESOURCE_DETECT: "1"
+      ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r mock_api/requirements.txt
+      - name: Run critical tests (fast red-light)
+        run: python -m pytest tests/ -m critical -v --tb=short --no-cov
+
+  # 后端全量测试 + 覆盖率门禁（~2-3min）
+  test-backend:
+    runs-on: ubuntu-latest
+    env:
+      # 🛡️ 预防原生资源检测触发 C 级崩溃（incident SEV-2）
+      PAPERFORGE_DISABLE_RESOURCE_DETECT: "1"
+      ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r mock_api/requirements.txt
+      - name: Run tests with coverage gate
+        run: python -m pytest tests/ -v --tb=short --cov=mock_api --cov-report=term-missing --cov-fail-under=70
+
+  # mypy 增量类型门禁：只查 PR 改动的 mock_api/*.py，绕开 335 存量错误
+  # 依据：QA 优化 B2（原 mypy continue-on-error + 全量 335 错误 = 门禁形同虚设）
+  # 首次启用说明：若改动的文件含存量类型错误会红，按报错修类型或临时 `# type: ignore[xxx]` + 开 issue 跟踪
+  mypy-incremental:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 需完整历史以对 base 分支做 diff
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install mypy + stubs
+        run: pip install mypy types-requests types-sqlalchemy
+      - name: Run mypy on changed mock_api files only (incremental gate)
+        run: |
+          # 增量门禁：只检查本次改动涉及的 mock_api/*.py
+          # 未改动文件不检查 → 存量 335 类型错误不阻塞新 PR
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE="HEAD~1"
+          fi
+          CHANGED=$(git diff --name-only "$BASE...HEAD" -- 'mock_api/*.py' 2>/dev/null || echo "")
+          if [ -z "$CHANGED" ]; then
+            echo "No mock_api/*.py changed — skipping mypy."
+            exit 0
+          fi
+          echo "Running mypy on changed files:"
+          echo "$CHANGED"
+          mypy $CHANGED --config-file pyproject.toml
+
+  # 前端门禁（lint + format + build + test）
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: web/package.json
+      - name: Install and build frontend
+        run: |
+          cd web
+          npm install
+          npm run build
+      - name: Lint frontend (ESLint)
+        run: cd web && npm run lint
+      - name: Check formatting (Prettier)
+        run: cd web && npm run format:check
+      - name: Run frontend tests
+        run: cd web && npx vitest run --reporter=verbose
+
+  # 浏览器扩展门禁：防止 content script / background / popup 回归
+  extension:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: extension/package-lock.json
+      - name: Install extension dependencies
+        run: cd extension && npm ci
+      - name: Run extension tests
+        run: cd extension && npm test
+      - name: Build extension package
+        run: cd extension && npm run build
+
+  # ============================================================
+  # nightly 全矩阵兼容性回归（不阻塞 PR，仅 schedule/manual 触发）
+  # ============================================================
+  nightly-compat:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    env:
+      # 🛡️ 预防原生资源检测触发 C 级崩溃（incident SEV-2）
+      PAPERFORGE_DISABLE_RESOURCE_DETECT: "1"
+      ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r mock_api/requirements.txt
+          pip install ruff
+      - name: Lint with ruff
+        run: ruff check mock_api
+      - name: Run full test suite (compatibility matrix)
+        run: python -m pytest tests/ -v --tb=short --cov=mock_api --cov-report=term-missing --cov-fail-under=70
+      - name: Run slow tests (nightly only)
+        run: python -m pytest tests/ -m slow -v --tb=short --no-cov

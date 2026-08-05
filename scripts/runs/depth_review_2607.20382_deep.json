@@ -1,0 +1,162 @@
+{
+  "paper_id": "2607.20382",
+  "title": "FMRP-LEAN: A HIPAA-Compliant AI-Augmented LIMS Architecture for End-to-End Clinical Assay Workflow Optimization",
+  "has_substance": false,
+  "expectation": 0.45,
+  "q0_reasoning": "提出了一种针对特定临床场景的 HIPAA 合规 LIMS 架构，但核心为工程集成而非基础科学理论突破。",
+  "q0_evidence": "系统基于 Supabase/PostgreSQL 栈并整合现有工具（如 REDCap），重点在于工作流形式化与部署安全。",
+  "paper_type": "B",
+  "secondary_type": "C",
+  "confidence": 0.92,
+  "q1_reasoning": "提出新的 LIMS 架构与有限状态工作流模型，并应用于特定临床生物标志物研究场景。",
+  "novelty_score": 0.55,
+  "hotspot_alignment_score": 0.72,
+  "core_contribution": "构建了一套符合 HIPAA 规范的、基于自托管堆栈与统一标识符框架的 AI 增强型实验室信息管理系统（LIMS）架构，实现了临床检测工作流的端到端自动化与状态显式化管理。",
+  "q2_reasoning": "论文提出了一种针对临床检测流程的 HIPAA 合规 AI 增强架构，核心在于将自托管基础设施、统一标识符与自动化 QC 深度融合，虽在工程集成与合规性上具有显著价值，但其本质为系统架构优化而非算法层面的颠覆性理论突破，且缺乏大规模多中心验证数据。",
+  "rigor_score": 0.65,
+  "missing_items": [
+    "大规模多中心临床验证数据、算法模型的具体数学形式化描述、与现有商业 LIMS 系统的定量性能对比基准"
+  ],
+  "q3_reasoning": "论文提出了一种针对临床检测流程的 HIPAA 合规 AI 增强架构，核心在于将自托管基础设施、统一标识符与自动化 QC 深度融合，虽在工程集成与合规性上具有显著价值，但其本质为系统架构优化而非算法层面的颠覆性理论突破，且缺乏大规模多中心验证数据。",
+  "influence_score": 0.68,
+  "reproducibility_score": 0.75,
+  "q4_reasoning": "论文提出了一种针对临床检测流程的 HIPAA 合规 AI 增强架构，核心在于将自托管基础设施、统一标识符与自动化 QC 深度融合，虽在工程集成与合规性上具有显著价值，但其本质为系统架构优化而非算法层面的颠覆性理论突破，且缺乏大规模多中心验证数据。",
+  "critique_points": [
+    {
+      "point": "论文声称系统“提高”了工作流可见性和减少了延迟，但缺乏具体的量化数据（如具体的百分比提升、p 值或统计显著性检验）来支持这些主张",
+      "severity": "fatal"
+    },
+    {
+      "point": "缺乏消融实验以证明 AI 增强模块相对于传统非 AI 流程的具体性能优势",
+      "severity": "fatal"
+    },
+    {
+      "point": "未提供详细的性能基准对比或与现有 SOTA 系统的定量比较分析",
+      "severity": "minor"
+    }
+  ],
+  "defense_points": [
+    "部署结果显示该系统提高了工作流的可见性并减少了 QC 延迟，但原文暂未涉及具体的量化百分比提升或 p 值统计检验，将在终稿补充",
+    "原文暂未涉及，将在终稿补充",
+    "原文暂未涉及，将在终稿补充"
+  ],
+  "figure_consistency_score": 0.5,
+  "figure_flags": [],
+  "figure_evidence_count": 0,
+  "figure_coverage": "missing",
+  "qf_reasoning": "无图表数据，未执行图文一致性审查",
+  "calibrated_score": 0.4945,
+  "delta": -0.15,
+  "delta_missing": false,
+  "chair_reasoning": "论文核心主张缺乏关键量化数据与消融实验支持，尽管辩护承诺补充但当前版本证据不足，无法支撑“提高”与“减少延迟”的结论，且未提供 SOTA 对比，风险较高。",
+  "llm_verdict": "major_revision",
+  "final_verdict": "reject",
+  "override_reason": "存在 2 个致命缺陷（一票否决触发），校准分 0.494 < 0.8，判定为 reject",
+  "evidence_pool": [
+    {
+      "id": "E1",
+      "content": "FMRP-LEAN 是一种符合 HIPAA 规定的、由 AI 增强的实验室信息管理系统（LIMS）架构，旨在优化临床检测工作流程。",
+      "section": "",
+      "keywords": []
+    },
+    {
+      "id": "E2",
+      "content": "该系统采用自托管的 Supabase/PostgreSQL 堆栈，部署在医院控制的内部基础设施中，并实施混合边缘 - 内部隔离。",
+      "section": "",
+      "keywords": []
+    },
+    {
+      "id": "E3",
+      "content": "FMRP-LEAN 通过统一的 MRN–UUIDv7 标识符框架和基于二维码的跟踪，确保在 PHI 驻留约束下实现可追溯的临床与研究链接。",
+      "section": "",
+      "keywords": []
+    },
+    {
+      "id": "E4",
+      "content": "系统集成了双向 REDCap 同步功能，并包含自动化的统计质量控制（QC）预筛选模块。",
+      "section": "",
+      "keywords": []
+    },
+    {
+      "id": "E5",
+      "content": "AI 操作模块仅基于聚合预测运行，且受到治理约束，当 AI 服务不可用时具有确定性的降级保证。",
+      "section": "",
+      "keywords": []
+    },
+    {
+      "id": "E6",
+      "content": "部署结果显示，该系统提高了工作流的可见性，减少了 QC 延迟，并增强了实验室技术人员、研究协调员和面向患者的团队之间的跨角色透明度。",
+      "section": "",
+      "keywords": []
+    },
+    {
+      "id": "E7",
+      "content": "该架构为受监管的医疗保健环境中安全、状态明确且由 AI 增强的临床研究工作流程提供了一个可重复的模型。",
+      "section": "",
+      "keywords": []
+    }
+  ],
+  "evidence_checks": {
+    "Q2": true,
+    "Q3": true,
+    "Q4": true,
+    "QF": true,
+    "Q5a": true,
+    "Q5b": true
+  },
+  "evidence_ids": {
+    "Q2": "E7",
+    "Q3": "E4",
+    "Q4": "E1",
+    "QF": "",
+    "Q5a": "E6",
+    "Q5b": "E6"
+  },
+  "base_score": 0.6445,
+  "weights": {
+    "beta": 0.25,
+    "gamma": 0.45,
+    "delta": 0.15,
+    "epsilon": 0.15
+  },
+  "node_score_stds": {
+    "QF:figure_consistency_score": 0.0,
+    "Q234:novelty_score": 0.0,
+    "Q234:hotspot_alignment_score": 0.0,
+    "Q234:rigor_score": 0.0,
+    "Q234:influence_score": 0.0,
+    "Q234:reproducibility_score": 0.0,
+    "Q5c:calibrated_score": 0.0,
+    "Q5c": 0.0
+  },
+  "node_logs": [
+    "[2026-07-23T14:53:15.274684] ======== DEPTH v4.1 审稿开始: 2607.20382 (DAG引擎) ========",
+    "[2026-07-23T14:53:15.276859] 文本分段完成: intro=1792c, full=8000c, concl=1792c",
+    "[2026-07-23T14:53:15.279669] OIM 特征: ObjectiveFeatures(ablation=0.0, repro_signal=0.3333, citation_density=0.2, structure=0.4, formalism=0.0), objective_score=0.203",
+    "[2026-07-23T14:53:15.282944] [Q1] 开始调用 LLM（纯文本模式, max_tokens=4096）...",
+    "[2026-07-23T14:53:15.283481] [Q0] 开始调用 LLM（纯文本模式, max_tokens=4096）...",
+    "[2026-07-23T14:53:19.039289] [QE] 开始调用 LLM（纯文本模式）...",
+    "[2026-07-23T14:53:26.235925] [QE] 成功提取 7 条证据",
+    "[2026-07-23T14:53:26.238292] [Q234] 开始调用 LLM（合并多维评分, max_tokens=4096）...",
+    "[2026-07-23T14:53:26.238425] [QF] 无图表证据，跳过 LLM，返回中性图文一致性 0.5",
+    "[2026-07-23T14:53:32.658089] [Q5a] 开始调用 LLM（纯文本模式, max_tokens=4096）...",
+    "[2026-07-23T14:53:41.312364] [Q5a] 证据 ID 'E6' 校验通过",
+    "[2026-07-23T14:53:41.312802] [Q5b] 开始调用 LLM（纯文本模式, max_tokens=4096）...",
+    "[2026-07-23T14:53:50.413033] [Q5b] LLM 仅返回 2 条辩护，预期 3 条，补齐默认答复",
+    "[2026-07-23T14:53:50.413047] [Q5b] 证据 ID 'E6' 校验通过",
+    "[2026-07-23T14:53:50.413531] [Q5c] 平衡者分析:\n  #1 [fatal] 辩护不足: \"论文声称系统“提高”了工作流可见性和减少了延迟，但缺乏具体的...\" → 维持原级\n  #2 [fatal] 辩护不足: \"缺乏消融实验以证明 AI 增强模块相对于传统非 AI 流程的...\" → 维持原级\n  #3 [minor] 辩护不足: \"未提供详细的性能基准对比或与现有 SOTA 系统的定量比较分...\" → 维持原级",
+    "[2026-07-23T14:53:50.422041] [Q5c] 开始调用 LLM（纯文本模式, max_tokens=4096, delta∈[-0.20, 0.12]）...",
+    "[2026-07-23T14:53:57.283305]   节点 Q0: 2.10s",
+    "[2026-07-23T14:53:57.283318]   节点 Q1: 3.76s",
+    "[2026-07-23T14:53:57.283323]   节点 Q234: 6.42s",
+    "[2026-07-23T14:53:57.283326]   节点 Q5a: 8.65s",
+    "[2026-07-23T14:53:57.283329]   节点 Q5b: 9.10s",
+    "[2026-07-23T14:53:57.283332]   节点 Q5c: 6.87s",
+    "[2026-07-23T14:53:57.283334]   节点 QE: 7.20s",
+    "[2026-07-23T14:53:57.283337]   节点 QF: 0.00s",
+    "[2026-07-23T14:53:57.283341] 总耗时: 42.00s",
+    "[2026-07-23T14:53:57.283387] 硬编码裁决: reject",
+    "[2026-07-23T14:53:57.283390] ======== DEPTH v4.1 审稿完成: 2607.20382 (DAG引擎) ========"
+  ],
+  "evaluated_at": "2026-07-23T14:53:57.283453"
+}

@@ -1,0 +1,57 @@
+[
+  {
+    "pid": "2606.24099",
+    "novelty": 0.5,
+    "rigor": 0.5,
+    "reproducibility": 0.45,
+    "influence": 0.5,
+    "objectivity": 0.7,
+    "final": 0.523,
+    "verdict": "major_revision",
+    "justification": "Solid incremental application of standard complex-network centrality to algorithm co-occurrence, well executed with model comparison and IRR checks, but builds directly on prior single-entity extraction art."
+  },
+  {
+    "pid": "2606.27186",
+    "novelty": 0.6,
+    "rigor": 0.85,
+    "reproducibility": 0.4,
+    "influence": 0.4,
+    "objectivity": 0.9,
+    "final": 0.638,
+    "verdict": "major_revision",
+    "justification": "Elegant extension of integrable MFT to the multispecies SSEP via a manifestly symmetric redundant representation, though its impact is confined to a narrow integrable-probability community and it is a theory-only contribution."
+  },
+  {
+    "pid": "2606.24359",
+    "novelty": 0.25,
+    "rigor": 0.25,
+    "reproducibility": 0.3,
+    "influence": 0.2,
+    "objectivity": 0.4,
+    "final": 0.270,
+    "verdict": "reject",
+    "justification": "A straightforward set-intersection POS-tagging heuristic over WordNet with internally inconsistent evaluation metrics and no released resources, offering little methodological advance."
+  },
+  {
+    "pid": "2606.27060",
+    "novelty": 0.35,
+    "rigor": 0.55,
+    "reproducibility": 0.5,
+    "influence": 0.6,
+    "objectivity": 0.55,
+    "final": 0.503,
+    "verdict": "major_revision",
+    "justification": "A detailed, well-motivated FIR observatory concept reusing proven Herschel hardware and a strong science case, but presenting no new science method or demonstrated observational results."
+  },
+  {
+    "pid": "2606.18205",
+    "novelty": 0.4,
+    "rigor": 0.6,
+    "reproducibility": 0.45,
+    "influence": 0.4,
+    "objectivity": 0.75,
+    "final": 0.510,
+    "verdict": "major_revision",
+    "justification": "A thorough dual-standard LMF/TEI Lex-0 encoding workflow for Al-Mawrid with honest limitation analysis, though novelty is modest and quantitative evaluation covers only a single letter."
+  }
+]

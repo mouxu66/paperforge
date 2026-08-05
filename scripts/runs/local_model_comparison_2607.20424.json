@@ -1,0 +1,21 @@
+{
+  "arxiv_id": "2607.20424",
+  "title": "Quantum Fisher Information in semiclassical magnon systems",
+  "depth": {
+    "novelty": 0.72,
+    "rigor": 0.85,
+    "influence": 0.65,
+    "reproducibility": 0.95,
+    "verdict": "accept",
+    "calibrated_score": 0.85
+  },
+  "local": {
+    "novelty": 0.4,
+    "rigor": 0.3,
+    "influence": 0.2,
+    "reproducibility": 0.1,
+    "verdict": "reject",
+    "reasoning": "The paper appears to be a fabricated or hallucinated text with inconsistent metadata (future dates), incomplete content, and logical gaps that prevent a valid scientific evaluation."
+  },
+  "local_raw": "{\"novelty\": 0.4, \"rigor\": 0.3, \"influence\": 0.2, \"reproducibility\": 0.1, \"verdict\": \"reject\", \"reasoning\": \"The paper appears to be a fabricated or hallucinated text with inconsistent metadata (future dates), incomplete content, and logical gaps that prevent a valid scientific evaluation.\"}"
+}

@@ -1,0 +1,20 @@
+{
+  "name": "paperforge-clipper",
+  "version": "0.3.0",
+  "description": "PaperForge Web Clipper — 一键将网页上的论文保存到本地 PaperForge 库",
+  "private": true,
+  "scripts": {
+    "test": "node --test",
+    "build": "node scripts/build.js",
+    "pack": "npm run build"
+  },
+  "devDependencies": {
+    "adm-zip": "^0.5.16"
+  },
+  "keywords": [
+    "paperforge",
+    "clipper",
+    "browser-extension"
+  ],
+  "license": "MIT"
+}

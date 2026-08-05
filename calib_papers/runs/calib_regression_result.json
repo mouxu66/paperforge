@@ -1,0 +1,42 @@
+{
+  "n": 20,
+  "baseline_score_threshold": {
+    "kappa": 0.1891891891891892,
+    "agree": 8,
+    "mae": 0.17104999999999998,
+    "pearson": 0.8196931765688539,
+    "accept": 0.8,
+    "reject": 0.5
+  },
+  "baseline_full_system": {
+    "kappa": 0.0909090909090909,
+    "agree": 7,
+    "note": "含 fatal-veto/LLM覆盖层, 3篇verdict非分数阈值决定"
+  },
+  "veto_override_papers": [
+    "2606.27060",
+    "2606.27294",
+    "2402.09353"
+  ],
+  "framework_threshold": {
+    "kappa": 0.3181818181818183,
+    "agree": 11,
+    "accept": 0.9,
+    "reject": 0.3
+  },
+  "offset_best": {
+    "kappa": 0.375,
+    "agree": 12,
+    "delta": 0.09,
+    "mae": 0.11965,
+    "pearson": 0.819693176568854,
+    "accept": 0.8,
+    "reject": 0.5
+  },
+  "offset_0.11": {
+    "kappa": 0.37007874015748027,
+    "accept": 0.8,
+    "reject": 0.5
+  },
+  "note": "reweight_by_calibration 未跑: 415批量只存最终分, 无DEPTH 5维明细, 权重回归需各维分。偏移校正已证伪'排序分歧', 确认系绝对分+0.09~0.11偏移; 残余不一致来自否决/覆盖层(非分数校准范畴)。"
+}

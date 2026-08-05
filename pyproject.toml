@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "paperforge"
+version = "0.1.0"
+description = "本地论文库学术写作助手"
+requires-python = ">=3.10"
+# 依赖建议在阶段 2 从 mock_api/requirements.txt 统一到此，避免与既有 requirements 双源。
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["mock_api"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "C4", "UP", "SIM", "W", "ASYNC"]
+ignore = ["E501", "B008", "SIM105", "B007", "C416", "SIM102", "SIM108", "ASYNC240", "B905", "E741", "UP028", "E712", "E731", "SIM103", "SIM115"]  # 渐进式门禁：低优先级规则阶段2/3再修
+
+# 对存量 god-file 暂时放宽复杂度与导入顺序，避免存量报错淹没新规则（渐进式门禁）
+[tool.ruff.lint.per-file-ignores]
+"mock_api/main.py" = ["C901", "E402"]
+"mock_api/crud.py" = ["C901", "E402"]
+"mock_api/config.py" = ["E402"]
+"mock_api/depth_eval_reflection.py" = ["E402"]
+"mock_api/depth_eval_v4.py" = ["E402"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.mypy]
+# 解析版本设为 3.12：仅用于解析 numpy 等新版依赖的 .pyi stub（含 type 语句），
+# 不影响运行时最低 3.10 要求；CI 矩阵含 3.12，本地为 3.13，均兼容。
+python_version = "3.12"
+ignore_missing_imports = true
+warn_unused_ignores = false
+disallow_untyped_defs = false
+# 启用 SQLAlchemy mypy 插件，改善 ORM 模型与查询的类型推断
+plugins = ["sqlalchemy.ext.mypy.plugin", "pydantic.mypy"]

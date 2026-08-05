@@ -1,0 +1,1611 @@
+/* 毛玻璃拟态卡片 + 收藏动画 + 历史列表项 */
+
+.pf-glass-card {
+  background: var(--pf-bg-elevated) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid transparent !important;
+  border-radius: var(--pf-radius-md) !important;
+  background-clip: padding-box, border-box !important;
+  background-origin: padding-box, border-box !important;
+  background-image:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.62) 100%),
+    linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.9) 0%,
+      rgba(230, 235, 245, 0.8) 50%,
+      rgba(255, 255, 255, 0.9) 100%
+    ) !important;
+  box-shadow: var(--pf-shadow-sm);
+  transition:
+    transform 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    box-shadow 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
+}
+
+.pf-glass-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--pf-shadow-md);
+}
+
+.pf-glass-card .ant-card-head {
+  min-height: 52px;
+  padding-inline: 20px;
+  background: transparent !important;
+  border-bottom: 1px solid var(--pf-border) !important;
+}
+
+.pf-glass-card .ant-card-body {
+  padding: 20px !important;
+  background: transparent !important;
+}
+
+.pf-glass-card.pf-research-pulse .ant-card-body {
+  padding: 8px 20px 16px !important;
+}
+
+.pf-stat-card {
+  min-height: 118px;
+  border: 1px solid var(--pf-border-light) !important;
+  background: var(--pf-bg-elevated) !important;
+}
+
+.pf-stat-card .ant-statistic-title {
+  margin-bottom: 10px;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+
+.pf-stat-card .ant-statistic-content {
+  letter-spacing: -0.03em;
+}
+
+.pf-stat-card .ant-statistic-content-prefix {
+  margin-inline-end: 10px;
+  padding: 8px;
+  border-radius: 11px;
+  background: var(--pf-primary-soft);
+}
+
+.pf-stat-card:hover .ant-statistic-content-prefix {
+  box-shadow: 0 0 0 5px var(--pf-glow);
+}
+
+/* 研究脉搏：让后台评估从“隐形任务”变成首页可感知的工作状态 */
+.pf-research-pulse {
+  margin-bottom: 20px;
+  border-color: rgba(49, 87, 200, 0.18) !important;
+}
+
+.pf-research-pulse .ant-card-head {
+  min-height: 50px;
+  border-bottom-color: rgba(49, 87, 200, 0.12) !important;
+}
+
+.pf-pulse-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  color: var(--pf-primary);
+  background: var(--pf-primary-soft);
+}
+
+.pf-pulse-live-dot {
+  width: 7px;
+  height: 7px;
+  margin-left: 1px;
+  border-radius: 50%;
+  background: var(--pf-success);
+  box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.14);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--pf-success) 14%, transparent);
+}
+
+.pf-pulse-live-dot.is-idle {
+  background: var(--pf-text-placeholder);
+  box-shadow: none;
+}
+
+.pf-pulse-row {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--pf-border-light);
+}
+
+.pf-pulse-row:last-child {
+  padding-bottom: 2px;
+  border-bottom: none;
+}
+
+.pf-pulse-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pf-pulse-row-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.pf-pulse-row-title > .ant-typography {
+  min-width: 0;
+  color: var(--pf-text-secondary);
+  font-size: 13px;
+}
+
+.pf-pulse-row-title .ant-tag {
+  flex: 0 0 auto;
+  margin-inline-end: 0;
+  border-radius: 999px;
+  font-size: 11px;
+}
+
+.pf-pulse-detail {
+  font-size: 12px;
+}
+
+.pf-pulse-link {
+  padding-inline: 4px;
+}
+
+.pf-pulse-row-actions {
+  flex: 0 0 auto;
+}
+
+.pf-pulse-action,
+.pf-pulse-clear {
+  width: 26px;
+  height: 26px;
+  padding: 0 !important;
+  color: var(--pf-text-muted) !important;
+  border-radius: 8px !important;
+}
+
+.pf-pulse-action:hover,
+.pf-pulse-clear:hover {
+  color: var(--pf-primary) !important;
+  background: var(--pf-primary-soft) !important;
+}
+
+.pf-pulse-cancel:hover {
+  color: var(--pf-warning) !important;
+}
+
+.pf-pulse-retry:hover {
+  color: var(--pf-success) !important;
+}
+
+/* 感悟报告专属卡片：与论文卡片区分 */
+/* 使用暖纸色调（象牙/羊皮纸），替代原先偏医疗感的薄荷绿 */
+.pf-report-card {
+  background-image:
+    linear-gradient(135deg, rgba(252, 250, 245, 0.98) 0%, rgba(248, 245, 238, 0.88) 100%),
+    linear-gradient(
+      135deg,
+      rgba(250, 248, 242, 0.96) 0%,
+      rgba(240, 235, 224, 0.85) 50%,
+      rgba(250, 248, 242, 0.96) 100%
+    ) !important;
+  border-color: rgba(176, 156, 120, 0.24) !important;
+  box-shadow: 0 4px 12px rgba(120, 113, 108, 0.06);
+}
+
+.pf-report-card:hover {
+  box-shadow: 0 12px 40px rgba(120, 113, 108, 0.12);
+}
+
+.pf-report-card .ant-card-head {
+  border-bottom-color: rgba(176, 156, 120, 0.14) !important;
+}
+
+/* 深色模式：报告卡片转为深棕灰，保持纸张质感 */
+[data-theme="dark"] .pf-glass-card,
+.dark .pf-glass-card {
+  background-image:
+    linear-gradient(135deg, rgba(27, 32, 43, 0.9), rgba(20, 24, 33, 0.78)),
+    linear-gradient(135deg, rgba(120, 152, 255, 0.16), rgba(255, 255, 255, 0.04)) !important;
+}
+
+[data-theme="dark"] .pf-research-pulse,
+.dark .pf-research-pulse {
+  border-color: rgba(120, 152, 255, 0.28) !important;
+}
+
+[data-theme="dark"] .pf-research-pulse .ant-card-head,
+.dark .pf-research-pulse .ant-card-head {
+  border-bottom-color: rgba(120, 152, 255, 0.18) !important;
+}
+
+[data-theme="dark"] .pf-report-card,
+.dark .pf-report-card {
+  background-image:
+    linear-gradient(135deg, rgba(42, 38, 34, 0.96) 0%, rgba(36, 32, 28, 0.85) 100%),
+    linear-gradient(
+      135deg,
+      rgba(44, 40, 36, 0.94) 0%,
+      rgba(58, 52, 46, 0.8) 50%,
+      rgba(44, 40, 36, 0.94) 100%
+    ) !important;
+  border-color: rgba(168, 162, 158, 0.18) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22);
+}
+
+[data-theme="dark"] .pf-report-card:hover,
+.dark .pf-report-card:hover {
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.36);
+}
+
+[data-theme="dark"] .pf-report-card .ant-card-head,
+.dark .pf-report-card .ant-card-head {
+  border-bottom-color: rgba(168, 162, 158, 0.12) !important;
+}
+
+/* 报告标签：与卡片纸张主题呼应的暖琥珀色 */
+.pf-report-tag {
+  color: var(--pf-report-accent) !important;
+  background: var(--pf-report-accent-soft) !important;
+}
+
+/* 收藏按钮心跳动画 */
+@keyframes pf-heartbeat {
+  0% {
+    transform: scale(1);
+    color: #d9d9d9;
+  }
+  40% {
+    transform: scale(1.45);
+    color: #faad14;
+  }
+  70% {
+    transform: scale(0.92);
+    color: #faad14;
+  }
+  100% {
+    transform: scale(1);
+    color: #faad14;
+  }
+}
+
+.pf-star-anim {
+  animation: pf-heartbeat 400ms ease-in-out both;
+}
+
+/* 问答历史侧边栏列表项 */
+.pf-history-item {
+  position: relative;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  margin-bottom: 4px;
+}
+.pf-history-item:hover {
+  background-color: var(--pf-primary-soft);
+}
+.pf-history-item.pf-history-active {
+  background-color: var(--pf-primary-soft);
+  box-shadow: inset 0 0 0 1px rgba(30, 64, 175, 0.08);
+}
+.pf-history-item .pf-history-delete {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.pf-history-item:hover .pf-history-delete {
+  opacity: 1;
+}
+
+/* ============================================================
+   Editorial paper cards — 让论文卡片像研究档案，而不是普通列表项
+   ============================================================ */
+.pf-paper-card {
+  position: relative;
+  overflow: hidden;
+  min-height: 268px;
+  border-color: rgba(49, 87, 200, 0.12) !important;
+}
+
+.pf-paper-card::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: linear-gradient(180deg, var(--pf-primary), var(--pf-accent));
+  opacity: 0.72;
+  transition:
+    width 0.25s ease,
+    opacity 0.25s ease;
+}
+
+.pf-paper-card:hover::before {
+  width: 7px;
+  opacity: 1;
+}
+
+.pf-paper-card .ant-card-head,
+.pf-paper-card .ant-card-body {
+  position: relative;
+  z-index: 1;
+}
+
+.pf-paper-card .ant-card-head {
+  min-height: 70px;
+  padding-top: 10px;
+  padding-bottom: 8px;
+}
+
+.pf-paper-card .ant-card-body {
+  padding-top: 14px !important;
+}
+
+.pf-paper-card-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pf-paper-title-link {
+  display: -webkit-box;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  color: var(--pf-primary);
+  background: transparent;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.45;
+  text-align: left;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.pf-paper-title-link:hover {
+  color: var(--pf-primary-hover);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.pf-paper-title-link:focus-visible {
+  outline: 2px solid var(--pf-primary);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.pf-paper-card-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+  margin-bottom: 10px;
+  color: var(--pf-text-secondary) !important;
+  font-size: 12px !important;
+  line-height: 1.6;
+}
+
+.pf-paper-authors {
+  display: inline-block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pf-paper-meta-separator {
+  width: 3px;
+  height: 3px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--pf-text-placeholder);
+}
+
+.pf-paper-citation-metric,
+.pf-paper-footer-metric {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--pf-text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.pf-paper-citation-metric svg,
+.pf-paper-footer-metric svg {
+  width: 13px;
+  height: 13px;
+}
+
+.pf-paper-card-meta > span[style*="margin"] {
+  margin-inline: 2px !important;
+}
+
+.pf-paper-card-abstract {
+  min-height: 75px;
+  color: var(--pf-text-secondary);
+  font-size: 13px;
+  line-height: 1.75;
+}
+
+.pf-paper-card-footer {
+  display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
+  min-height: 34px;
+  padding-top: 9px;
+  border-top: 1px solid var(--pf-border-light);
+}
+
+.pf-paper-card-footer > .ant-space:first-child {
+  min-width: 0;
+  flex: 1 1 180px;
+}
+
+.pf-paper-card-footer > .ant-space:last-child {
+  max-width: 100%;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.pf-paper-card-footer .ant-space {
+  max-width: 100%;
+}
+
+.pf-paper-card-footer .ant-tag {
+  border-radius: 999px;
+}
+
+.pf-paper-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  align-items: stretch;
+  gap: 16px !important;
+}
+
+.pf-paper-grid-skeleton .pf-paper-skeleton-item {
+  min-height: 268px;
+  padding: 16px;
+  border: 1px solid var(--pf-border-light);
+  border-radius: var(--pf-radius-md);
+  background: var(--pf-bg-primary);
+}
+
+.pf-paper-grid > .pf-reveal {
+  min-width: 0;
+}
+
+.pf-paper-grid-skeleton .ant-skeleton {
+  min-height: 268px;
+  border: 1px solid var(--pf-border-light);
+  background: var(--pf-bg-elevated) !important;
+  border-radius: var(--pf-radius-md);
+}
+
+.pf-research-pulse {
+  position: relative;
+  overflow: hidden;
+}
+
+.pf-stat-grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.pf-stat-grid .pf-stat-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.pf-stat-grid .pf-stat-card::after {
+  content: "";
+  position: absolute;
+  right: -18px;
+  bottom: -26px;
+  width: 78px;
+  height: 78px;
+  border: 1px solid var(--pf-glow);
+  border-radius: 50%;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.pf-stat-grid .pf-stat-card:nth-child(2)::after {
+  border-color: rgba(15, 159, 189, 0.2);
+}
+
+.pf-stat-grid .pf-stat-card:nth-child(3)::after {
+  border-color: rgba(180, 83, 9, 0.18);
+}
+
+[data-theme="dark"] .pf-paper-card,
+.dark .pf-paper-card {
+  border-color: rgba(120, 152, 255, 0.2) !important;
+}
+
+@media (max-width: 767px) {
+  .pf-paper-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px !important;
+  }
+
+  .pf-paper-card-footer {
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .pf-paper-card-footer > .ant-space:last-child {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 10px !important;
+  }
+
+  .pf-paper-card {
+    min-height: 0;
+  }
+
+  .pf-paper-card-abstract {
+    min-height: 0;
+  }
+
+  .pf-paper-card-footer > .ant-space:first-child,
+  .pf-paper-card-footer > .ant-space:last-child {
+    width: 100%;
+    flex-basis: 100%;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 767px) {
+  .pf-paper-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ============================================================
+   Research cockpit — 将首页空白变成可行动的研究上下文
+   ============================================================ */
+.pf-workbench-panel {
+  position: relative;
+  margin: 0 0 22px;
+  padding: 22px;
+  overflow: hidden;
+  border: 1px solid var(--pf-border-light);
+  border-radius: var(--pf-radius-lg, 18px);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(49, 87, 200, 0.12), transparent 34%),
+    linear-gradient(135deg, var(--pf-bg-elevated), var(--pf-bg-tertiary));
+  box-shadow: var(--pf-shadow-sm);
+}
+
+.pf-workbench-panel::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 22px;
+  right: 22px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--pf-primary), transparent);
+  opacity: 0.5;
+}
+
+.pf-workbench-heading {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.pf-section-eyebrow,
+.pf-workbench-card-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--pf-primary);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.pf-workbench-title {
+  margin: 7px 0 4px !important;
+  color: var(--pf-text-primary) !important;
+  letter-spacing: -0.025em;
+}
+
+.pf-workbench-subtitle {
+  max-width: 640px;
+  margin: 0 !important;
+  color: var(--pf-text-muted) !important;
+  font-size: 13px;
+}
+
+.pf-workbench-index-tag {
+  flex: 0 0 auto;
+  margin: 2px 0 0 !important;
+  padding: 5px 10px;
+  border: 1px solid var(--pf-primary-soft) !important;
+  border-radius: 999px;
+  color: var(--pf-primary) !important;
+  background: var(--pf-primary-soft) !important;
+  font-size: 11px;
+}
+
+.pf-workbench-grid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(260px, 1.15fr) minmax(220px, 0.9fr) minmax(260px, 1fr);
+  gap: 12px;
+}
+
+.pf-workbench-card {
+  min-height: 250px;
+  border: 1px solid var(--pf-border-light) !important;
+  border-radius: 14px !important;
+  background: color-mix(in srgb, var(--pf-bg-elevated) 84%, transparent) !important;
+  box-shadow: none !important;
+}
+
+.pf-workbench-card .ant-card-body {
+  height: 100%;
+  padding: 16px !important;
+}
+
+.pf-workbench-card-label {
+  margin-bottom: 14px;
+  color: var(--pf-text-secondary);
+  letter-spacing: 0.04em;
+}
+
+.pf-workbench-card-label--signals {
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pf-workbench-card-label-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.pf-workbench-signal-count {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border: 1px solid var(--pf-border-light);
+  border-radius: 999px;
+  color: var(--pf-primary);
+  background: var(--pf-primary-soft);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.pf-workbench-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.pf-workbench-action {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 47px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  color: var(--pf-text-primary);
+  background: var(--pf-bg-tertiary);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 0.2s ease,
+    border-color 0.2s ease,
+    background 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.pf-workbench-action:hover {
+  transform: translateX(3px);
+  border-color: var(--pf-primary-soft);
+  background: var(--pf-bg-elevated);
+  box-shadow: 0 7px 18px rgba(30, 64, 175, 0.08);
+}
+
+.pf-workbench-action:focus-visible,
+.pf-workbench-signal:focus-visible {
+  outline: 2px solid var(--pf-primary);
+  outline-offset: 2px;
+}
+
+.pf-workbench-action-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+}
+
+.pf-workbench-action--blue .pf-workbench-action-icon {
+  color: #2563eb;
+  background: rgba(37, 99, 235, 0.12);
+}
+.pf-workbench-action--violet .pf-workbench-action-icon {
+  color: #7c3aed;
+  background: rgba(124, 58, 237, 0.12);
+}
+.pf-workbench-action--amber .pf-workbench-action-icon {
+  color: #b45309;
+  background: rgba(180, 83, 9, 0.12);
+}
+.pf-workbench-action--green .pf-workbench-action-icon {
+  color: #15803d;
+  background: rgba(21, 128, 61, 0.12);
+}
+
+.pf-workbench-action-copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+
+.pf-workbench-action-copy strong {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pf-workbench-action-copy small,
+.pf-workbench-signal-copy small {
+  overflow: hidden;
+  color: var(--pf-text-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pf-workbench-action-arrow {
+  flex: 0 0 auto;
+  color: var(--pf-text-placeholder);
+  transition:
+    transform 0.2s ease,
+    color 0.2s ease;
+}
+
+.pf-workbench-action:hover .pf-workbench-action-arrow {
+  color: var(--pf-primary);
+  transform: translate(2px, -2px);
+}
+
+.pf-workbench-bars {
+  display: grid;
+  gap: 13px;
+}
+
+.pf-workbench-bar-row {
+  display: grid;
+  gap: 5px;
+}
+
+.pf-workbench-bar-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--pf-text-secondary);
+  font-size: 12px;
+}
+
+.pf-workbench-bar-meta strong {
+  color: var(--pf-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.pf-workbench-bar-row .ant-progress {
+  margin: 0;
+}
+
+.pf-workbench-source-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 18px;
+}
+
+.pf-workbench-source-row .ant-tag {
+  margin: 0;
+  border-radius: 999px;
+  font-size: 10px;
+}
+
+.pf-workbench-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: 122px;
+  color: var(--pf-text-muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.pf-workbench-signals {
+  display: grid;
+  gap: 3px;
+}
+
+.pf-workbench-signal {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-width: 0;
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 1px solid var(--pf-border-light);
+  color: var(--pf-text-primary);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pf-workbench-signal:last-child {
+  border-bottom: 0;
+}
+
+.pf-workbench-signal:hover {
+  color: var(--pf-primary);
+}
+
+.pf-workbench-signal-number {
+  display: flex;
+  flex: 0 0 24px;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  color: var(--pf-primary);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 10px;
+  line-height: 1;
+  opacity: 0.8;
+}
+
+.pf-workbench-signal-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--pf-primary-soft);
+  border-radius: 7px;
+  background: var(--pf-primary-soft);
+}
+
+.pf-workbench-signal-copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  gap: 3px;
+}
+
+.pf-workbench-signal-copy strong {
+  display: -webkit-box;
+  overflow: hidden;
+  min-width: 0;
+  color: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.pf-workbench-signal-meta {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 5px;
+}
+
+.pf-workbench-signal-separator {
+  width: 3px;
+  height: 3px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--pf-text-placeholder);
+}
+
+.pf-workbench-signal-source {
+  overflow: hidden;
+  max-width: 82px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pf-workbench-signal > svg {
+  flex: 0 0 auto;
+  color: var(--pf-text-placeholder);
+  transition:
+    transform 0.2s ease,
+    color 0.2s ease;
+}
+
+.pf-workbench-signal:hover > svg {
+  color: var(--pf-primary);
+  transform: translate(2px, -2px);
+}
+
+.pf-workbench-footnote {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 15px;
+  color: var(--pf-text-muted);
+  font-size: 11px;
+}
+
+.pf-workbench-footnote-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--pf-accent);
+  box-shadow: 0 0 0 4px rgba(15, 159, 189, 0.1);
+}
+
+[data-theme="dark"] .pf-workbench-panel,
+.dark .pf-workbench-panel {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(120, 152, 255, 0.16), transparent 34%),
+    linear-gradient(135deg, rgba(27, 32, 43, 0.94), rgba(20, 24, 33, 0.9));
+  border-color: rgba(120, 152, 255, 0.2);
+}
+
+[data-theme="dark"] .pf-workbench-card,
+.dark .pf-workbench-card {
+  background: rgba(18, 23, 33, 0.58) !important;
+  border-color: rgba(120, 152, 255, 0.14) !important;
+}
+
+@media (max-width: 1080px) {
+  .pf-workbench-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pf-workbench-card--actions {
+    grid-column: 1 / -1;
+  }
+
+  .pf-workbench-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767px) {
+  .pf-workbench-panel {
+    padding: 16px;
+    border-radius: 14px;
+  }
+
+  .pf-workbench-heading {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .pf-workbench-grid,
+  .pf-workbench-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pf-workbench-card--actions {
+    grid-column: auto;
+  }
+
+  .pf-workbench-card {
+    min-height: 0;
+  }
+
+  .pf-workbench-signal-meta {
+    flex-wrap: wrap;
+  }
+
+}
+
+/* ============================================================
+   Research archive accents — quiet color and paper texture for
+   functional pages without adding another dashboard card.
+   ============================================================ */
+.pf-page-accent {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 20px;
+  min-height: 112px;
+  margin: 14px 0 22px;
+  padding: 16px 20px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--pf-accent-tone) 22%, var(--pf-border-light));
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 84% 30%, color-mix(in srgb, var(--pf-accent-tone) 15%, transparent), transparent 30%),
+    linear-gradient(110deg, var(--pf-bg-elevated), color-mix(in srgb, var(--pf-accent-tone) 5%, var(--pf-bg-tertiary)));
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--pf-accent-tone) 7%, transparent);
+}
+
+.pf-page-accent::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, transparent 0 64%, color-mix(in srgb, var(--pf-accent-tone) 8%, transparent) 64% 64.2%, transparent 64.2%),
+    repeating-linear-gradient(0deg, transparent 0 19px, color-mix(in srgb, var(--pf-accent-tone) 7%, transparent) 20px);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.pf-page-accent-copy {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex: 1 1 55%;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+}
+
+.pf-page-accent-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--pf-accent-tone);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.pf-page-accent-kicker-line {
+  width: 24px;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.7;
+}
+
+.pf-page-accent-label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 8px;
+  overflow: hidden;
+  color: var(--pf-text-primary);
+  font-family: Georgia, "Times New Roman", "Songti SC", serif;
+  font-size: 17px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pf-page-accent-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border: 1px solid color-mix(in srgb, var(--pf-accent-tone) 32%, transparent);
+  border-radius: 9px;
+  color: var(--pf-accent-tone);
+  background: color-mix(in srgb, var(--pf-accent-tone) 12%, transparent);
+}
+
+.pf-page-accent-detail {
+  display: block;
+  max-width: 560px;
+  margin-top: 5px;
+  overflow: hidden;
+  color: var(--pf-text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pf-page-accent-materials {
+  position: relative;
+  flex: 0 0 180px;
+  min-height: 80px;
+  margin-right: 4px;
+}
+
+.pf-accent-sheet {
+  position: absolute;
+  display: block;
+  overflow: hidden;
+  border: 4px solid var(--pf-bg-primary);
+  border-radius: 5px;
+  background: var(--pf-bg-tertiary);
+  box-shadow: 0 8px 16px rgba(20, 34, 70, 0.12);
+}
+
+.pf-accent-sheet--back {
+  top: 12px;
+  right: 11px;
+  width: 86px;
+  height: 62px;
+  transform: rotate(8deg);
+  background: color-mix(in srgb, var(--pf-accent-tone) 15%, var(--pf-bg-tertiary));
+}
+
+.pf-accent-sheet--mid {
+  top: 5px;
+  right: 44px;
+  width: 92px;
+  height: 69px;
+  transform: rotate(-5deg);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--pf-accent-tone) 13%, transparent), transparent 56%),
+    var(--pf-bg-primary);
+}
+
+.pf-accent-sheet--front {
+  top: 13px;
+  right: 78px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 76px;
+  height: 76px;
+  padding-top: 10px;
+  transform: rotate(-12deg);
+  background: var(--pf-bg-primary);
+}
+
+.pf-accent-sheet-lines,
+.pf-accent-front-lines {
+  position: absolute;
+  right: 9px;
+  bottom: 11px;
+  left: 9px;
+  height: 20px;
+  background: repeating-linear-gradient(0deg, var(--pf-border-light) 0 1px, transparent 1px 6px);
+  opacity: 0.8;
+}
+
+.pf-accent-sheet-stamp {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 13px;
+  height: 13px;
+  border: 1px solid var(--pf-accent-tone);
+  border-radius: 50%;
+  opacity: 0.65;
+}
+
+.pf-accent-front-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid color-mix(in srgb, var(--pf-accent-tone) 55%, transparent);
+  border-radius: 8px;
+  color: var(--pf-accent-tone);
+  background: color-mix(in srgb, var(--pf-accent-tone) 10%, transparent);
+}
+
+.pf-accent-orbit {
+  position: absolute;
+  display: block;
+  border: 1px solid color-mix(in srgb, var(--pf-accent-tone) 42%, transparent);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.pf-accent-orbit--one {
+  top: -25px;
+  right: -8px;
+  width: 134px;
+  height: 134px;
+}
+
+.pf-accent-orbit--two {
+  top: -10px;
+  right: 13px;
+  width: 92px;
+  height: 92px;
+  border-style: dashed;
+  opacity: 0.55;
+}
+
+.pf-page-accent--blue { --pf-accent-tone: #3157c8; }
+.pf-page-accent--teal { --pf-accent-tone: #0f9fbd; }
+.pf-page-accent--amber { --pf-accent-tone: #b45309; }
+.pf-page-accent--violet { --pf-accent-tone: #7c3aed; }
+.pf-page-accent--coral { --pf-accent-tone: #d05a4e; }
+
+[data-theme="dark"] .pf-page-accent,
+.dark .pf-page-accent {
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--pf-accent-tone) 11%, transparent);
+}
+
+[data-theme="dark"] .pf-accent-sheet,
+.dark .pf-accent-sheet {
+  border-color: var(--pf-bg-primary);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28);
+}
+
+@media (max-width: 767px) {
+  .pf-page-accent {
+    min-height: 96px;
+    margin-top: 12px;
+    padding: 14px 16px;
+  }
+
+  .pf-page-accent-materials {
+    flex-basis: 116px;
+    min-height: 68px;
+    transform: scale(0.82);
+    transform-origin: right center;
+  }
+
+  .pf-page-accent-detail {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 460px) {
+  .pf-page-accent-materials {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pf-page-accent,
+  .pf-accent-sheet,
+  .pf-accent-orbit {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ============================================================
+   Core research workspaces
+   Distinct visual identities for Q&A, writing, and DEPTH review.
+   ============================================================ */
+.pf-ask-workspace,
+.pf-writing-workspace,
+.pf-depth-workspace {
+  --pf-workspace-tone: var(--pf-primary);
+  --pf-workspace-soft: var(--pf-primary-soft);
+}
+
+/* ---------- Q&A: conversation + evidence desk ---------- */
+.pf-ask-workspace {
+  --pf-workspace-tone: #0f9fbd;
+  --pf-workspace-soft: rgba(15, 159, 189, 0.11);
+  align-items: flex-start;
+}
+
+.pf-ask-history {
+  border-color: color-mix(in srgb, var(--pf-workspace-tone) 18%, var(--pf-border-light)) !important;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--pf-workspace-tone) 7%, transparent);
+}
+
+.pf-ask-history .ant-card-body {
+  padding: 0 !important;
+}
+
+.pf-ask-history-heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pf-ask-history-mark {
+  display: inline-block;
+  width: 7px;
+  height: 18px;
+  border-radius: 99px;
+  background: linear-gradient(180deg, var(--pf-workspace-tone), var(--pf-primary));
+}
+
+.pf-ask-history .pf-history-item {
+  border-left: 2px solid transparent;
+}
+
+.pf-ask-history .pf-history-item:hover,
+.pf-ask-history .pf-history-item.pf-history-active {
+  border-left-color: var(--pf-workspace-tone);
+  background: var(--pf-workspace-soft);
+}
+
+.pf-history-select:focus-visible {
+  outline: 2px solid var(--pf-primary);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.pf-ask-history-empty::before {
+  content: "01";
+  display: block;
+  margin-bottom: 8px;
+  color: var(--pf-workspace-tone);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+}
+
+.pf-ask-input {
+  border-color: color-mix(in srgb, var(--pf-workspace-tone) 18%, var(--pf-border-light)) !important;
+  background-image:
+    linear-gradient(135deg, color-mix(in srgb, var(--pf-workspace-tone) 4%, var(--pf-bg-primary)), transparent 55%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.84), rgba(255, 255, 255, 0.5)) !important;
+}
+
+.pf-ask-input .ant-card-body {
+  padding: 20px !important;
+}
+
+.pf-ask-input-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0 8px;
+  color: var(--pf-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.pf-ask-input-pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--pf-workspace-tone);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--pf-workspace-tone) 14%, transparent);
+}
+
+.pf-ask-input-mode {
+  margin-left: auto;
+  padding: 2px 7px;
+  border: 1px solid color-mix(in srgb, var(--pf-workspace-tone) 25%, transparent);
+  border-radius: 999px;
+  color: var(--pf-workspace-tone);
+  background: var(--pf-workspace-soft);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+}
+
+.pf-ask-input .ant-input,
+.pf-ask-input .ant-input-affix-wrapper,
+.pf-ask-input .ant-select-selector {
+  border-color: var(--pf-border-light) !important;
+}
+
+.pf-ask-input .ant-input:focus,
+.pf-ask-input .ant-input-affix-wrapper-focused,
+.pf-ask-input .ant-select-focused .ant-select-selector {
+  border-color: var(--pf-workspace-tone) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pf-workspace-tone) 14%, transparent) !important;
+}
+
+.pf-ask-result {
+  border-left: 3px solid var(--pf-workspace-tone) !important;
+}
+
+.pf-ask-result--streaming {
+  background-image:
+    linear-gradient(135deg, color-mix(in srgb, var(--pf-workspace-tone) 7%, var(--pf-bg-primary)), transparent 65%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.84), rgba(255, 255, 255, 0.5)) !important;
+}
+
+.pf-ask-result-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  color: var(--pf-workspace-tone);
+  background: var(--pf-workspace-soft);
+}
+
+.pf-ask-loading {
+  border-top: 2px solid var(--pf-workspace-tone) !important;
+}
+
+.pf-ask-empty {
+  min-height: 220px;
+  border-style: dashed !important;
+  border-color: color-mix(in srgb, var(--pf-workspace-tone) 22%, var(--pf-border-light)) !important;
+}
+
+/* ---------- Writing: editorial project desk ---------- */
+.pf-writing-workspace {
+  --pf-workspace-tone: #7c3aed;
+  --pf-workspace-soft: rgba(124, 58, 237, 0.1);
+}
+
+.pf-writing-header {
+  align-items: flex-end;
+}
+
+.pf-writing-header .pf-page-accent {
+  margin-bottom: 0;
+}
+
+.pf-writing-stat {
+  position: relative;
+  overflow: hidden;
+  border-top: 2px solid color-mix(in srgb, var(--pf-workspace-tone) 55%, transparent) !important;
+}
+
+.pf-writing-stat::after {
+  content: "";
+  position: absolute;
+  right: -22px;
+  bottom: -28px;
+  width: 78px;
+  height: 78px;
+  border: 1px solid color-mix(in srgb, var(--pf-workspace-tone) 25%, transparent);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.pf-writing-stat--words {
+  --pf-workspace-tone: #15803d;
+}
+
+.pf-writing-stat--today {
+  --pf-workspace-tone: #b45309;
+}
+
+.pf-writing-project-card {
+  border-left: 3px solid color-mix(in srgb, var(--pf-workspace-tone) 64%, transparent) !important;
+}
+
+.pf-writing-project-card:hover {
+  border-left-color: var(--pf-workspace-tone) !important;
+}
+
+.pf-writing-workspace .ant-progress-bg {
+  background: linear-gradient(90deg, var(--pf-workspace-tone), #a78bfa) !important;
+}
+
+/* ---------- DEPTH: review instrument ---------- */
+.pf-depth-workspace {
+  --pf-workspace-tone: #b45309;
+  --pf-workspace-soft: rgba(180, 83, 9, 0.1);
+}
+
+.pf-depth-selection-card,
+.pf-depth-summary-card,
+.pf-depth-results-card {
+  border-top: 2px solid color-mix(in srgb, var(--pf-workspace-tone) 58%, transparent) !important;
+}
+
+.pf-depth-selection-card .ant-table-thead > tr > th {
+  background: color-mix(in srgb, var(--pf-workspace-tone) 5%, var(--pf-bg-tertiary));
+}
+
+.pf-depth-selection-card .ant-checkbox-checked .ant-checkbox-inner {
+  background-color: var(--pf-workspace-tone);
+  border-color: var(--pf-workspace-tone);
+}
+
+.pf-depth-summary-card {
+  background-image:
+    radial-gradient(circle at 8% 0%, color-mix(in srgb, var(--pf-workspace-tone) 12%, transparent), transparent 32%),
+    linear-gradient(135deg, var(--pf-bg-elevated), var(--pf-bg-tertiary)) !important;
+}
+
+.pf-depth-summary-card .ant-statistic-content,
+.pf-depth-summary-card .ant-typography h5 {
+  color: var(--pf-text-primary);
+}
+
+.pf-depth-results-card .ant-table-tbody > tr:hover > td {
+  background: var(--pf-workspace-soft) !important;
+}
+
+.pf-depth-error-card {
+  border-left: 3px solid var(--pf-error) !important;
+  background: color-mix(in srgb, var(--pf-error) 4%, var(--pf-bg-elevated)) !important;
+}
+
+/* Shared mobile behavior */
+@media (max-width: 767px) {
+  .pf-ask-workspace {
+    display: block !important;
+  }
+
+  .pf-ask-workspace > div:first-child {
+    width: 100% !important;
+    margin-bottom: 14px;
+  }
+
+  .pf-ask-history {
+    position: static !important;
+  }
+
+  .pf-ask-history .ant-card-body {
+    max-height: none;
+  }
+
+  .pf-ask-main {
+    max-width: none !important;
+  }
+
+  .pf-writing-header {
+    align-items: stretch !important;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .pf-writing-header > div:last-child {
+    width: 100%;
+  }
+
+  .pf-writing-header > div:last-child .ant-space {
+    display: flex;
+    width: 100%;
+  }
+
+  .pf-writing-header > div:last-child .ant-btn {
+    flex: 1;
+  }
+
+  .pf-depth-workspace {
+    padding: 16px 0 !important;
+  }
+
+  .pf-depth-summary-card .ant-space {
+    gap: 14px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pf-ask-history .pf-history-item,
+  .pf-writing-project-card,
+  .pf-depth-results-card .ant-table-row {
+    transition: none !important;
+  }
+}
+
+[data-theme="dark"] .pf-ask-input,
+.dark .pf-ask-input,
+[data-theme="dark"] .pf-ask-result--streaming,
+.dark .pf-ask-result--streaming,
+[data-theme="dark"] .pf-depth-summary-card,
+.dark .pf-depth-summary-card {
+  background-image:
+    linear-gradient(135deg, color-mix(in srgb, var(--pf-workspace-tone) 10%, var(--pf-bg-primary)), var(--pf-bg-tertiary)) !important;
+}

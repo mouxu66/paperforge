@@ -1,0 +1,111 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+*.egg-info/
+dist/
+build/
+*.db
+*.sqlite3
+*.log
+
+# Frontend
+node_modules/
+web/node_modules/
+web/dist/
+web/*.tsbuildinfo
+web/vite.config.js
+web/vite.config.d.ts
+
+# Backend
+mock_api/__pycache__/
+mock_api/paperforge_mock.db
+mock_api/*.pyc
+# 本地多语言模型缓存（可用 mock_api/_dl_multilingual_model.py 重建，勿入仓）
+mock_api/_models/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Others
+logs/
+*.tmp
+*.temp
+*.db-wal
+*.db-shm
+
+# 工作区产物 / AI Agent 记忆
+.workbuddy/
+memory/
+nul
+*.bak
+
+# 用户上传（大文件不入仓）
+uploads/
+mock_api/uploads/
+
+# PyInstaller 构建产物
+*.spec
+
+# Coverage reports
+.coverage
+.coverage.*
+coverage/
+htmlcov/
+tests/COVERAGE_REPORT_*.md
+
+# 本地诊断/缓存垃圾，不入库
+.zcode/
+mock_api/diagnostics/
+.freebuff/
+
+# AI / debug 临时产物（仅根目录）
+/.tmp_*
+/tmp_*
+/_dbg_*
+/_inspect_*
+/_probe_*
+/_sample_*
+/_spike_*
+# pre-commit 在沙箱内 HOME 误指仓库根时生成的缓存目录（纯缓存，可删）
+/~
+
+# 项目交付物 / 测试产物目录（按需保留时手动管理）
+deliverables/
+
+# 备份文件（含时间戳后缀）
+*.bak
+*.bak.*
+
+# arxiv/pdf 缓存目录（大文件/二进制不入仓）
+scripts/.arxiv_cache/
+scripts/gate_pdfs/
+
+# 本地一次性诊断脚本与运行快照（保留在工作区，不入仓）
+/_fix_*.py
+/_temp_*.py
+/scripts/_*.py
+/scripts/_*.txt
+/scripts/_verify/
+/mock_api/_temp_*.py
+
+# 数据库快照、源码备份与本地归档产物
+*.db.bak*
+*.bak_*
+/archive/
+
+# 本地技能安装目录与锁定文件（技能本身不入仓）
+.agents/
+skills-lock.json

@@ -1,0 +1,2507 @@
+Field theories for Laplacian Growth
+Paolo Pisapia1, Assaf Shapira2, Kay Jörg Wiese1
+1CNRS-Laboratoire de Physique de l’Ecole Normale Supérieure, PSL Research University, Sorbonne
+Université, Université Paris Cité, 24 rue Lhomond, 75005 Paris, France,
+2Université Paris Cité, CNRS, MAP5, 75006 Paris, France.
+Abstract
+Loop-erased random walks (LERW), theO(n)-model atn=−2and Laplacian random walks
+(LRW) are three realizations of the same random process. While this equivalence holds on any
+graph, renormalization is possible only via theO(−2)-model. To generalize LRWs tob-LRWs or
+to Diffusion Limited Aggregation (DLA), a field theory directly on the Laplacian growth process
+is necessary. Here we construct an exact lattice action for LRWs and show that its perturbative
+expansion equals that of LERWs. We then generalize this approach tob-LRWs and DLA.
+1 Introduction 2
+1.1 State of the Art . . . . . . . . . . . . 2
+1.2 Outline . . . . . . . . . . . . . . . . 4
+2 Models on a graph 4
+2.1 Graph-theoretical definitions . . . . . 4
+2.2 Viennot’s theorem . . . . . . . . . . . 5
+2.3 Action for LERW field theory . . . . 6
+2.4 Solving the Laplace equation with ex-
+cluded vertices . . . . . . . . . . . . 7
+2.5 Proof of Lawler’s theorem from the
+lattice field theory . . . . . . . . . . . 8
+3 Laplacian random walks 8
+3.1 LRW as a growth process . . . . . . . 8
+3.2 A first lattice field theoryL LRW
+1 . . . 9
+3.3 Test of lattice field theory . . . . . . . 10
+3.4 Continuum limit forL LRW
+1 . . . . . . 11
+3.5 Propagators and vertices . . . . . . . 12
+3.6 Power counting . . . . . . . . . . . . 13
+3.7 A simpler lattice actionL LRW
+2 . . . . 14
+3.8 Continuum limit of simplified lattice
+theoryL LRW
+2 . . . . . . . . . . . . . 15
+3.9 Diffusion and drift . . . . . . . . . . 15
+3.10 Observable: passing through a point . 16
+3.11 Perturbative corrections to the observ-
+able . . . . . . . . . . . . . . . . . . 17
+3.12 Simplifying theχ-theory:L LRW
+3 . . . 18
+3.13 More cancelations of diagrams . . . . 19
+4b-Laplacian random walks 19
+5 Diffusion Limited Aggregation 20
+5.1 Definition . . . . . . . . . . . . . . . 20
+5.2 Example . . . . . . . . . . . . . . . . 20
+5.3 A conjecture . . . . . . . . . . . . . . 21
+5.4 Lattice action for DLA as a growth
+process . . . . . . . . . . . . . . . . 22
+5.5 Numerical check . . . . . . . . . . . 22
+5.6 Improved lattice action . . . . . . . . 23
+6 Conclusion and Outlook 24
+A Perturbative calculations with actionL LRW
+1 24
+A.1 Notations . . . . . . . . . . . . . . . 24
+A.2 Tip-tracer interactions . . . . . . . . . 25
+A.3 Tracer-tracer interactions . . . . . . . 25
+A.4 Tadpole and bubble cancelations . . . 25
+B Simplifications and their proof 26
+C Observable up to 3-loop order 30
+C.1 1 loop . . . . . . . . . . . . . . . . . 30
+C.2 2 loops . . . . . . . . . . . . . . . . . 30
+C.3 3 loops . . . . . . . . . . . . . . . . . 31
+1
+arXiv:2606.27263v1  [cond-mat.stat-mech]  25 Jun 2026
+Figure 1: An example of a LRW (left) and a DLA cluster (right) grown in a box of size80×120. Particles are
+injected at the target (green dot at top center), and bounce from the walls. The seed is in the center at height40
+(black dot). The process stops when the target is reached. The color shows time.
+1 Introduction
+1.1 State of the Art
+Loop-erased random walks (LERWs) were introduced in 1980 by G. Lawler [1] as a mathematically
+more tractable alternative to self-avoiding polymers: one follows the trace of a random walker and
+erases from its trace a loop once it is formed. This leads to a non-selfintersecting path in all dimen-
+sions. In [1] Lawler further showed that loop-erased random walks can be reformulated as a growth
+process, termed Laplacian random walk (LRW): one solves the Laplace equation∇ 2Φ(x) = 0, with
+boundary conditionΦ(x) = 0on the already constructed curve, andΦ(x) = 1at a prescribed target.
+Starting at the tipxof the walk, the probability to advance toyis proportional toΦ(y). The process
+stops when it has reached the target; see the left of Fig. 1.
+This process produces curves with a fractal dimension ofd d=2
+f = 5/4in dimensiond= 2, and
+was identified as a stochastic-Löwner evolution [2, 3, 4] withκ= 2. In dimensiond= 3, no
+exact results are available. The fractal dimension of LERWs was measured numerically asd d=3
+f =
+1.62400±0.00005[5]. It was later shown that theO(n)-model atn=−2, LERWs and LRWs are
+three manifestations of the same random process in all dimensions. This was first achieved via a
+heuristic mapping [6, 7]. A mathematically rigorous proof was presented in [8], and later simplified
+[9]. The latter formulation allowed the authors of [10] to evaluate the fractal dimension to6-loop
+order,d d=2
+f = 1.6243(10). Finally, LERWs appear in so varied models as uniform spanning trees [3],
+Abelian sandpiles [11, 12] and the depinning of charge-density waves [13, 6, 7], and more, see Fig. 2.
+2
+Eulerian Circuits
+LERWLaplacian Walks
+UST ASM Potts|q→0
+CDW
+FRG at depinning2 fermions + 1 boson
+ϕ4
+n=−2
+spin system with
+2 fermions + 1 boson
+SUSY
+[6]
+[9]
+[8]
+KW [35]
+L [16]
+L [36]
+pert. [6]
+exact [9]
+MD [12]
+NM conj. [13]
+FLW test [37]
+M [38]
+Figure 2: Relations between Laplacian walks, loop-erased random walks (LERW), uniform spanning trees
+(UST), Eulerian Circuits, the Abelian Sandpile Model (ASM), the Potts model in the limit ofq→0, charge-
+density waves at depinning (CDW), mapping onto the FRG field theory at depinning, reducing toϕ 4-theory at
+n=−2, and equivalent to an interacting theory of 2 complex fermions and one complex boson.
+While the equivalence between the three models above holds on any finite graphs and in the con-
+tinuum limit, a renormalization-group treatment is yet available only via the formulation in terms of
+theO(−2)-model [6, 7, 10]. This is unsatisfactory, since there are several generalizations of Lapla-
+cian growth of a path, for which one needs a field theory directly on the growth process: the first is
+theb-Laplacian random walk (b-LRW) where one takes the solution of the Laplace equation to the
+power ofb[14]. In dimensiond= 2, conformal arguments gived f = 1 + 3
+4(2b+1) [15, 16]. A field
+theory for Laplacian growth would allow us to generalize this to dimensiond= 3.
+An even more important generalization is the growth of clusters, known as diffusion-limited ag-
+gregation (DLA) [17, 18]. Here the idea is to place a seed for the cluster, start particles far away, allow
+them to diffuse until they hit the cluster upon which they attach. This process is repeated leading to
+clusters such as the one shown on the right of Fig. 1. While standard numerical simulations stop
+after a fixed numberNof points was attached to the cluster, our stopping condition is that the cluster
+has reached the target. This kind of stopping condition is much more natural in the combinatorial
+approach we follow here.
+As the diffusing particle solves the Laplace equation, the cluster can be obtained by the algorithm
+outlined above for Laplacian random walks, except that now the growth is not restricted to the tip
+of a path. In dimensiond= 2, DLA has a fractal dimension ofd DLA
+f |d=2 ≈1.71. Key observations
+are that there are different fractal dimensions, depending on the observable and where in the cluster
+it is measured. This is known as multifractality. As we will not give results for DLA here, we
+refer the reader to the literature [19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]. Apart from
+the beautiful growth process of Hastings-Levitov [33], no predictive theory exists today, especially
+there is no analytic prediction for the fractal dimension of DLA beyond simple mean-field arguments
+[17, 18, 34]. Furthermore, dielectric breakdown models are governed by the same equation, replacing
+the solution of the Laplace equation by itsb-th power [21], as for theb-Laplacian random walk.
+In order to treat these more general models via field theory, one needs the latter defined directly as
+a growth process. The aim of this work is to achieve this. We first construct an exact lattice action for
+Laplacian random walks. It is a dynamical field theory, which evolves an ensemble of configurations.
+Starting with a seed, the process adds vertices according to the rules of Laplacian growth. It stops
+when the target is reached. When all configurations have reached the target, the result is the sum over
+all LRWs with their respective probabilities. In a second step, we take the continuum limit. We check
+to 3-loop order that for LRWs we get the same diagrams as for LERWs.
+We then generalize our dynamic field theory tob-Laplacian random walks and DLA. The treatment
+of these two theories is relegated to future work.
+3
+1.2 Outline
+This article is organized as follows. First, we pose some definitions in section 2.1. We then review the
+mapping of loop-erased random walks onto theO(n)-model atn=−2(Viennot’s theorem, section
+2.2), and its lattice field theory (section 2.3). We show how this lattice field theory solves the Laplace
+equation with excluded vertices (section 2.4). This formulation allows us to give a new proof for the
+equivalence of LERWs and Laplacian Growth (Lawler’s theorem [1]) in section 2.5.
+In section 3 we construct a field theory for Laplacian random walks. The first step is to define
+appropriate growth rates (section 3.1). We then construct a dynamic lattice action, which propagates
+an ensemble of paths until they hit a prescribed target (section 3.2). This is tested in section 3.3. Its
+continuum limit is constructed in section 3.4. Propagators and vertices are discussed in section 3.5,
+followed by power counting (section 3.6). The theory is simplified in two steps (sections 3.7 and 3.8).
+The branching vertex is interpreted as the diffusion and drift of the tip of the curve in section 3.9.
+The probability to pass through a given point is introduced in section 3.10. This observable is per-
+turbatively corrected (section 3.11). In section 3.12 we give a final simplification of our perturbative
+action. The latter is generalized to theb-Laplacian random walk in section 4. DLA is discussed in
+section 5. We start with its definition (section 5.1), followed by an example (section 5.2), and a static
+conjecture (section 5.3) which we show to be incorrect. A proper dynamic theory is presented in
+section 5.4, followed by a check on a small graph (section 5.5). This allows us to write an improved
+action in section 5.6. The analysis of its field theory will be discussed elsewhere [39].
+In appendix A we study perturbation theory, showing which vertices are irrelevant, and how tad-
+poles cancel. Appendix B shows how our field theory simplifies, which allows us to assert in appendix
+C that the observer of LERWs is reproduced at least to 3-loop order.
+2 Models on a graph
+2.1 Graph-theoretical definitions
+Directed Graph: Adirected graphG={V,E}is a collection ofverticesorpoints in spaceV=
+{v1, ..., vn}andedgesE, s.t. each edge⃗ e∈ Eis an ordered pair of vertices⃗ e={vi, vj},1≤i, j≤n.
+We noteV(G) :=V, andE(G) :=E. We demand bothVandEto contain only distinct elements.
+Metric of a directed Graph: A directed graphGcan be endowed with a rate (metric)β, by defining
+for each edge⃗ e= (x, y),β⃗ e≡β xy >0. We assign a rateβ xy = 0to all pairs(x, y)/∈ E.
+Undirected Graph: An undirected graphGis a collection of verticesV={v 1, ..., vn}and edgesE,
+s.t. each edgee∈ Eis an unordered pair of verticese= (v i, vj). Its metric isβ e =β xy =β yx. Pairs
+(x, y)∈ Eareneighbors.
+Uniform Graph: A uniform graph is an undirected graph for which allβ e are equal,β e =β∀e∈ E.
+Subgraph: AsubgraphG ′ ={V ′,E ′} ⊂ G={V,E}is a graph withV ′ ⊂ V, andE′ ⊂ E.
+Connected Graph: A graphG={V,E}isconnectedif for each pair of vertices{x, y} ⊂ Vthere
+exists apath(v 1 =x, v2, ..., vn =y), s.t.(v i, vi+1)∈ Efor all1≤i < n. We will only consider
+connected graphs.
+Tree: Atreeis a connected graph for which the sequence(v 1 =x, v2, ..., vn =y)is unique.
+Sub-Tree: Asub-treeofGis a treeT ⊂ G.
+Directed Tree: Adirected treeis a tree for which each edge is directed.
+Rooted Tree: Arooted treeis a treeT={V ′,E ′}, with rootr, s.t. for eachx∈ V ′ there is a
+path{v 1 =r, v2, ..., vn =x}s.t. all edges{v i, vi+1} ∈ E′ for all1≤i < n. Choosing a tree
+T={V ′,E ′} ⊂ Gas part of an undirected graphGendows it with a direction.
+Vertices of a tree: DefineV(T)to be the set of all vertices inT.
+4
+Random walk: A random walk on a graphGwith start point (root)r∈ Vis a sequence(v 1 =
+r, v2, ...), with transition ratesβxy to jump fromxtoy, andλ x =m 2
+x to be absorbed at sitex. Denote
+byr x =λ x + P
+y βxy the total rate at which the walk exits from vertexx, and ˆβxy the probability to
+move fromxtoy, and ˆλx the probability to be absorbed atx,
+ˆβxy := βxy
+rx
+, ˆλx := λx
+rx
+.(1)
+Path: We define apathωto be a sequence of vertices, denotedω= (ω 1 =r, . . . , ωn). The probability
+P(ω)that the random walk selects the pathωand then stops is
+P(ω) = ˆλωnq(ω),(2)
+q(ω) = ˆβω1ω2
+ˆβω2ω3 . . .ˆβωn−1ωn.(3)
+Weight function: We callq(ω)theweight function. This weight factorizes: ifω (a) = (ω(a)
+1 , . . . , ω(a)
+n )
+andω (b) = (ω(b)
+1 , . . . , ω(b)
+m ), withω (a)
+n =ω (b)
+1 , then the compositionω:=ω (a)◦ω(b) = (ω(a)
+1 , . . . , ω(a)
+n =
+ω(b)
+1 , . . . , ω(b)
+m )of the pathsω (a) andω (b) has weightq(ω) =q(ω (a))q(ω (b)).
+Loop-erased random walk: Given a pathω= (ω 1, . . . , ωn), we define theloop-erasureproce-
+dure. The loop erasure is obtained by iterating theone-loop erasure: look for the first timeiat
+which the path repeats a vertex, soω i =ω j for somej < i. The one-loop erasure ofωis the path
+(ω1, . . . , ωj, ωi+1, . . . , ωn). We then apply the one-loop erasure to this new path, and continue until
+the path has no repeating vertices. The resulting path is theloop erasureofω, denotedLE(ω). It is
+self-avoiding, and when the initial pathωis a random walk, it is called theloop-erased random walk
+(LERW). Ifγis a LERW ending atx, the probability to generate it is
+P(γ) = ˆλx
+X
+ω:LE(ω)=γ
+q(ω).(4)
+Lattice Laplacian: Bef(x)a function defined forx∈ V. Then
+∆βf(x) :=
+X
+y
+βxy [f(y)−f(x)](5)
+is the lattice Laplacian induced byβ, applied tof. Whenβ xy is indicator of neighbors, this becomes
+the standard Laplacian and is denoted∇ 2.
+2.2 Viennot’s theorem
+We now state Viennot’s theorem, closely following [9].
+Loop: AloopCis a pathC= (ω 1, . . . , ωn−1, ωn =ω 1)where the first and last points are identical.
+We also require all vertices to be distinct (exceptω1 andω n), so it cannot be decomposed into smaller
+loops. Loops obtained from each other via cyclic permutations (dropping the repeated vertexω n) are
+considered identical.
+Collection of disjoint loops: By acollection of disjoint loopswe mean a setL={C 1, C2, . . .}, each
+of whose elements is a loop, and the intersection of any pair of loops inLis empty. We denote theset
+of all such collectionsbyL.
+In order to formulate the theorem, we fix a self-avoiding pathγ. We define the setL γ to consist of
+the collections of disjoint loops in which no loop intersectsγ. Then Viennot’s theorem can be written
+as (|L|being the number of loops)
+A(γ) :=q(γ)
+X
+L∈Lγ
+(−1)|L|
+Y
+C∈L
+q(C) =
+X
+ω:LE(ω)=γ
+q(ω)×
+X
+L∈L
+(−1)|L|
+Y
+C∈L
+q(C).(6)
+5
+On the l.h.s. one sums over the ensemble of collections of loops which do not intersectγ, giving each
+collection a weight(−1) |L| Q
+C∈L q(C). We later calculate this object using field-theory. The r.h.s.
+contains two factors. The first is the weight to find the LERW pathγ, our object of interest. The
+second is the partition function
+Z:=
+X
+L∈L
+(−1)|L|
+Y
+C∈L
+q(C)(7)
+of the loop model on the left-hand side. Assuming the walk to stop att, this relation can be read as
+P(γ) = ˆλt
+X
+ω:LE(ω)=γ
+q(ω) = ˆλt
+q(γ) P
+L∈Lγ (−1)|L| Q
+C∈L q(C)
+Z .(8)
+The probability to go from the rootrto the targettis the sum over all non-selfintersecting pathsγ
+starting atrand going tot,
+Pr,t =
+X
+γ={r,...,t}
+P(γ).(9)
+For a proof and examples see section 3 of [9].
+2.3 Action for LERW field theory
+Shapira-Wiese action: Here we give the action of Ref. [9]. To this aim, consider an interacting field
+theory with a standard pair of complex conjugate fields{χ i(x)}x∈G, withi= 1bosonic andi= 2,3
+fermionic fields. The action on the graphGis
+e−S′
+G =
+Y
+x∈V
+h
+e− P
+i rx ˜χi(x)χi(x)
+
+1 +
+X
+y∈V
+X
+i
+βxy ˜χi(y)χi(x)
+i
+.(10)
+We can eliminater x by rescalingχ i(x)→χ i(x)/rx. This leads to
+e−SG =
+Y
+x∈V
+h
+e− P
+i ˜χi(x)χi(x)
+
+1 +
+X
+y∈V
+X
+i
+ˆβxy ˜χi(y)χi(x)
+i
+.(11)
+This should be compared to Eq. (44) of [9], with the caveat that the latter was written for a single
+bosonic field. Note that we use different normalizations to eliminate the factor ofr x from the action1.
+This action is easy to understand: the Gaussian measuree − P
+i ˜χi(x)χi(x) implies that expectations
+factorize at each vertexx, and that
+⟨χj(x)m ˜χi(x)n⟩0 =n!δ m,nδi,j (bosons),
+⟨χj(x)m ˜χi(x)n⟩0 =δ n,mδi,jΘ(n <2)(fermions). (12)
+The factor inside the big round brackets in Eq. (11) is such that each vertex has an out-degree of max-
+imally one, i.e.˜χi(x)appears at most with a power of one, and for a single indexi. As a consequence,
+action (11) produces the paths for Eq. (8) with the proper weights.
+Finally note that on a finite graph, we can useNcomplex bosons, to calculate the partition func-
+tionZor an observableOfor anyN. The result will be a polynomial inN, which can be continued
+analytically toN=−1. This construction withN→ −1complex bosons, which corresponds
+ton= 2N→ −2real bosons, is equivalent to the one bosonic and two fermionic fields used in
+Eq. (11). Since bosons are easier to handle, we will use this formulation for practical calculations,
+both on a finite graph as for the field theory.
+1We mostly setλ x →0. A constantλ x >0gives a massive field theory, useful for IR regularization.
+6
+Transition probability and observable: According to Eqs. (8) and (9)
+Pr,t = ⟨χ1(t) ˜χ1(r)⟩
+Z ,(13)
+whereZ=⟨1⟩is the partition function given in Eq. (7). Ifλ x = 0for allx, thenP r,t = 1.
+In order to assess whether a pointxbelongs to a loop-erased random walk fromrtotafter erasure,
+we fix the three verticesr, xandtand consider the observable
+O(r, x,t) := ⟨χ2(t) ˜χ2(x)χ1(x) ˜χ1(r)⟩
+Z .(14)
+2.4 Solving the Laplace equation with excluded vertices
+To treat Laplacian growth models we want to solve the Laplace-equation
+∆β
+xΦV|E (x) = 0, x∈ V \ E,
+Φ(x) =a x, x∈ E.(15)
+We claim that similarly to Eq. (11) this can be obtained from the action
+e−SV|E =
+Y
+x∈V
+e− P
+i ˜χi(x)χi(x)
+Y
+x∈V\E
+
+1+
+X
+y∈V
+X
+i
+ˆβxy ˜χi(y)χi(x)
+
+.(16)
+Then
+ΦV|E (x) := 1
+ZV|E
+X
+y∈E
+⟨˜χ1(x)χ1(y)⟩a y
+= 1
+ZV|E
+Z
+˜χ,χ
+e−SV|E ˜χ1(x)
+"X
+y
+ayχ1(y)
+#
+(17)
+solves Eq. (15). To prove this, we first show
+∆β
+x ⟨˜χ1(x)χ1(y)⟩= 0∀x∈ V\E, y∈ V.(18)
+This is a result of the 2-point function being the sum over all LERWs fromxtoyin theO(−2)-theory
+restricted toV\E, or equivalently the sum over all random walks fromxtoyin the free theory. As a
+result,Φ V|E satisfies the Laplace equation forx̸∈ E. Let us now evaluate it forx∈ E,
+ΦV|E (x) = 1
+ZV|E
+X
+y∈E
+⟨˜χ1(x)χ1(y)⟩a y
+= 1
+ZV|E
+⟨˜χ1(x)χ1(x)⟩a x =a x.(19)
+We used that the action (16) has no outgoing edge fory∈ E, thus the only non-vanishing contraction
+ofχ 1(y)withy∈ Eis with˜χ 1(x), which leads to the second equality. What remains are loops in the
+theory (16), i.e.Z V|E , proving the last equality.
+To conclude this section, let us make a specific choice forEanda x: we takeE=γ∪ T, where
+γis a path, andTthe target, specified above toT={t}. We seta x = 0forx∈γ, anda x = 1for
+x∈ T. We use the notation⟨·⟩V\γ :=⟨·⟩ V ′|T forV ′ :=V \γ. Then
+⟨˜χ1(x)χ1(t)⟩V\γ =⟨˜χ1(x)χ1(t)⟩V|E ,andZ V\γ =Z V|E .(20)
+Formula (17) can now be written as
+ΦV|E (x) = 1
+ZV|E
+⟨˜χ1(x)χ1(t)⟩V|E = 1
+ZV\γ
+⟨˜χ1(x)χ1(t)⟩V\γ .(21)
+7
+2.5 Proof of Lawler’s theorem from the lattice field theory
+The field theory (11) calculates the probability for all pathsγfromrtot. This allows us to evaluate
+the probability to have a path beginning withω 1 = (t, ..., v)and compare it to the probability for a
+path of one more stepω 2 = (t, ..., v, x). DenoteV1 :=V\(ω 1\{v})andV 2 :=V\ω 1. Then
+P(ω 1) =
+X
+γ⊃ω1
+P(γ) =q(ω 1) ⟨˜χ1(v)χ1(t)⟩V1
+Z .(22)
+The same holds forω 2. The ratio of the two probabilities is given by
+P(ω 2)
+P(ω 1) =
+ˆβvx
+R
+χ e−SV2 ˜χ1(x)χ1(t)R
+χ e−SV1 ˜χ1(v)χ1(t) .(23)
+Let us write the denominator in terms of the action in the numerator, making explicit the additional
+factor in the interaction for vertexv,
+Z
+χ
+e−SV1 ˜χ1(v)χ1(t) =
+Z
+χ|V2
+Z
+χv
+e−SV2 −P
+i ˜χi(v)χi(v)
+
+1 +
+X
+y∈V
+X
+i
+ˆβvy ˜χi(y)χi(v)
+
+˜χ1(v)χ1(t)
+=
+Z
+χ|V2
+e−SV2
+X
+y∈V
+ˆβvy ˜χ1(y)χ1(t)
+=
+X
+y
+ˆβvy ⟨˜χ1(y)χ1(t)⟩V2 .(24)
+Summing the numerator of the r.h.s. of Eq. (23) over all possiblex(i.e. different choices ofω 2) gives
+its denominator,
+P(ω 1) =
+X
+x∈V
+P(ω 1 +{x}).(25)
+As expected,P(ω 2)isproperly normalized. With the definition given in Eq. (21), Eq. (23) can be
+written as
+P(ω 2)
+P(ω 1) =
+ˆβvxΦV|E (x)
+P
+y∈V
+ˆβvyΦV|E (y)
+,(26)
+withE=ω 1 ∪ T. The boundary condition is0onω 1 and1onT.
+This is Lawler’s theorem: it states that LERW configurations have the same probability as the
+Laplacian random walk defined by Eq. (26).
+3 Laplacian random walks
+3.1 LRW as a growth process
+In the last section we studied the generating function of LERWs, or equivalently LRWs starting at
+the rootrand stopping at the targett. The aim of this section is to reformulate LRWs as a dynamic
+process in timet. According to Eq. (26), the probability to grow from the tip atvis proportional to
+the solution of the Laplace equation at timet,
+Pv→x|t = βvxΦV|E (x, t)
+Nv(t) .(27)
+Eq. (26) uses the normalizationN v(t) = P
+y∈V βvyΦV|E (y, t). When formulating LRWs as a growth
+process, it is not only difficult to calculate the inverse ofN v in a field theory but even futile. Instead
+we use transition rates in continuous time,
+ρv→x|t =γβ vxΦV|E (x, t).(28)
+8
+As long asβ xy =β yx, Eq. (28) is also the appropriate rate for DLA:Φ V|E (x)is the probability for a
+particle to be atxwithout having been absorbed byE, whileγβ xv is the rate to then be absorbed atv.
+In addition, the rate (28) will allow us to address the temporal evolution of the cluster. For all these
+reasons, it is this rate we shall use in our field theory.
+3.2 A first lattice field theoryL LRW
+1
+To construct a lattice field theory for the growth of Laplacian random walks, we introduce three pairs
+of complex fields. Each of these depends both on spacex(the vertex) and timet. The latter increases
+in steps ofδt= 1. The object we construct is the generating functionG, which encodes the ensemble
+of generated paths and their probabilities: each term is a probability times a product of (bosonic)
+fields for the path. The fields at timetare: ˜ϕ(x, t)indicating that the tip of the path is atx, and ˜ψ(x, t)
+indicating that the path passed throughxat an earlier time. Let us give an example (λ 1 andλ 2 are two
+numbers, and the rootrhas two neighborsxandy)
+G(t) = ˜ϕ(r, t),(29)
+G(t+1) = [1−λ 1 −λ 2] ˜ϕ(r, t+1) +λ1 ˜ψ(r, t+1)˜ϕ(x, t+1) +λ2 ˜ψ(r, t+1)˜ϕ(y, t+1).(30)
+Eq. (29) represents the root from which we start. Eq. (30) represents the state of the system after one
+iteration, where the path has been prolonged fromrtoxandyrespectively. It is normalized, as can
+be verified by setting ˜ψ→1and ˜ϕ→1. We can further include information about the edges used,
+by introducing a factor ofR xy for an edge fromxtoy,
+G(t+1) = [1−λ 1 −λ 2] ˜ϕ(r, t+1)
++λ1Rrx ˜ψ(r, t+1)˜ϕ(x, t+1) +λ2Rry ˜ψ(r, t+1)˜ϕ(y, t+1).(31)
+The evolution of each term inG(t)is given by the following rules
+˜ϕ(x, t)− →˜ϕ(x, t+1) +γ
+X
+y∈V
+βxy
+h
+Rxy ˜ϕ(y, t+1)˜ψ(x, t+1)− ˜ϕ(x, t+1)
+i
+ΦV|E (y, t),(32)
+˜ψ(x, t)− →˜ψ(x, t+1).(33)
+The first term in Eq. (32) propagates a configuration without changing it. The second term is the
+growth fromxtoywith rateγβ xyΦV|E (y, t)in a time intervalδt= 1. While the first term in the
+square brackets is the configuration with an additional vertex added, the second subtracts with the
+same weight the original configuration. This iteration works even for largeγδtas long as one avoids
+numerical instabilities.
+The action which implements Eqs. (32)-(33) contains˜ψand ˜ϕ, as well as their complex conjugates.
+It further contains˜χ(x, t)andχ(x, t)to evaluateΦV|E (y, t)on each time slice with an action close to
+Eq. (11). We claim that
+G(t+1) =
+Z
+˜χ,χ
+Z
+˜ϕ,ϕ
+Z
+˜ψ,ψ
+e−LLRW
+1 G(t)(34)
+with Lagrangian
+e−LLRW
+1 =
+Y
+x∈V
+exp
+
+− ˜ϕ(x, t)ϕ(x, t)−˜ψ(x, t)ψ(x, t)−
+nαX
+α=1
+nχX
+j=1
+˜χα
+j (x, t)χα
+j (x, t)
+
+×
+Y
+x∈V\t
+ nαY
+α=1
+h
+1 +
+X
+y∈V
+ˆβxy
+nχX
+j=1
+˜χα
+j (y, t)χα
+j (x, t)
+i
++ ˜ϕ(x, t+1)ϕ(x, t) +˜ψ(x, t+1)ψ(x, t)
++γ
+X
+y∈V
+βxy
+h
+Rxy ˜ϕ(y, t+1)˜ψ(x, t+1)− ˜ϕ(x, t+1)
+i
+ϕ(x, t) ˜χ1
+2(y, t)
+
+×
+h
+1 + ˜ϕ(t, t+1)ϕ(t, t) +χ1
+2(t, t)
+i
+.(35)
+9
+The first line is the Gaussian measure for each field, ensuring that⟨˜ϕ(x, t)ϕ(x, t)⟩0 =⟨ ˜ψ(x, t)ψ(x, t)⟩0
+= 1,⟨˜χα
+i (x, t)χβ
+j (x, t)⟩0 =δ ijδαβ, and all other expectation values vanish. The additional replica in-
+dexαwill be explained below; for the moment the reader may think of settingn α = 1andα= 1
+(effectively dropping the index).
+The second line is a product over all vertices other than the targett. The first term comes from
+Eq. (11). The second term says that if there is a field ˜ϕ(x, t)it can be propagated to timet+1by
+˜ϕ(x, t+1)ϕ(x, t); an equivalent term is there to propagate˜ψ(x, t). As only one term per site can be
+picked, the boundary conditions forχare implemented, as it cannot touch theϕorψfields.
+Let us postpone the discussion of the third line proportional toγ; the last line says that if a path
+arrives at the targett, it stays there. It also contains a fieldχ 1
+2(t, t)for the evaluation of the Laplace
+equation. The way it is written ensures that once the target is reached and the task finished, we need
+to use ˜ϕ(x, t+1)ϕ(x, t), and as a result stop solving the Laplace equation, and thus growth.
+Let us now check normalizations forγ= 0. If a vertex is occupied by ˜ϕor ˜ψ, no outgoing line
+for˜χexists. Therefore integrating over˜χandχatn χ =−1gives the partition functionZ V\E , where
+the excluded verticesEare all those vertices for which there is either a ˜ϕor ˜ψ, or which are the
+targett. Thus, in order to propagate the configuration properly, one needs to normalize byZ V\E , as is
+done in Eq. (21). Let us now taken α arbitrary; given the factorization overα, the result is(Z V\E )nα.
+In perturbative calculations, we can use the replica trick to setn α →0, eliminating the need for a
+normalization. This is not possible when working on a graph and performing the Wick contractions;
+in order to check the action (35), we need to explicitly divide each term by its partition functionZV\E ,
+before propagating it.
+We can finally address the terms proportional toγ. Together withχ 1
+2(t, t)the term˜χ1
+2(y, t)eval-
+uates the solutionΦ V|E (y, t)to the Laplace equation. If, and only if ˜ϕ(x, t)is present,ϕ(x, t)can be
+Wick-contracted with it, which produces the terms in Eq. (32).
+3.3 Test of lattice field theory
+We tested the lattice field theory on some simple graphs. Here is an example for graphG 1 with five
+vertices; its root is at vertexr= 1(indicated with a red line), and the target is at vertext= 4(indicated
+with a green line).
+G1 = 1
+2
+3
+4
+5
+.(36)
+The generating functionGof LERWs onG 1 via theO(−2)theory defined via action (11) reads
+GLERW = 3
+11 + 5
+11 + 2
+11 + 1
+11 .(37)
+We numerically checked this against an LERW starting atrand stopping att.
+To obtain the evolution via the lattice action, we evolveG(t= 0) = ˜ϕ(1,0)with the action (35).
+This is shown in Fig. 3. One sees that configurations with one edge appear and are progressively
+replaced by configurations with more and more edges until only configurations that end at the target
+are left, and the process stops. We checked numerically to machine precision that
+lim
+t→∞
+GLRW(t) =G LERW .(38)
+10
+0 2 4 6 8 t0.0
+0.1
+0.2
+0.3
+0.4
+0.5
+G
+GLRW (t)
+γt
+1
+11
+2
+11
+3
+11
+5
+11
+Figure 3: The contributions toGLRW(t)of each path are plotted againstγtto show howG LRW(t= 0) = ˜ϕ(1,0)
+evolves under the action (35), and converges toG LERW given in Eq. (37). It is obtained numerically, using
+γδt= 0.01; each curve is associated to the respective path. Starting from an empty graph with a seed (red
+curve), the graph is explored by intermediate paths (green curves) which finally reach the target, converging
+to the non-self-intersecting paths with LRW statistics (blue cruves). The same trajectories are obtained using
+LLRW
+2 .
+3.4 Continuum limit forL LRW
+1
+We now expandL LRW
+1 as defined in Eq. (35) in the fields, retaining up to four fields. Power counting
+done later will show that this is sufficient.
+LLRW
+1 ≃
+X
+x∈V
+ ˜ϕ(x, t)− ˜ϕ(x, t+1)
+
+ϕ(x, t) +
+ ˜ψ(x, t)− ˜ψ(x, t+1)
+
+ψ(x, t)
++
+X
+x,y∈V
+X
+j,α
+ˆβxy
+
+˜χα
+j (x, t)−˜χα
+j (y, t)
+
+χα
+j (x, t)
++
+X
+x∈V
+g
+ 1
+2
+ ˜ϕ(x, t+1)ϕ(x, t) +˜ψ(x, t+1)ψ(x, t)
+2
++ 1
+2
+X
+α
+h X
+j
+X
+y∈V
+ˆβxy ˜χα
+j (y, t)χα
+j (x, t)
+i2
++
+X
+j,α
+ ˜ϕ(x, t+1)ϕ(x, t) +˜ψ(x, t+1)ψ(x, t)
+ X
+y∈V
+ˆβxy ˜χα
+j (y, t)χα
+j (x, t)
+
+−γ
+X
+x,y∈V
+βxy
+h
+˜ϕ(y, t+1)˜ψ(x, t+1)− ˜ϕ(x, t+1)
+i
+˜χ1
+2(y, t)ϕ(x, t)
+−χ 1
+2(t, t).(39)
+The factor ofg, which isg= 1in the microscopic theory, was introduced to facilitate bookkeeping,
+whileR xy →1since it is no longer useful. The last line provides the target for the solution of the
+Laplace equation.
+11
+In the next step, we interpret fields at timet+ 1ast+δt, and expand them aroundt. Similarly,
+fields atyare Taylor expanded aroundx, where we used the Laplacian defined in Eq. (5).
+Once one reaches the target, all auxiliary fields ˜ψare set to1. (Formally, this is done for final
+timeT→ ∞.) Technically, this gives a vacuum expectation value to ˜ψ. Similarly, the solution of the
+Laplace equation is obtained as1minus corrections when paths intersect. This leads to the following
+definitions
+˜ψ(x, t) = 1 +δ˜ψ(x, t),(40)
+˜χ(x, t) = 1 +δ˜χ(x, t).(41)
+With this, the continuum limit of Eq. (39) reads
+LLRW
+1 ≃
+Z
+x
+˜ϕ(x, t)[∂t −γ∇ 2]ϕ(x, t) +˜ψ(x, t)∂tψ(x, t)−
+X
+j,α
+˜χα
+j (x, t)∇2χα
+j (x, t)
++g
+ 1
+2
+ ˜ϕ(x, t)ϕ(x, t) +˜ψ(x, t)ψ(x, t)
+2
++ 1
+2
+X
+α
+h X
+j
+˜χα
+j (x, t)χα
+j (x, t)
+i2
++
+X
+j,α
+ ˜ϕ(x, t)ϕ(x, t) +˜ψ(x, t)ψ(x, t)
+
+˜χα
+j (x, t)χα
+j (x, t)
+
+−γ
+n
+˜ϕ(x, t) ˜χ1
+2(x, t)δ˜ψ(x, t) +∇2
+h
+˜ϕ(x, t)δ˜χ1
+2(x, t)
+i
++δ ˜ψ(x, t)∇2
+h
+˜ϕ(x, t) ˜χ1
+2(x, t)
+i
+− ˜ϕ(x, t)∇2δ˜χ1
+2(x, t)
+o
+ϕ(x, t)
+−χ1
+2(t, t).(42)
+To arrive at this equation, we used Eqs. (40) and (41); the leading term ˜ψ= ˜χ= 1gives the diffusion
+term−γ ˜ϕ∇2ϕin the first line above. The term of orderδ ˜ψ(x, t)in the last curly brackets of Eq. (42)
+is the leading term in the Taylor expansion of Eq. (39). What remains is proportional toδ˜χ(x, t).
+3.5 Propagators and vertices
+The free-theory propagators are
+Rϕ(x, t, y, t′) = =
+D
+˜ϕ(x, t)ϕ(y, t′)
+E
+0
+=
+Z
+k
+eik(y−x)e−k2(t′−t)γΘ(t′ > t),(43)
+Rψ(x, t, y, t′) = =
+D
+˜ψ(x, t)ψ(y, t′)
+E
+0
+=δ xyΘ(t′ > t),(44)
+Rχ(x, t, y, t′) = =
+D
+˜χα
+i (x, t)χβ
+j (y, t′)
+E
+0
+=δ ijδαβδtt′
+Z
+k
+eik(x−y) 1
+k2 .(45)
+Our convention is to draw time vertically from the bottom to the top, and space horizontally; the
+above symbols reflect this. Allδ-functions in space and time are Kronecker-δ’s: theχ-theory lives on
+asingle time-slicet, while theψ-theory propagates the occupation on asingle site. This means one
+should think of the theory as discretized, with
+δ2
+tt′ =δ tt′, δ 2
+xy =δ xy.(46)
+To get more compact expressions, we may writeR ϕ(x, t, y, t′) =:R y−x,t′−t,R ψ(x, t, y, t′) = Θ(t ′ >
+t)δxy,R χ(x, t, y, t′) =:C x−yδtt′.
+The interaction terms are (see also appendix A.1)
+Lg
+1 = g
+2
+
++ +
+
++g
+
++ +
+
+,(47)
+−Lγ
+1 =γ 1 +γ +
+2 || +γ +ψ
+2 || −γ −
+2 || , γ 1 =γ +
+2 =γ +ψ
+2 =γ −
+2 =γ.(48)
+12
+We use dashed lines to denote the fluctuating partsδ˜χandδ ˜ψ, and dots to separate parts of the vertex.
+Even though allγ-terms are equal, we added indices to be able to refer to them asγ 1,γ +
+2 ,γ +ψ
+2 and
+γ−
+2 terms or vertices. The extraγ +ψ
+2 vertex will be dropped thanks to power counting. It generates
+tadpoles that cancel, see appendix A.4. To see these tadpole cancelations, we need thegγvertices
+coming from the expansion of the logarithm: at second order in the expansion, there is a cross term
+betweenγ 1 andψ ˜ψ+ P
+α,j χα
+j ˜χα
+j . These vertices are
+Lgγ
+1 =gγ ψ +gγ χα
+α
+.(49)
+3.6 Power counting
+Power counting is confusing. There are two sources for this:
+(i) the theory contains both a static part, living on a single time slice (the theory ofχand˜χ), and
+a dynamic part ( ˜ϕ,ϕand ˜ψ,ψ). Whileϕdiffuses,ψdoes not evolve in space;
+(ii) both˜χ= 1 +δ˜χand ˜ψ= 1 +δ ˜ψcontain a background field1, and a fluctuating part, which
+scale differently.
+Let us start from Eq. (42). First, theχ-theory is instantaneous, i.e. does not contain time. We assign
+(in momentum units)
+0 =
+ Z
+x
+X
+j,α
+˜χα
+j ∇2χα
+j
+
+=⇒[ ˜χχ] := [ ˜χχ]µ =d−2.(50)
+The couplinggbehaves as a standardϕ 4 coupling,
+0 =
+
+g
+Z
+x
+( ˜χχ)2
+
+=⇒[g] = 4−d=:ϵ.(51)
+There is diffusion ofϕ, so
+0 =
+ Z
+x,t
+˜ϕ∂tϕ
+
+=
+
+γ
+Z
+x,t
+˜ϕ∇2ϕ
+
+=⇒[t] =−2,[x] =−1,[γ] = 0,
+ ˜ϕϕ
+
+=d.(52)
+The action (42) propagatesψ,
+0 =
+ Z
+x,t
+˜ψ∂tψ
+
+=⇒
+
+δ ˜ψψ
+
+=d.(53)
+Above, we found the dimensions of ˜ϕϕ, ˜ψψand˜χχ. How this is distributed over the single fields is
+at our disposal. For consistency of scaling for˜χ, it is easiest to consider the limit of ˜ψ→1,
+
+γ
+Z
+x,t
+n
+˜ψ∇2( ˜ϕ˜χ)−˜ϕ∇2 ˜χ
+o
+ϕ
+
+= 0 =⇒
+
+˜χ
+
+=
+
+δ˜χ
+
+= 0.(54)
+Consistency between theγ-terms with and without derivatives implies
+δ ˜ψ(x, t)∼ ∇2 =⇒
+
+δ ˜ψ
+
+= 2.(55)
+Eqs. (53) and (55) imply that
+[ψ] =d−2.(56)
+Thus both ˜ψandψshould not appear as additional factors for couplings deemed marginal ind= 4.
+The same argument applies to ˜ϕ,ϕand˜χ,χ. Considering Eq. (55), we expect that when we wish to
+13
+keep only relevant diagrams, we can removeδ ˜ψfrom the interaction, leading to a simplification for
+the green-blue interaction,
+→ .(57)
+Theγvertex simplifies even more,
+−Lγ
+1 =γ 1 +γ +
+2 || +γ +ψ
+2 || −γ −
+2 ||
+→γ 1 +γ +
+2 || −γ −
+2 ||
+=γ 1 +γ L
+||
++ 2γD
+|
+| .(58)
+The first line shows all vertices; in the second line, those irrelevant by power counting are suppressed.
+The third line is an exact rewriting, with a natural interpretation, see section 3.9.
+Difficulties in the perturbative calculations with the action (42) are shown in appendix A. What
+is problematic are the interactions betweenϕandψ, as well asψwith itself. In the evolution by the
+lattice action these are irrelevant, as a single site cannot be occupied by more than one “particle”. In
+the perturbative expansion in appendix A.2 and A.3 we see chains of these interactions suppressing
+the latter. Another problem is the plethora of tadpoles one has to handle for the current action, even
+though they cancel in the end. This is discussed in appendix A.4.
+For these reasons, in the next section we construct a lattice action that in the continuum limit gives
+no tadpole diagrams, and retains only vertices relevant for renormalization.
+3.7 A simpler lattice actionL LRW
+2
+While the lattice action (35) does the job, it induces many interactions in its perturbative treatment
+and many tadpoles, which cancel in the end but complicate the calculations. We therefore wish to
+construct an action where these terms are absent by construction. The key is to realize that one can
+add many terms which do not change the outcome: an example is a term which annihilates two ˜ϕ-
+particles at the same lattice site, i.e. ˜ϕ(x, t)2. As this never appears, whether the lattice action contains
+it or not is irrelevant. We can use this property to simplify the lattice action with the goal of reducing
+or simplifying as much as possible the interaction vertices. The simplest working action we found is
+e−LLRW
+2 =
+Y
+x∈V\t
+(
+exp
+ ˜ϕ(x, t+1)−˜ϕ(x, t)
+
+ϕ(x, t)−˜ψ(x, t)ψ(x, t)−
+nαX
+α=1
+X
+j
+˜χα
+j (x, t)χα
+j (x, t)
+
+×
+ nαY
+α=1
+
+1 +
+X
+y∈V
+ˆβxy
+nχX
+j=1
+˜χα
+j (y, t)χα
+j (x, t)
+
+−1
++ exp
+
+˜ψ(x, t+1)ψ(x, t)+γ
+X
+y∈V
+βxy
+
+Rxy ˜ϕ(y, t+1)˜ψ(x, t+1)−˜ϕ(x, t+1)
+
+ϕ(x, t) ˜χ1
+2(y, t)
+)
+×exp
+
+− ˜ϕ(t, t)ϕ(t, t)−
+nαX
+α=1
+X
+j
+˜χα
+j (t, t)χα
+j (t, t)
+h
+1 + ˜ϕ(t, t+1)ϕ(t, t) +χ1
+2(t, t)
+i
+.(59)
+The action is split into contributions for a generic pointx∈ V\t(first three lines), and a contribution
+for the targett(last line). This action now propagates any number ofϕorψ-particles. The part for
+χis unchanged from Eq. (35). Sinceγshould be thought of as being small, and only oneψandχ
+particle can exist per site, we consider the linear terms in the expansion of the exponential on the third
+line. Unlike in Eq. (35) there is no explicit exclusion ofϕ,ψandχ. However, our process does not
+produces these occurrences.
+14
+3.8 Continuum limit of simplified lattice theoryL LRW
+2
+Following the procedure of section 3.4, we now expandL LRW
+2 as defined in Eq. (59) in the fields,
+retaining up to four fields. In a second step, we interpret fields at timet+ 1ast+δt, and expand them
+aroundt. Similarly, fields atyare Taylor expanded aroundx. This gives (with target terms implicit)
+LLRW
+2 ≃
+Z
+x
+˜ϕ(x, t)[∂t −γ∇ 2]ϕ(x, t) +˜ψ(x, t)∂tψ(x, t)−
+X
+j,α
+˜χα
+j (x, t)∇2χα
+j (x, t)
++g
+Z
+x
+ X
+j,α
+˜ψ(x, t)ψ(x, t) ˜χα
+j (x, t)χα
+j (x, t) +1
+2
+X
+α
+h X
+j
+˜χα
+j (x, t)χα
+j (x, t)
+i2
+−γ
+Z
+x
+n
+˜ϕ(x, t) ˜χ1
+2(x, t)δ˜ψ(x, t) +∇2
+h
+˜ϕ(x, t)δ˜χ1
+2(x, t)
+i
+− ˜ϕ(x, t)∇2δ˜χ1
+2(x, t)
+o
+ϕ(x, t).
+(60)
+The free propagators are as given in Eqs. (43) to (45). There are much fewer interaction terms than in
+Eq. (47), namely
+Lg
+2 =g + g
+2 .(61)
+Theγ-terms are unchanged,
+−Lγ
+2 =γ +γ || −γ || =γ +γ
+||
++ 2γ
+|
+| .(62)
+To more easily refer to these terms, we write
+−Lγ
+2 =γ 1 +γ +
+2 || −γ −
+2 || (63)
+and refer to the different terms as theγ 1,γ +
+2 andγ −
+2 terms. (The signs in the last two terms refer to
+the sign in the perturbative expansion of−L γ
+2.)
+3.9 Diffusion and drift
+Both ˜ϕandϕappear linearly in the Lagrangian (60) and the actionS LRW
+2 =
+R
+t LLRW
+2 . Therefore, the
+variations w.r.t.ϕand ˜ϕlead to exact equations of motion. If we are not interested in the trace left,
+we can set ˜ψ= 1; accordingly the first equation of motion (EOM) is
+δS LRW
+2
+δϕ(x, t)= 0,(64)
+−∂t ˜ϕ(x, t)≃γ
+h
+∇2
+
+˜ϕ(x, t) ˜χ1
+2(x, t)
+
+− ˜ϕ(x, t)∇2 ˜χ1
+2(x, t)
+i
+=γ
+h
+˜χ1
+2(x, t)∇2 ˜ϕ(x, t) + 2∇˜ϕ(x, t)∇˜χ1
+2(x, t)
+i
+.(65)
+This is the backward Fokker-Planck equation for ˜ϕ(x, t)(see e.g. Eq. (949) of [40] ), with
+D(x, t) :=γ
+
+˜χ1
+2(x, t)χ1
+2(t, t)
+
+,(66)
+F(x, t) := 2γ∇x
+
+˜χ1
+2(x, t)χ1
+2(t, t)
+
+.(67)
+This gives the probability to observe the path at timetatx, while arriving at a later timet ′ aty.
+Pb(x, t) :=
+D
+˜ϕ(x, t)ϕ(y, t′)
+E
+.(68)
+15
+The second EOM is (again at ˜ψ= 1)
+δS LRW
+2
+δ ˜ϕ(x, t)
+= 0,(69)
+∂tϕ(x, t)≃γ
+h
+˜χ1
+2(x, t)∇2ϕ(x, t)−ϕ(x, t)∇2 ˜χ1
+2(x, t)
+i
+.(70)
+Define the probability to observe the path at timetinx, given it started at timet= 0iny,
+Pf(x, t) :=
+D
+ϕ(x, t)˜ϕ(y,0)
+E
+.(71)
+With the definitions in Eqs. (66) and (67), Eq. (70) can be rewritten as
+∂tPf(x, t) =D(x, t)∇2Pf(x, t)−Pf(x, t)∇2D(x, t)
+=∇ 2
+D(x, t)Pf(x, t)
+
+− ∇[2∇D(x, t)Pf(x, t)].(72)
+This is the forward Fokker-Planck equation forP f(x, t)given diffusion coefficientDand drift (force)
+F(see e.g. Eq. (944) of [40]).
+Both the backward Fokker-Planck equation (64) and its forward version (72) encode the same
+random process. They teach us that diffusion coefficientDand driftFare related,
+F(x, t) = 2∇D(x, t).(73)
+The drift points in the direction where the potentialΦgrows.
+3.10 Observable: passing through a point
+What we are mostly interested in is the configuration of the trace left by the LRW at timet=T. This
+trace is encoded in ˜ψ(x, T). Suppose we initialize the path att= 0inx= 0; then the generating
+functional is
+D
+e
+R
+x λxψ(x,T)+ρ xϕ(x,T)
+E
+:=
+Z
+˜χχ
+Z
+˜ϕϕ
+Z
+˜ψψ
+e−
+R
+t L(t) ˜ϕ(0,0)e
+R
+x λxψ(x,T)+ρ xϕ(x,T) .(74)
+If we want to know the probability that the path passed throughy, and went on tozat timet=T, we
+need to evaluate
+⟨O(y, z|T)⟩:= δ
+δλy
+δ
+δρz
+D
+e
+R
+x λxψ(x,T)+ρ xϕ(x,T)
+E
+λ,ρ=1
+=
+Z
+˜χχ
+Z
+˜ϕϕ
+Z
+˜ψψ
+e−
+R
+t L(t)e
+R
+x ψ(x,T)+ϕ(x,T) ˜ϕ(0,0)ψ(y, T)ϕ(z, T).(75)
+At the tree level, the only contribution is provided by theγ 1 vertex. Evaluating Eq. (75) step by step,
+we obtain
+⟨O(y, z|T)⟩tree =γ
+
+˜ϕ(0,0)ψ(y, T)ϕ(z, T)
+Z
+x,t
+x χ1
+2(t, t)
+
+0
+=γ
+Z
+x,t
+D
+˜ϕ(0,0)ϕ(x, t)
+E
+0
+
+˜χ1
+2(x, t)χ1
+2(t, t)
+
+0
+D
+δ ˜ψ(x, t)ψ(y, T)
+E
+0
+D
+˜ϕ(x, t)ϕ(z, T)
+E
+0
+=γ
+Z
+x,t
+Rx,t ×C x−t ×Θ(T > t)δx,y ×R x−z,T−t
+=γ
+Z
+t
+Ry,t ×C y−t ×R y−z,T−t .(76)
+16
+In the evaluation of⟨˜χ1
+2(x, t)χ1
+2(t, t)⟩0 we only kept the leading term. Eq. (76) can further be simpli-
+fied by doing a Laplace transform w.r.t. toγT, and a Fourier transform w.r.t.yandz. Assuming that
+the target is uniformly distributed,C y−t is a constant we put to1. This yields
+k+p+q
+k p
+q=0 =⟨O µ(p, k)⟩tree =
+Z
+y,z
+Z
+γT
+ei(ky+pz)−µγT ⟨O(y, z|T)⟩tree
+=γ
+Z
+y,z
+Z
+t,γT
+ei(ky+pz)−µγT Ry,tRy−z,T−t Cy−t = 1
+(k+p) 2 +µ
+1
+p2 +µ .(77)
+We use the rule that momenta follow the arrows. The explicitγdependence has disappeared, cancel-
+ing with theγfrom the exponential in Eq. (43) of the first red propagator. The second one is canceled
+explicitly in the definition of the Laplace transform.
+3.11 Perturbative corrections to the observable
+The tree diagram in Eqs. (76)-(77) has three 1-loop corrections. With the momentum conventions in
+Eq. (77), the first one is
+→ =:D 1.(78)
+The fluctuating partδ˜χcannot be used, thus˜χ→1. (We show later in appendix B that this is exact
+to all orders.) This diagram is evaluated as
+=γ 2(−g)
+Z
+q
+Z
+t
+e−[(k+p+q)2+µ]γt 1
+q2
+=−γg
+Z
+q
+1
+(k+p+q) 2+µ
+1
+q2
+µ→0
+− − → −γg
+k+p
+.(79)
+There are two more contributions,
+→ =:D 2 ,− → − =:D 3.(80)
+They evaluate to
+=γ 3(−g)
+Z
+q
+Z
+t,t′
+e−[(k+p+q)2+µ]γt−[(p+q) 2+µ]γt′ −(p+q)2
+q2
+=γg
+Z
+q
+1
+(k+p+q) 2+µ
+(p+q)2
+(p+q)2+µ
+1
+q2
+µ→0
+− − →γg
+k+p
+.(81)
+=−γ 3(−g)
+Z
+q
+Z
+t,t′
+e−[(k+p+q)2+µ]γt−[(p+q) 2+µ]γt′ −q2
+q2
+=−γg
+Z
+q
+1
+(k+p+q) 2+µ
+1
+(p+q)2+µ
+µ→0
+− − → −γg
+k
+.(82)
+17
+We see that the derivatives have canceled against a propagator, leaving us with a factor of(−1). This
+can be written both in momentum and in position space,
+(−k2)C(k) =−1⇐ ⇒ ∇ 2C(x−y) =−δ d(x−y).(83)
+Graphically, this yields
+=− .(84)
+Eqs. (79) and (81) show that in the limit ofµ→0, for all possible external momenta
+D1 +D 2 = + = 0.(85)
+If we want to know what is the probability that starting atx= 0the trace passes throughy, before
+going to a uniformly distributed target, then we can evaluate these diagrams atp= 0, and obtain
+(again forµ→0)
+D2 +D 3
+
+p=0 = 0.(86)
+This cancelation, if valid to higher loop-orders, would be very useful, as it takes out a pair of dia-
+grams with derivatives, leaving us with a perturbative expansion inγ 1 only. While this is correct at
+leading order (1 loop), if we insertD 1 toD 3 into a larger diagram, then the subtle change in momen-
+tum dependence leads to different diagrams. We show in section 3.13 and appendix B one effective
+cancelation scheme.
+After time-integration, these diagrams give
++ − = → .(87)
+The diagram we show on the r.h.s. is the diagram remaining inϕ 4-theory, i.e. for LERWs. Colors are
+chosen to make this equivalence suggestive.
+3.12 Simplifying theχ-theory:L LRW
+3
+In the calculations of the preceding sections, we saw that theχ-theory is only used to evaluate a 2-
+point function, namely⟨˜χ1
+2(x, t)χ1
+2(t, t)⟩. We know that this 2-point function is the same as that of a
+free theory. Therefore, we can simplify our theory one step further to
+LLRW
+3 ≃
+Z
+x
+˜ϕ(x, t)[∂t −γ∇ 2]ϕ(x, t) +˜ψ(x, t)∂tψ(x, t)−
+nαX
+α=1
+˜χα(x, t)∇2χα(x, t)
++g
+nαX
+α=1
+Z
+x
+˜ψ(x, t)ψ(x, t) ˜χα(x, t)χα(x, t)
+−γ
+Z
+x
+n
+˜ϕ(x, t) ˜χ1(x, t)δ˜ψ(x, t) +∇2
+h
+˜ϕ(x, t)δ˜χ1(x, t)
+i
+− ˜ϕ(x, t)∇2δ˜χ1(x, t)
+o
+ϕ(x, t).
+(88)
+This theory only has a single vector fieldχ α withn α = 0components. The purpose of this index
+is to eliminate loops made of Pnα
+α=1 ˜χα(x, t)∇2χα(x, t), as for self-avoiding polymers. The vertices
+reduce to
+Lg
+3 =g →g ,(89)
+−Lγ
+3 =γ 1 +γ +
+2 || −γ −
+2 || =γ 1 +γ L
+||
++ 2γD
+|
+| .(90)
+18
+3.13 More cancelations of diagrams
+In Section 3.11 we saw that some diagrams cancel exactly. This happens more generally. While the
+precise explanation is given in appendix B, we try to give the general idea here. The only surviving
+diagrams that contribute to the observableO(y, z|T)are those that contain no independent sub-loop
+(a red loop which does not emit a blue line, see definitions B.2 and B.3 in appendix B), noγ +
+2 , and as
+interaction onlyg 1. In particular, all diagrams containingγ +
+2 ,γ δχ
+1 org δχ (in the notations of appendix
+A.1) vanish.
+Let us give some examples: after time-integration, pairs of diagrams containing the following
+pattern cancel
+γδχ
+1
++ γ11
+γ+2 ≃0,(91)
+γ−212
++
+1
+2 γ−2
+γ+2 ≃0.(92)
+A special case of the first identity is Eq. (85). The second identity first shows up at 2-loop order.
+With justγ 1
+1,γ −
+2 andg 1 vertices (see Eq. (107) for the definition), one can draw diagrams contain-
+ingindependent sub-loopswithout aγ 1
+1 inside the loop, see the first diagram in Eq. (93) below. These
+cancel against the second type of diagrams in Eq. (93),
+γ11
+γ−2
+γ−2 γ−2
+g1
+1
+2 +
+γ11
+γ+2
+gδχgδχ
+g1
+12
+≃0(93)
+These simplifications allow us to get contributions to the observable by usingγ 1
+1,γ −
+2 andg 1 vertices
+only, subject to not forming any independent sub-loop. For example, the first diagram below is not
+allowed due to an independent sub-loop (highlighted), while the second has no independent sub-loop
+and is allowed,
+=not allowed, =allowed. (94)
+How these cancelations work in general, and how this allows one to show that our perturbation theory
+for LRWs agrees with that of LERWs is shown in Appendix B.
+4b-Laplacian random walks
+The action (88) is simple enough, such that we can generalize it to theb-Laplacian random walk.
+In the latter, instead of weighting the rate to go to a site adjacent to the tip with the solution of the
+Laplace equation, it is weighted by itsb-th power. In the corresponding field theory, we solve the
+19
+Laplace equation bybindependentχ-fields, and use as weight the product over thesebfields.
+Lb-LRW ≃
+Z
+x
+˜ϕ(x, t)[∂t −γ∇ 2]ϕ(x, t) +˜ψ(x, t)∂tψ(x, t)−
+nαX
+α=1
+bX
+b=1
+˜χα
+b (x, t)∇2χα
+b (x, t)
++g
+Z
+x
+˜ψ(x, t)ψ(x, t)
+nαX
+α=1
+bX
+b=1
+˜χα
+b (x, t)χα
+b (x, t)(95)
+−γ
+Z
+x
+n
+˜ϕ(x, t)˜χ(x, t)δ˜ψ(x, t) +∇2
+h
+˜ϕ(x, t)δ˜χ(x, t)
+i
+− ˜ϕ(x, t)∇2δ ˜χ(x, t)
+o
+ϕ(x, t),
+˜χ(x, t) =
+bY
+b=1
+˜χ1
+b(x, t), δ ˜χ(x, t) =˜χ(x, t)−1,˜χ 1
+b(x, t) = 1 +δ˜χ1
+b(x, t).(96)
+The last terms in the first line and the second line are the generalization of a singleχα-field tobcopies
+χα
+b , indexed byb= 1, ..., b. When the indexbis omitted, we mean the first indexb= 1.
+The effective potential steering the Laplacian random walk is ˜χ(x, t). When acting with the
+Laplacian on it, one gets a new type of interaction, since (withb= 2for simplification)
+∇2χ(x, t) =χ1(x, t)∇2χ2(x, t) +χ2(x, t)∇2χ1(x, t) + 2∇χ1(x, t)∇χ2(x, t).(97)
+It is the last vertex that complicates the diagrammatics for theb-Laplacian random walk [41].
+5 Diffusion Limited Aggregation
+5.1 Definition
+Diffusion limited aggregation is a process where particles start a random walk at the targettbefore
+hitting the seed or another point in the already constructed cluster, upon which they are placed at the
+last vertex before hitting it. The process stops when the cluster has reached the target. The proba-
+bilities for the different configurations may as for Laplacian random walks be obtained recursively,
+solving the Laplace equation. The only difference is that the cluster can now grow from any point,
+not only the tip of a path. We start with an example.
+5.2 Example
+Let us start our analysis by studying DLA growth on graphG 1 defined in Eq. (36). We find for the
+generating function
+GDLA = 9
+77 + 30
+77 + 32
+231 + 20
+231
++ 4
+77 + 25
+462 + 19
+462 + 1
+77
++ 25
+462 + 19
+462 + 1
+77 .(98)
+20
+0.1 0.2 0.3 DLA
+0.05
+0.10
+0.15
+0.20
+0.25
+static tree model
+Figure 4: Plot of the weights in Eq. (101) against those in Eq. (98). Equal weights are indicated by a densely
+dashed red line.
+How were the weights calculated? The tricky part is that each final configuration can be constructed
+in different orders. As an example consider
+32
+231 = 20
+231
+2
+1
+3
++ 4
+77
+1
+2
+3
+.(99)
+Here the numbers in red indicate in which order the edges were added. Each order is ahistory. For
+each history, we can evaluate its probability by solving the Laplace equation. This is how we arrived
+at the probabilities in Eq. (98). We checked our procedure with a Monte Carlo simulation, starting
+the particles at the target, and recording the graphs including their history. It is important to realize
+that while DLA ishistory dependent, LRW ishistory independent, since each path can only be grown
+in a single order. The question therefore arises whether a simple static theory can be constructed. We
+believe this to be impossible. Below we show that a generalization of the action (11) for LERWs to
+DLA gives the wrong weights.
+5.3 A conjecture
+A natural conjecture is to take the action (11), and allow for branching. This is a theory of trees in a
+background of loops with weight−1per oriented loop. Its action reads
+e−STL
+G =
+Y
+x∈V
+e− P
+i ˜ϕi(x)ϕi(x)−P
+j ˜χj (x)χj (x)
+n
+1+
+X
+i
+Y
+y∈V
+h
+1+βxy ˜ϕi(y)
+i
+ϕi(x)+
+X
+y∈V
+X
+j
+βxy ˜χj(y)χj(x)
+o
+≡
+Y
+x∈V
+e− P
+i ˜ϕi(x)ϕi(x)−P
+j ˜χj (x)χj (x)
+n
+1+
+X
+i
+e
+P
+y∈V βxy ˜ϕi(y)ϕi(x)+
+X
+y∈V
+X
+j
+βxy ˜χj(y)χj(x)
+o
+.(100)
+Herei= 1, ...,0denotes the components of the cluster; having the index run to0ensures that we get
+a single connected object. The second indexj= 1, ...,−1denotes the complex boson background
+(equivalent to one complex fermion) that solves the Laplace equation. The first and second line are
+equal, since even if more ˜ϕare offered in the second, they cannot be contracted as the out-degree of
+any vertex is either zero or one. We can choose whichever gives the better field theory.
+We may conjecture that⟨ ˜ϕ1(r)ϕ1(t)⟩is the probability to have a DLA seeded atrand ending at
+t. (In a simulationtis the point where particles are injected.) We studied this conjecture on graph
+G1. Our first concern is the normalization; if we take the normalization of theO(−2)theory, then all
+LRW configurations are given as before, while branching trees are extra. Instead we normalize such
+21
+that the prefactors add up to1.
+G= 18
+125 + 36
+125 − 6
+125 + 18
+125 + 12
+125
++ 12
+125 + 9
+125 + 6
+125 + 6
+125
++ 6
+125 + 4
+125 + 4
+125 .(101)
+Note that the diagrams are the same as in Eq. (98), given in the same order, and that the second
+diagram appears twice, once by itself, once with a loop on the lower two vertices. Comparison shows
+that the weights are different, even though there is some measure of correlation, as can be seen in
+Fig. 4. While the action (100) is not a theory for DLA, it would still be interesting to analyze it, and
+understand what physical situation it might describe.
+5.4 Lattice action for DLA as a growth process
+After the failure of our conjecture in the last section, we now write down a dynamic action following
+what we have done in Eq. (35) for Laplacian random walks. This theory contains no longer a tracer
+fieldψ, thus is seemingly simpler than the corresponding expression for LRWs.
+e−LDLA
+1 =
+Y
+x∈V
+exp
+
+− ˜ϕ(x, t)ϕ(x, t)−
+nαX
+α=1
+nχX
+j=1
+˜χα
+j (x, t)χα
+j (x, t)
+
+×
+Y
+x∈V\t
+ nαY
+α=1
+h
+1 +
+X
+y∈V
+ˆβxy
+nχX
+j=1
+˜χα
+j (y, t)χα
+j (x, t)
+i
++ ˜ϕ(x, t+1)ϕ(x, t)
++γ
+X
+y∈V
+βxy
+h
+Rxy ˜ϕ(y, t+1)˜ϕ(x, t+1)− ˜ϕ(x, t+1)
+i
+ϕ(x, t) ˜χ1
+2(y, t)
+
+×
+h
+1 + ˜ϕ(t, t+1)ϕ(t, t) +χ1
+2(t, t)
+i
+.(102)
+5.5 Numerical check
+Fig. 5 shows how this action calculates the DLA weights in Eq. (98). Starting with a seed at the
+leftmost vertex (marked in red), evolution progresses over several intermediate graphs to converge to
+the weights given in Eq. (98).
+22
+0 2 4 6 80.0
+0.1
+0.2
+0.3
+0.4
+GDLA (t)
+γt
+30
+77
+32
+231
+9
+77
+20
+231
+
+
+
+25
+462
+25
+462
+4
+77
+
+
+
+19
+462
+19
+462z }| {
+1
+77 , 1
+77
+n
+z}| {
+, , , , , ,
+Figure 5: The contributions to the processG DLA (t)are plotted against timeγtto show the convergence of the
+weights in the field theory (102). It is obtained by usingγ= 0.01. Each curve is associated with a tree. Starting
+from an empty graph with a seed (red curve), the graph is explored by intermediate trees (green curves) that
+finally reach the target, converging to the possible trees with DLA statistics (blue curves). To make overlapping
+curves visible, some are in yellow dashed.
+5.6 Improved lattice action
+As we did before for LRWs, the action (102) can be improved to contain fewer interaction vertices.
+e−LDLA
+2 =
+Y
+x∈V\t
+(
+exp
+
+− ˜ϕ(x, t)ϕ(x, t)−
+nαX
+α=1
+nχX
+j=1
+˜χα
+j (x, t)χα
+j (x, t)
+
+×
+ nαY
+α=1
+
+1 +
+X
+y∈V
+ˆβxy
+nχX
+j=1
+˜χα
+j (y, t)χα
+j (x, t)
+
+−1
++ exp
+
+˜ϕ(x, t+1)ϕ(x, t)+γ
+X
+y∈V
+βxy
+
+Rxy ˜ϕ(y, t+1)˜ϕ(x, t+1)−˜ϕ(x, t+1)
+
+ϕ(x, t) ˜χ1
+2(y, t)
+)
+×exp
+
+− ˜ϕ(t, t)ϕ(t, t)−
+nαX
+α=1
+nχX
+j=1
+˜χα
+j (t, t)χα
+j (t, t)
+h
+1 + ˜ϕ(t, t+1)ϕ(t, t) +χ1
+2(t, t)
+i
+.(103)
+The continuum limit is similar to Eq. (88). We will analyze this action and the ensuing field theory in
+forthcoming work [39].
+23
+6 Conclusion and Outlook
+In this work we have shown how to construct a lattice action for LRWs and DLA. It propagates
+the generating function from a given initial configuration. Each term evolves via Laplacian growth
+until a path or cluster has reached a prescribed target. Alternatively, one can study an ensemble
+of fixed elapsed times or its Laplace transform. In a second step we went to the continuum limit.
+We showed how LERW configurations emerge in the large-time limit of Laplacian growth. This
+formulation is simple enough to allow for a perturbative renormalization-group analysis: first for the
+b-Laplacian random walk, which was previously unattainable via the renormalization group. We also
+have preliminary result for DLA which has eluded a proper theoretical treatment since its introduction
+forty years ago. We will report on these advances in forthcoming publications.
+Acknowledgements
+We thank F. David, D. Gaby, G. Lawler, A. Nahum, and I. Procaccia for stimulating discussions.
+Appendices
+A Perturbative calculations with actionL LRW
+1
+A.1 Notations
+Throughout the paper we employ the following conventions: full lines for propagators, dotted lines
+to separate interaction vertices so that they are easier to read, dashed lines for the fluctuating part of
+the fields (δ˜χandδ ˜ψ), and dash-dotted lines for omitted propagators or parts of a diagram.
+Let us start with the vertices we keep after simplifications. We always give−Lto avoid additional
+minus signs in the perturbative expansion; the weight ise −
+R
+t L. The simplified action (89)-(90) is
+−Lg
+3 =−g → −g ,(104)
+−Lγ
+3 =γ 1 +γ +
+2 || −γ −
+2 || =γ 1 +γ L
+||
++ 2γD
+|
+| .(105)
+(The indices L and D indicate Laplacian and drift.) Expanding˜χ= 1 +δ˜χ, we get
+γ1 =γ 1
+1 +γ δχ
+1 ,−g =−g 1 −g δχ .(106)
+In proposition B.11 only the following vertices contribute to classA
+−LA =γ 1
+1 −γ −
+2 || −g 1 .(107)
+For classBthere are in addition
+−LB =γ δχ
+1 +γ +
+2 || −g δχ .(108)
+Similarly there are irrelevant vertices that exist in action (42), but which we exclude through power
+counting in section 3.6
+−Lirrel =γ +ψ
+2 || −gγ ψ −gγ χα
+α
+.(109)
+24
+Their 1-loop contributions are shown to cancel in section A.4. Finally, some interactions are sup-
+pressed by summing chains of them in appendices A.2 and A.3,
+−Lg
+ϕψ =−g ϕψ −g ψψ .(110)
+A.2 Tip-tracer interactions
+Interactions betweenϕ(the tip, red) andψ(the tracer, blue) are present in action (42),
+−gϕψ .(111)
+This interaction is unphysical, as the tracer and the tip never interact directly in the lattice action.
+Instead, their interaction is mediated by the explorer (green line), which checks if a site is occupied or
+not before moving the tip there. Consistent with this observation, the interaction should be irrelevant.
+To see this, note that one can stack an arbitrary number ofg ϕψ vertices on top of each other, creating
+a “chain of tadpoles”
+−gϕψ +
+ 
+−gϕψ
+2
++
+ 
+−gϕψ
+3
++...≃ −gϕψ
+"
+1+
+
+−gϕψ
+
++
+
+−gϕψ
+2
++...
+#
+=−g ϕψ
+1
+1 +g ϕψ
+.(112)
+As the tadpole diagram is very large, the effective interaction vanishes.
+A.3 Tracer-tracer interactions
+−gψψ (113)
+This blue-blue interaction should be irrelevant as the red-blue interaction (section A.2), since two blue
+lines can never be produced at the same site, and while they propagate in time, they do not propagate
+in space. To see this, stackg ψψ vertices on top of each other to create a “chain of bubbles”
+−gψψ +
+ 
+−gψψ
+2
++
+ 
+−gψψ
+3
++...≃ −gψψ
+"
+1+
+
+−gψψ
+
++
+
+−gψψ
+2
++...
+#
+=−g ψψ
+1
+1 +g ψψ
+.(114)
+The diagram is again very large,
+:=
+Z
+ddk.(115)
+Thus the blue-blue interaction is also irrelevant.
+A.4 Tadpole and bubble cancelations
+There are many tadpole and bubble diagrams appearing in the perturbative expansion obtained from
+the LagrangianL LRW
+1 . While tedious to calculate, they all cancel. To illustrate this, all such 1-loop
+diagrams are collected in table 1. Used are the less relevant verticesγ +ψ
+2 from Eq. (48) andgγ χ,gγ ψ
+from Eq. (49); they are collected in Eq. (109).
+25
+1st 2nd 3rd diagrams integrated diagrams
+result
+vaccuum
+bubble tadpole 2-point
+loop
+−gγ χ - - −gγ χ - − -
+γ1 −gγ ψ - −g γ1γψ
+γ - − -
+γ+ψ
+2 −gγ ψ -
+||
+g γ+ψ
+2 γψ
+γ - -
+γ1 γ+ψ
+2
+−g
+||
+g γ1γ+ψ
+2
+γ
+
++ p2
+ p
+- p2
+(−g)γ +
+2 ||
+|| −g γ1γ+ψ
+2 γ+
+2
+γ2
+
++ p2
+ p
+- − − p2
+(−g)(−γ −
+2 ) ||
+||
+g γ1γ+ψ
+2 γ−
+2
+γ2 - -
+γ+ψ
+2
+γ+ψ
+2
+−g
+||
+|| −g γ+ψ
+2 γ+ψ
+2
+γ
+
++ p2
+ p
+− − p2 -
+(−g)γ +
+2 ||
+||
+||
+g γ+ψ
+2 γ+ψ
+2 γ+
+2
+γ2
+
++ p2
+ p
+p2 -
+(−g)(−γ −
+2 )
+||
+||
+||
+−g γ+ψ
+2 γ+ψ
+2 γ−
+2
+γ2 − - -
+γ1
+−g
+||
+g γ1γ+ψ
+2
+γ - -
+(−g)γ +
+2 ||
+||
+−g γ1γ+ψ
+2 γ+
+2
+γ2 - − -
+(−g)(−γ −
+2 )
+||
+||
+g γ+
+2 γ1γ−
+2
+γ2 - -
+Table 1: All diagrams originating from irrelevant vertices in the LagrangianL LR W
+1 defined in Eq. (35). First
+three columns: vertices used, ordered in time; thegalways occurs with the thirdγ. Fourth column: dia-
+gram obtained using those vertices; fifth column: result after time-integration and simplifications; last column:
+summary. As is evident from the last column, the sum of all diagrams vanishes.
+B Simplifications and their proof
+Here we treat the LagrangianL LRW
+3 with the vertices in Eqs. (104)-(105). The probability
+⟨O(y,t)⟩:= lim
+T→∞
+⟨O(y,t|T)⟩(116)
+that a path emanating fromr= 0passes throughybefore ending intwas considered at tree level in
+section 3.10, and to 1-loop order in section 3.11. An important test of our theory is that⟨O(y,t)⟩has
+the same perturbative expansion as for LERWs. As shown above, at tree and 1-loop order this is the
+case. Here we show how this continues to higher orders.
+26
+What we will prove first is that the sum over all diagrams can be reduced to the sum over a subset
+A, which contains only single-interacting vertices of theγ −
+2 type, and the similarly non-interacting
+γ1
+1, without any independent sub-loop. Its complementBcontains diagrams that cancel in pairs. In a
+second step, we verify to 3-loop order that diagrams in classAare equivalent to diagrams for LERWs.
+To formalize the proof, we use the following conventions: the red line goes from(0,0)to(t, T).
+When we saybeforeorafter, we use time in the red line as a reference; this also sets the order of the
+vertices. When the red line continues in green to form a loop, the order continues along the direction
+of the green line.
+Definition B.1.Aninteracting vertexΓis a vertex whose outgoing green line interacts. If the green
+line interacts only once,Γis said to besingle-interacting, otherwise it ismulti-interacting. Multi-
+interacting vertices are denotedΓ (n), wherenis the number of interactions. For single-interacting
+vertices,n= 1will be omitted.
+Examples of a multi-interactingγ +
+2 and a multi-interactingγ −
+2 vertex withn= 2are
+γ+(2)
+2 =
+||, γ −(2)
+2 = || .(117)
+A multi-interacting vertex is aγ-vertex followed by a sequence ofg-vertices. In the previous example
+γ−(2)
+2 =γ −
+2 g2.
+Definition B.2.LetB +
+L be the set of diagrams that contains the ordered sequence of vertices
+L+(k, n) =γ1
+1 →
+ 
+γ−
+2
+k
+→γ +(n+1)
+2 .(118)
+This sequence is said to be anindependent plus sub-loop. (Note that allγ −
+2 vertices are single-
+interacting.)
+Note that we use(n+ 1)for the lastγ +
+2 vertex to highlight that there arenintermediate interactions,
+while the last one is used to complete the loop: it interacts with theγ 1-vertex at the beginning of the
+sequence. For example
+L+(2,1) = ||
+||
+γ1
+1
+γ−
+2
+γ−
+2
+γ+(2)
+2
+.(119)
+Analogously, we defineB −
+L by usingγ −
+2 as the last vertex.
+Definition B.3.LetB −
+L be the set of diagrams that contains the following ordered sequence of vertices
+L−(k, n) =γ1
+1 →
+ 
+γ−
+2
+k
+→γ −(n+1)
+2 .(120)
+This sequence is said to be anindependent minus sub-loop.
+An example is
+L−(1,2) = ||
+||
+||
+γ1
+1
+γ−
+2
+γ−
+2
+γ−(2)
+2
+.(121)
+To show cancelation of all diagrams inB, we first show cancelation betweenB +
+L andB −
+L .
+27
+Definition B.4.The set of all diagrams with sub-loops isB L :=B +
+L ∪B −
+L . We say a diagramDhas a
+sub-loop ifD ∈BL.
+Proposition B.5.Distinct sub-loops have no common vertex.
+Proof.By definition, a sub-loop contains a singleγ 1
+1 vertex at its start.
+Proposition B.6.Every independent plus sub-loop is canceled by an independent minus sub-loop,
+andvice versa. The canceling pairs are
+L+(k, n)↔L −(k−1, n+1), k >0,
+L+(0, n)↔L −(n,0). (122)
+Proof.We need to find a one-to-one correspondence between independent plus and minus sub-
+loops, and show that these pairs cancel. Take an independent plus sub-loopL +(k, n), and letI=
+{1, . . . , k, k+ 1. . . , k+n}be the labels of the interacting incoming blue lines, ordered by following
+first the red line fori= 1, . . . , k, and then the green line fori=k+ 1, . . . , k+n. Examples are given
+in Eqs. (123) and (124) below.
+Let us verify these cancelations, first fork >0. We can simplifyL +(k, n)by acting with the
+Laplacian inside the loop, and then integrating over time,
+L+(k, n) =
+1
+k
+k+1k+n
+≃ −
+1
+kk+1k+n
+≃ −
+1
+kk+1k+n .(123)
+According to Eq. (122) its partner is
+L−(k−1, n+1) =
+1
+k−1
+kk+n
+≃
+1
+k−1
+kk+n
+≃
+1 k−1
+kk+n .(124)
+Consider the remaining casek= 0, for which the first diagram reads
+L+(0, n) =
+1n
+≃ − 1
+n
+.(125)
+Its partner is
+L−(n,0) =
+1
+n ≃ 1
+n
+.(126)
+Pairs of diagrams vanish due to the sign difference between theγ +
+2 and theγ −
+2 vertices.
+28
+Proposition B.7.There is a one-to-one correspondence and cancelation between diagrams inB +
+L
+andB −
+L .
+Proof.The proof follows from Proposition B.6 by matching diagrams according to the independent
+sub-loop encountered first when following the red line from its starting point. By encounter we mean
+reaching the firstγ-vertex of the loop.
+Definition B.8.Consider diagrams without independent sub-loops. They can be divided into subsets
+according to the order in which interacting vertices appear,
+•A:={diagrams with no independent sub-loop, and where the only interacting vertices are
+single-interactingγ −
+2 vertices},
+•B 1 :={diagrams with no independent sub-loops and whose first interacting vertex that is not a
+single-interactingγ −
+2 isγ δχ
+1 },
+•B −
+2 :={diagrams with no independent sub-loops and whose first interacting vertex that is not a
+single-interactingγ −
+2 is a multi-interactingγ −
+2 },
+•B +
+2 :={diagrams with no independent sub-loops and whose first interacting vertex that is not a
+single-interactingγ −
+2 isγ +
+2 }.
+Proposition B.9.The setDof all diagrams can be decomposed into disjoint sets
+D=A ˙∪B +
+L ˙∪B −
+L ˙∪B 1 ˙∪B +
+2 ˙∪B −
+2 .(127)
+Proof.Take a diagramD. If it has a sub-loop, it is either inB +
+L orB −
+L . Otherwise follow the red
+line from its starting point. If there are onlyγ 1
+1 and single-interactingγ −
+2 vertices along this line, then
+D ∈A. Else consider the first vertex other thanγ 1
+1 or a single-interactingγ −
+2 . It either is aγ δχ
+1 , a
+multi-interactingγ −
+2 or aγ +
+2 , which putsDintoB 1,B −
+2 orB +
+2 respectively.
+Proposition B.10.There is a one-to-one correspondence and cancelation between diagrams inB 1 ∪
+B−
+2 and diagrams inB +
+2 .
+Proof.To prove this, we need to find a one-to-one correspondence and then show that corresponding
+diagrams cancel.
+We start by considering a diagramD ∈B1, and callΓits first interactingγ δχ
+1 vertex. To construct
+a diagramD ′ ∈B +
+2 that cancels it, takeDand add aγ +
+2 vertex afterΓ. Then use the outgoing green
+line fromγ +
+2 to replace the interacting green line ofΓ. By definition,D ′ ∈B +
+2 . This operation can
+graphically be written as
+D= γδχ
+1
+− → D′ =
+γ1
+1
+γ+
+2 ≃ − .(128)
+As is evident from this equation,D ′ equals−Dafter time integration, thusD+D ′ = 0.
+We have identified a canceling diagram by starting fromB 1. Now consider a diagramD ∈B −
+2 .
+DenoteΓits first multi-interactingγ −
+2 vertex andΓ ′ the first interactinggvertex afterΓ, following the
+green line. To constructD ′ takeDand add aγ +
+2 vertex afterΓ. Then use its outgoing green line to
+replace the interacting green line fromΓ ′. As a result,Γis single-interacting, the next vertex isγ +
+2 ,
+and thereforeD ′ ∈B +
+2 . With the corresponding integrations
+D=
+12
+γ−
+2
+≃
+12
+− → D′ =
+1
+2 γ−
+2
+γ+
+2 ≃ −
+12
+.(129)
+29
+As before,D ′ equals−Dafter integration, and thereforeD+D ′ = 0. Let us stress that the order of
+the interaction vertices is the same in both diagrams, which is important for proper cancelations. We
+thus identified the canceling diagrams by starting fromB −
+2 .
+Next we need to identify the canceling diagramDstarting fromD ′ ∈B +
+2 . To this end, look at the
+vertex preceding the first interactingγ +
+2 vertex inD ′. There are two possibilities: it either is a non-
+interactingγ 1
+1, or a single-interactingγ −
+2 . In the former case,Dcan be identified by time integration
+with a diagram inB 1, see Eq. (128) read from right to left. In the latter case,Dcan be obtained by
+“gluing back” the green line fromγ +
+2 to the precedingγ −
+2 , see Eq. (129) read from right to left.
+To complete the proof we have to show that the procedure is a bijection. This is insured since in
+our construction we used the same Eqs. (128) or (129) both forwards and backwards.
+Proposition B.11.The observable⟨O(y,t)⟩is given by the diagrams inA.
+Proof.The proof follows from the cancelations in propositions B.7 and B.10, which imply that there
+are no surviving diagrams other than those inA.
+Check B.12.First, to 3-loop order, the observable⟨O(y,t)⟩calculated with all vertices from action
+(88) agrees with the result obtained for LERWs in [6]. Second, we checked proposition B.11 to 3-loop
+order: diagrams in classAagree with the result for LERWs in [6]. This is shown in appendix C.
+C Observable up to 3-loop order
+C.1 1 loop
+In this appendix we give all diagrams that one can construct for⟨O(y,t)⟩from action (107). This
+includes sub-loops as defined in definitions B.2 and B.3. Sub-loops are highlighted; diagrams with
+sub-loops are to be excluded. We then check that the 2-loop and 3-loop results agree with [6]. For
+one loop this is done in Eq. (87).
+C.2 2 loops
++ + + + + .(130)
+This equation shows all diagrams constructed fromγ 1
+1 (γ1 without outgoing green line) ,γ −
+2 (one
+outgoing green line with a Laplacian acting on it), andg 1 (interactiongwithout outgoing green line).
+Subloops are highlighted; the corresponding diagrams do not contribute toO. After time integration,
+the remaining ones are inϕ 4 notation
++ + = + 2 .(131)
+Multiplying with(−g) 2, this agrees with the orderg 2
+0 term in Eq. (D1) of [6].
+30
+C.3 3 loops
++ + + + +
++ + + + + +
++ + + + + +
++ + + + + +
++ + + + + +
+31
++ + + + + + +
++ + + + + + +
++ + + + + + (132)
+Discarding diagrams with sub-loops (highlighted), and integrating over time, we get
+2 + 8 + 2 + + 2 .(133)
+Multiplying with(−g) 3, this agrees with the orderg 3
+0 term in Eq. (D1) of [6].
+References
+[1] G.F. Lawler,A self-avoiding random walk, Duke Math. J.47(1980) 655–693, MR587173.
+[2] O. Schramm,Scaling limits of loop-erased random walks and uniform spanning trees, Israel J.
+Math.118(2000) 221–288, arXiv:math/9904022.
+[3] G.F. Lawler, O. Schramm and W. Werner,Conformal invariance of planar loop-erased random
+walks and uniform spanning trees, Ann. Probab.32(2004) 939–995, arXiv:math/0112234.
+[4] J. Cardy,SLE for theoretical physicists, Ann. Phys. (NY)318(2005) 81–118, cond-
+mat/0503313v2.
+[5] D.B. Wilson,Dimension of the loop-erased random walk in three dimensions, Phys. Rev. E82
+(2010) 062102, arXiv:1008.1147.
+32
+[6] K.J. Wiese and A.A. Fedorenko,Field theories for loop-erased random walks, Nucl. Phys. B
+946(2019) 114696, arXiv:1802.08830.
+[7] K.J. Wiese and A.A. Fedorenko,Depinning transition of charge-density waves: Mapping onto
+O(n)symmetricϕ 4 theory withn→ −2and loop-erased random walks, Phys. Rev. Lett.123
+(2019) 197601, arXiv:1908.11721.
+[8] T. Helmuth and A. Shapira,Loop-erased random walk as a spin system observable, J. Stat.
+Phys.181(2020) 1306–1322, arXiv:2003.10928.
+[9] A. Shapira and K.J. Wiese,An exact mapping between loop-erased random walks and an
+interacting field theory with two fermions and one boson, SciPost Phys.9(2020) 063,
+arXiv:2006.07899.
+[10] M. Kompaniets and K.J. Wiese,Fractal dimension of critical curves in theO(n)-symmetric
+ϕ4-model and crossover exponent at 6-loop order: Loop-erased random walks, self-avoiding
+walks, Ising, XY and Heisenberg models, Phys. Rev. E101(2019) 012104, arXiv:1908.07502.
+[11] D. Dhar,Self-organized critical state of sandpile automaton models, Phys. Rev. Lett.64(1990)
+1613–1616.
+[12] S.N. Majumdar and D. Dhar,Equivalence between the Abelian sandpile model and theq→0
+limit of the Potts-model, Physica A185(1992) 129–145.
+[13] O. Narayan and A.A. Middleton,Avalanches and the renormalization-group for pinned charge-
+density waves, Phys. Rev. B49(1994) 244–256.
+[14] J.W. Lyklema, C. Evertsz and L. Pietronero,The Laplacian random walk, EPL2(1986) 77.
+[15] M.B. Hastings,Exact multifractal spectra for arbitrary Laplacian random walks, Phys. Rev.
+Lett.88(2002) 055506.
+[16] G.F. Lawler,The Laplacian-brandom walk and the Schramm-Loewner evolution, Illinois J.
+Math.50(2006) 701–746.
+[17] T.A. Witten and L.M. Sander,Diffusion-limited aggregation, a kinetic critical phenomenon,
+Phys. Rev. Lett.47(1981) 1400–1403.
+[18] T.A. Witten and L.M. Sander,Diffusion-limited aggregation, Phys. Rev. B27(1983) 5686–
+5697.
+[19] P. Meakin,Diffusion-controlled deposition on fibers and surfaces, Phys. Rev. A27(1983)
+2616–2623.
+[20] P. Meakin,Diffusion-controlled cluster formation in two, three, and four dimensions, Phys. Rev.
+A27(1983) 604–607.
+[21] L. Niemeyer, L. Pietronero and H.J. Wiesmann,Fractal dimension of dielectric breakdown,
+Phys. Rev. Lett.52(1984) 1033–1036.
+[22] T.C. Halsey, P. Meakin and I. Procaccia,Scaling structure of the surface layer of diffusion-
+limited aggregates, Phys. Rev. Lett.56(1986) 854–857.
+[23] T.C. Halsey, M.H. Jensen, L.P. Kadanoff, I. Procaccia and B.I. Shraiman,Fractal measures and
+their singularities: The characterization of strange sets, Phys. Rev. A33(1986) 1141–1151.
+33
+[24] P. Meakin and S. Tolman,Diffusion-Limited Aggregation: Recent Developments, pages 137–
+168, Springer US, Boston, MA, 1989.
+[25] A. Sánchez, F. Guinea, L.M. Sander, V . Hakim and E. Louis,Growth and forms of Laplacian
+aggregates, Phys. Rev. E48(1993) 1296–1304.
+[26] T.C. Halsey,Diffusion-limited aggregation as branched growth, Phys. Rev. Lett.72(1994)
+1228–1231.
+[27] B.B. Mandelbrot, A. Vespignani and H. Kaufman,Crosscut analysis of large radial DLA:
+Departures from self-similarity and lacunarity effects, Europhys. Lett.32(1995) 199.
+[28] T.C. Halsey,Diffusion-limited aggregation: A model for pattern formation, Physics Today53
+(2000) 11.
+[29] S.I. López and L.P.R. Pimentel,Geodesic forests in last-passage percolation, Stochastic Pro-
+cesses and their Applications127(2017) 304–324.
+[30] N. Berger, E.B. Procaccia and A. Turner,Growth of stationary Hastings-Levitov, Ann. App.
+Prob. (2022) 3331–3360, arXiv:2008.05792.
+[31] E.B. Procaccia and I. Procaccia,Dimension of diffusion-limited aggregates grown on a line,
+Phys. Rev. E103(2021) L020101.
+[32] J.M. Tenti, S.N. Hernández Guiance and I.M. Irurzun,Fractal dimension of diffusion-limited
+aggregation clusters grown on spherical surfaces, Phys. Rev. E103(2021) 012138.
+[33] M.B. Hastings and L.S. Levitov,Laplacian growth as one-dimensional turbulence, Physica D
+116(1998) 244–252.
+[34] V .A. Bogoyavlenskiy and N.A. Chernova,Diffusion-limited aggregation: A revised mean-field
+approach, Phys. Rev. E61(2000) 5422–5428.
+[35] R.W. Kenyon and D.B. Wilson,Spanning trees of graphs on surfaces and the intensity
+of loop-erased random walk on planar graphs, J. Amer. Math. Soc.28(2015) 985–1030,
+arXiv:1107.3377.
+[36] P.W. Kasteleyn, in F. Harary, editor,Graph Theory and Theoretical Physics, Academic Press,
+London and New York, 1967.
+[37] A.A. Fedorenko, P. Le Doussal and K.J. Wiese,Field theory conjecture for loop-erased random
+walks, J. Stat. Phys.133(2008) 805–812, arXiv:0803.2357.
+[38] S.N. Majumdar,Exact fractal dimension of the loop-erased self-avoiding walk in two dimen-
+sions, Phys. Rev. Lett.68(1992) 2329–2331.
+[39] P. Pisapia and K.J. Wiese,Field theory for diffusion-limited aggregation, in preparation.
+[40] K.J. Wiese,Theory and experiments for disordered elastic manifolds, depinning, avalanches,
+and sandpiles, Rep. Prog. Phys.85(2022) 086502 (133pp), arXiv:2102.01215.
+[41] P. Pisapia and K.J. Wiese,Field theory for theb-Laplacian random walk, to be published 2026.
+34

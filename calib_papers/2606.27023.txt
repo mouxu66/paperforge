@@ -1,0 +1,2263 @@
+Just how sure are you? Improving Verbalized Uncertainty Calibration in
+Medical VQA
+Eren Senoglu1, Federico Toschi1, Nicolò Brunello1, Andrea Sassella1,
+Mark J. Carman1
+1Politecnico di Milano
+Abstract
+Multimodal large language models (MLLMs)
+applied to Medical Visual Question Answering
+(VQA) tend to produce overconfident outputs
+regardless of actual correctness, and existing
+verbalized confidence calibration methods, de-
+veloped primarily for text-only LLMs, do not
+account for the multimodal nature of medical
+image understanding.
+This work proposes a training-based framework
+that fine-tunes MLLMs to improve their calibra-
+tion using a composite loss function combining
+a Brier-style calibration term, an anchor regu-
+larizer that prevents confidence collapse toward
+extreme values, a contrastive image-text align-
+ment term, and a KL-based model stabilization
+term. The alignment signal is derived from a
+2×2 factorial perturbation design that crosses
+image presence with text integrity, probing the
+model’s reliance on visual modality input ver-
+sus language priors. Finally, a top-k KL diver-
+gence regularizer is used to protect the model’s
+answering ability during fine-tuning.
+Across three Medical VQA benchmarks and
+two architectures (MedGemma-4B-IT and
+Qwen2-VL-7B-Instruct), our method reduces
+calibration error by 60% or more, and im-
+proves discrimination by 26% or more, while
+preserving predictive accuracy. On aver-
+age across benchmarks, the technique outper-
+forms prompting-based, sampling-based, and
+training-based approaches, and ablation experi-
+ments confirm that each component of the loss
+function is indeed necessary for improving the
+calibration. All code for the experiments is
+publicly available.1
+1 Introduction
+Medical AI systems have progressed from black-
+box models that produce predictions without ex-
+planation, to MLLMs that generate interpretable
+1https://github.com/ErenSenoglu/
+Verbalized-Uncertainty-Calibration-for-MedVQA
+reasoning traces alongside their answers. A natu-
+ral next step in this progression is calibrated self-
+assessment: a model that not only explains its rea-
+soning but also communicates how much it trusts
+its own answer. Recent benchmarks show that
+MLLMs achieve competitive performance on med-
+ical knowledge tasks (Sellergren et al., 2025) and,
+in some settings, match or exceed physician-level
+diagnostic accuracy (Sheng et al., 2026; Nori et al.,
+2025), driving interest in clinical applications such
+as report drafting, case summarization, and deci-
+sion support. However, these models consistently
+express high confidence even when their answers
+are incorrect, limiting their reliability in clinical
+use.
+A clinician who receives a model-generated sug-
+gestion must manually verify the reasoning and
+check whether it is grounded in the image, a pro-
+cess that negates the efficiency gains the system is
+meant to provide. A more practical paradigm is one
+where the model communicates its own uncertainty,
+analogous to how a human colleague qualifies a
+recommendation, so that the user can focus verifi-
+cation effort on the cases the model itself flags as
+uncertain.
+Existing verbalized confidence calibration meth-
+ods have been developed for text-only LLMs and
+do not account for the multimodal nature of medi-
+cal image understanding. In this work, we propose
+a training-based framework for verbalized confi-
+dence calibration in Medical VQA, built on three
+contributions: (1) a 2×2 factorial perturbation
+design that probes the model’s reliance on visual
+evidence versus language priors, (2) a composite
+calibration loss that combines Brier-based calibra-
+tion with a contrastive alignment term derived from
+the perturbation conditions, and (3) a top-k KL di-
+vergence regularizer that preserves the answer dis-
+tribution during confidence training. Across three
+benchmarks spanning different accuracy regimes
+and two model architectures, our method outper-
+1
+arXiv:2606.27023v1  [cs.LG]  25 Jun 2026
+forms all compared baselines on average ECE,
+Brier Score, and AUROC.
+2 Related Work
+Confidence estimation for LLMs falls into three
+broad families. Token-probability methods treat
+output logits directly as confidence scores, us-
+ing sequence-level perplexity (Malinin and Gales,
+2021) or semantic weighting of answer-relevant
+tokens (Bakman et al., 2024). Verbalized con-
+fidence methods prompt the model to express
+certainty in natural language (Tian et al., 2023).
+Consistency-based methods aggregate multiple
+sampled responses to estimate uncertainty through
+voting (Wang et al., 2023), semantic cluster-
+ing (Kuhn et al., 2023), or perturbation-based vari-
+ance (Zhang et al., 2024a). Top-K Sampling (Xiong
+et al., 2024) generates multiple answers per ques-
+tion and averages their confidence scores, while
+SteerConf (Zhou et al., 2025) prompts the model
+at multiple steering levels and aggregates the re-
+sponses into a composite score. Beyond these,
+internal-representation approaches extract confi-
+dence signals from hidden states or intermediate
+layers (Xiao et al., 2025b; Padhi et al., 2025; Liu
+et al., 2024), and architectural alternatives such as
+LARS (Yaldiz et al., 2024) attach dedicated con-
+fidence heads to the model. Pre-trained models
+exhibit calibrated self-knowledge (Kadavath et al.,
+2022), but token probabilities degrade after RLHF
+alignment (Tian et al., 2023), hidden-state meth-
+ods require white-box access to model internals,
+and consistency methods require multiple inference
+passes at test time. Among these families, verbal-
+ized confidence is the most practical for deploy-
+ment, as it requires no access to model internals
+and produces human-interpretable outputs, but the
+resulting confidence scores are poorly calibrated
+without further training (Groot and Valdenegro-
+Toro, 2024; Leng et al., 2025; Xiao et al., 2025a).
+Calibrating verbalized confidence has therefore
+become an active research direction.Supervision-
+based(SFT) methods construct proxy targets
+through token-probability distillation (Lin et al.,
+2022), post-fine-tuning self-assessment (Chaudhry
+et al., 2024), systematic question-context muta-
+tions (Han et al., 2024), or clustering of sampled
+reasoning chains (Xu et al., 2024).Reward-based
+RLmethods instead optimize proper scoring rules
+directly: Rewarding Doubt (Stangel et al., 2025)
+and LoVeC (Zhang et al., 2025) use logarithmic
+scoring, while ReCalibrate (Damani et al., 2025)
+uses the Brier score. ConfTuner (Li et al., 2025)
+bridges both directions by replacing the SFT cross-
+entropy loss with a tokenized Brier score, comput-
+ing the expected squared error under the model’s
+probability distribution over confidence tokens. Un-
+like standard cross-entropy, which treats all token
+mismatches equally, this formulation naturally en-
+codes ordinal structure: the penalty for predicting
+confidence 3 when the correct value is 2 is smaller
+than for predicting 7, achieving the theoretical guar-
+antees of proper scoring rules without requiring
+policy optimization. To preserve answering ability
+during confidence training, it regularizes the an-
+swer tokens with a cross-entropy loss computed on
+the model’s own outputs.
+Despite their differences in training signal and al-
+gorithm, these methods share two limitations: they
+all operate on text-only LLMs without accounting
+for the visual modality, and they train on a single
+input condition, so the model never observes what
+happens when evidence sources are removed or
+disrupted. To the best of our knowledge, no ex-
+isting method applies training-based calibration to
+multimodal models in the medical domain: multi-
+modal work applies perturbation-based fine-tuning
+to object-level detection in general domains (Zhao
+et al., 2025) or remains prompt-based (Xuan et al.,
+2025), and medical methods rely on prompt engi-
+neering (Kriz et al., 2025) rather than fine-tuning.
+3 Methodology
+We formalize the task as follows. Given a med-
+ical image x, a question q, and A answer op-
+tions O, the model generates a reasoning trace
+r, an answer a∈ O , and a verbalized confi-
+dence score c drawn from a discrete integer scale,
+normalized to ˆc=c/N A ∈[0,1] . We adopt
+an answer-first, confidence-second generation or-
+der, which prior work shows produces better cali-
+brated outputs (Li et al., 2025; Zhou et al., 2025).
+We evaluate confidence quality along two axes:
+calibration(stated confidence matches empirical
+correctness probability) anddiscrimination(cor-
+rect predictions receive higher confidence than in-
+correct ones), using Expected Calibration Error
+(ECE) (Guo et al., 2017), Brier Score (Brier, 1950),
+and AUROC (Hanley and McNeil, 1982).
+2
+Original
+Visual
+Contrast
+Text-Perturbed
+Visu?al
+Contrast
+Text
+Perturbed
+Q:
+What
+does
+this
+neck
+X-ray
+show?
+A)
+Cervical
+fracture
+B)
+Normal
+alignment
+C)
+Disc
+herniation
+D)
+Soft
+tissue
+swelling
+Q:
+What
+does
+this
+neck
+X-ray
+show?
+A)
+Cervical
+fracture
+B)
+Normal
+alignment
+C)
+Disc
+herniation
+D)
+Soft
+tissue
+swelling
+Q:
+What
+does
+this
+neck
+X-ray
+show?
+A)
+Thyroid
+calcification
+B)
+Cervical
+spondylosis
+C)
+Atlantoaxial
+subluxation
+D)
+Cervical
+fracture
+Q:
+What
+does
+this
+neck
+X-ray
+show?
+A)
+Thyroid
+calcification
+B)
+Cervical
+spondylosis
+C)
+Atlantoaxial
+subluxation
+D)
+Cervical
+fracture
+Perturbed
+/
+Original
+Options
+Black
+/
+Original
+Image
+Figure 1: The2×2factorial perturbation design illustrated on a cervical X-ray example from OmniMedVQA.
+3.1 Factorial Perturbation Design
+In Medical VQA, the ground truth is by defini-
+tion embedded in the image modality: answering
+correctly requires interpreting the visual evidence.
+Textual cues such as option co-occurrence patterns
+or positional biases often act as dataset-specific
+shortcuts rather than reflecting visually-grounded
+diagnostic reasoning. We therefore hypothesize
+that well-calibrated confidence should reflect the
+contribution of each evidence source to the pre-
+diction, and we design a perturbation scheme that
+teaches the model to ground its confidence in evi-
+dence utilization.
+We cross two perturbation axes, image availabil-
+ity (original versus black image) and text integrity
+(original versus perturbed options), in a 2×2 facto-
+rial design that yields four conditions per question
+(see Figure 1). The black-image condition removes
+all visual evidence while preserving the input struc-
+ture, probing the model’s reliance on the visual
+modality rather than degrading it with classical per-
+turbations such as Gaussian noise, which distort
+diagnostic features in medical images (Liao et al.,
+2025; Avestimehr et al., 2025). We discuss the de-
+sign rationale and provide qualitative examples of
+model behavior under the black-image condition
+in Section A.7 (Appendix). The perturbed-options
+condition shuffles the option order and replaces
+all distractors with options from other same-type
+questions (e.g., disease diagnosis from disease di-
+agnosis), destroying memorized option patterns
+while keeping the correct answer and question un-
+changed.
+For each sample under each condition, we gener-
+ate G= 10 independent responses at temperature
+T= 1.0and compute the fractional accuracy:
+ˆaj(i) = 1
+G
+GX
+g=1
+y(g)
+i,j ,(1)
+where y(g)
+i,j ∈ {0,1}is the correctness of the g-th
+response for sample i under condition j. These
+fractional estimates approximate the true correct-
+ness probability pi and serve as training targets for
+the Brier loss, whose optimum is ˆc∗
+i =p i, (see
+Section A.3).
+3.2 Composite Calibration Loss
+During training, the model autoregressively gen-
+erates a sequence consisting of three segments: a
+reasoning trace, an answer, and a verbalized con-
+fidence token. Following ConfTuner’s tokenized
+Brier score methodology (Li et al., 2025), the con-
+fidence token is drawn from a discrete integer scale
+determined by the model’s available single-token
+integers and normalized to [0,1] by dividing by the
+scale maximum NA. We distinguish two sets of
+token positions in the generated output: answer
+positions T , spanning the reasoning and answer
+segments, and the confidence position, where the
+3
+model produces a softmax distribution pθ(v|i, j)
+over confidence tokens v∈ {0, . . . , NA}. Our
+calibration losses operate directly on this softmax
+distribution rather than on a single decoded value,
+preserving the ordinal structure of the confidence
+scale through training.
+Three calibration losses shape the model’s ex-
+pressed uncertainty: the Brier loss drives confi-
+dence toward the empirical correctness probabil-
+ity, the anchor loss prevents collapse toward ex-
+treme values, and the alignment loss ensures that
+confidence tracks evidence utilization across per-
+turbation conditions. A separate KL divergence
+regularizer operates on the answer token positions
+to preserve the model’s answering ability during
+confidence training.
+Brier loss with fractional targets.For sample i
+under conditionj:
+LBrier(i, j)=
+NAX
+v=0
+pθ(v|i, j) (ˆaj(i)−v/N A)2 (2)
+This is the expected Brier score under the model’s
+confidence distribution, driving probability mass to-
+ward the token whose value matches the fractional
+accuracy target.
+Anchor loss.Under the Brier loss, the optimal
+confidence for a sample with true correctness proba-
+bility pi is ˆc∗
+i =p i (Eq. 11). For samples the model
+cannot reliably answer ( pi ≈0.5 ), the optimum
+is the midpoint of the confidence scale, represent-
+ing maximum uncertainty with respect to binary
+correctness. Under ideal optimization conditions,
+the Brier loss would induce this behavior, but in
+practice the model collapses toward extreme con-
+fidence values. The anchor loss addresses this by
+penalizing deviation from cmid = 0.5 , the point
+equidistant from both Brier targets ( y= 0 and
+y= 1 ). This divides the scale into a negative side
+(0.0–0.4), where the model expresses belief that its
+answer is incorrect, and a positive side (0.6–1.0),
+where it expresses belief in correctness. The anchor
+acts as a conservative prior: the model starts at max-
+imum uncertainty and must accumulate sufficient
+calibration signal from the Brier loss to move its
+confidence in either direction, preventing collapse
+toward extreme values without evidence:
+Lanchor(i, j) =
+NAX
+v=0
+pθ(v|i, j) (v/NA −c mid)2 (3)
+Alignment loss.The Brier and anchor losses op-
+erate on each condition independently. The align-
+ment loss operates on the expected confidence
+ˆcj(i) =
+NAX
+v=0
+pθ(v|i, j)·v/N A (4)
+enforcing that confidence differences across condi-
+tions track accuracy differences for each sample:
+Lalign(i, j, k) = [ (ˆcj(i)−ˆck(i))
+−(ˆaj(i)−ˆak(i))]2 (5)
+computed over four same-axis condition pairs:
+P={(V,VC),(V-TP,VC-TP),
+(V,V-TP),(VC,VC-TP)}. (6)
+This teaches the model to ground its confidence in
+evidence utilization: the confidence change when
+an evidence source is removed should track the
+empirical accuracy change, reflecting the informa-
+tional contribution of that source to the prediction.
+Top-k KL divergence regularizer.Since confi-
+dence training modifies the model’s shared repre-
+sentations through the LoRA adapters, it can also
+affect the answer distribution. We constrain this
+with a top-k KL divergence on the answer token
+positions against a frozen copy of the base model:
+LKL(i, j) =
+1
+|T |
+X
+t∈T
+X
+v∈Vk(t)
+pref(v|t) log pref(v|t)
+pθ(v|t)
+(7)
+where T is the set of generated token positions ex-
+cluding the confidence token, Vk(t) contains the
+k highest-probability tokens under the reference
+model at position t, pref is the frozen base model
+distribution, and pθ is the fine-tuned model distri-
+bution. Restricting the penalty to the top-k tokens
+preserves the answer distribution over the candi-
+dates that determine the model’s answer selection,
+while allowing representation changes in the re-
+maining probability mass for confidence learning.
+Unlike reinforcement learning settings where KL
+regularization requires keeping a frozen reference
+model in memory and recomputing reference distri-
+butions at each training step, our setting uses fixed
+training data. This allows us to extract the refer-
+ence distributions during data generation, which
+already requires a base model forward pass to pro-
+duce the training pairs, and cache them offline. The
+KL term therefore adds no additional model copies
+or forward passes during training.
+4
+Complete objective.We combine the four com-
+ponents as:
+L=λL Brier + (1−λ)L anchor
++αL align +βL KL
+(8)
+where each term is averaged over all samples and
+four conditions. The coefficient λ balances cali-
+bration against the conservative prior, α controls
+the strength of evidence-aware alignment, and β
+controls answer preservation. We fine-tune the
+base model using LoRA adapters (Hu et al., 2022),
+targeting the query and value projections (3.2M
+trainable parameters, 0.075% for MedGemma-4B-
+IT; 2.5M parameters, 0.030% for Qwen2-VL-7B-
+Instruct).
+4 Experiments and Results
+A calibration method that performs well at only one
+accuracy level may be exploiting the dataset mean
+accuracy rather than learning genuine calibration.
+To test this, we evaluate on three Medical VQA
+benchmarks spanning different difficulty regimes:
+OmniMedVQA (Hu et al., 2024) (high-accuracy
+regime, 59–70% base accuracy depending on ar-
+chitecture), PMC-VQA (Zhang et al., 2024b) (mid-
+accuracy regime, 45–49%), and MedXpertQA (Zuo
+et al., 2025) (low-accuracy regime, 20–24%). We
+compare against four baselines: the base model
+(zero-shot verbalized confidence), Top-K Sampling
+and SteerConf, which aggregate multiple stochas-
+tic passes, and ConfTuner, which fine-tunes ver-
+balized confidence using a tokenized Brier score.
+We evaluate on two architectures: MedGemma-
+4B-IT (Sellergren et al., 2025) and Qwen2-VL-7B-
+Instruct (Wang et al., 2024). Our method and Conf-
+Tuner produce a confidence estimate from a single
+forward pass; we use greedy decoding for determin-
+istic evaluation. Top-K Sampling and SteerConf
+require multiple stochastic forward passes per sam-
+ple; we report mean and standard deviation over 10
+independent runs.
+Loss Hyperparameters.Table 3 reports the hy-
+perparameter values for the final OmniMedVQA-
+trained configuration. The search was conducted
+using a GridSearch approach, in the ranges indi-
+cated in Table 3. The resolution of the grid search
+is 0.1 for λ, 0.5 for α, and 1.0 for β. We select hy-
+perparameters on the validation set by filtering to
+the top quartile of accuracy, then choosing the con-
+figuration with the highest AUROC, as it depends
+only on rank ordering and is therefore not tied to
+the difficulty or accuracy level of the dataset.
+For the PMC-VQA-trained pathway, the same
+grid search and selection criterion were applied
+within the hyperparameter family identified on the
+OmniMedVQA pathway. The selected configura-
+tion uses λ=0.7, α=1.5, and β=4.0, with batch
+size reduced to 1 group (4 samples) and learning
+rate set to1.4×10 −5 (Table 6).
+Main results.Tables 1 and 2 report results for
+MedGemma and Qwen respectively. Our method
+achieves the best average ECE, Brier Score, and
+AUROC under both architectures. The Brier Score,
+which jointly penalizes miscalibration and poor dis-
+crimination, is the strongest individual result: our
+method leads on every benchmark under both archi-
+tectures, with reductions of 26–43% relative to the
+next best method per benchmark on MedGemma
+and 3–18% on Qwen. This consistency across high,
+mid, and low accuracy regimes indicates that the
+training objective captures a general relationship
+between confidence and correctness rather than ex-
+ploiting a single benchmark’s accuracy distribution.
+However, the improvement is not uniform across
+individual metrics: our method does not achieve
+the lowest ECE on OmniMedVQA or the highest
+AUROC on MedXpertQA for both MLLMs.
+The calibration–discrimination trade-off.On
+OmniMedVQA, baselines achieve substantially
+lower ECE (ConfTuner: 0.068 on Qwen, Steer-
+Conf: 0.050 on MedGemma) compared to our
+method (0.136 and 0.184 respectively). This low
+ECE comes at the cost of discrimination: on
+the same benchmark, our AUROC reaches 0.926
+(MedGemma) and 0.884 (Qwen), while SteerConf
+remains at 0.693 and 0.705. The mechanism is
+confidence compression: methods that cluster pre-
+dictions near the dataset mean achieve low ECE but
+cannot separate correct from incorrect predictions
+(Figures 5–9 and Table 13, Appendix A.6).
+The difference is clearer across difficulty
+regimes. Baseline ECE degrades as accuracy de-
+creases: on Qwen, ConfTuner’s ECE rises from
+0.068 to 0.229 to 0.360 across OmniMedVQA,
+PMC-VQA, and MedXpertQA; SteerConf follows
+the same trajectory (0.082 to 0.199 to 0.351). Our
+method produces the narrowest ECE spread under
+both architectures (0.097–0.184 on MedGemma,
+0.058–0.314 on Qwen), indicating that calibration
+quality holds regardless of the accuracy regime.
+On MedXpertQA, no method achieves meaning-
+5
+Test Set Method ECE↓Brier↓AUROC↑Acc.
+Base Model 0.146 0.219 0.628 0.705
+Top-K Sampling 0.403 ±.002 0.406±.002 0.553±.005 0.459±.003
+OmniMedVQA (ID)SteerConf0.050 ±.006 0.196±.001 0.693±.005 0.696±.001
+ConfTuner 0.074 0.194 0.708 0.693
+Ours 0.1840.111 ∗ 0.926∗ 0.805
+Base Model 0.445 0.445 0.533 0.455
+Top-K Sampling 0.569 ±.002 0.541±.002 0.535±.006 0.319±.002
+PMC-VQA (OOD)SteerConf 0.302 ±.003 0.336±.002 0.615±.004 0.462±.002
+ConfTuner 0.299 0.329 0.583 0.436
+Ours0.097 ∗ 0.243∗ 0.640∗ 0.463
+Base Model 0.656 0.617 0.486 0.238
+Top-K Sampling 0.686 ±.003 0.628±.002 0.471±.006 0.184±.003
+MedXpertQA (OOD)SteerConf 0.487 ±.005 0.448±.002 0.501±.011 0.238±.005
+ConfTuner 0.561 0.494 0.507 0.218
+Ours0.184 ∗ 0.257∗ 0.5140.234
+Base Model 0.416 0.427 0.549 0.466
+Top-K Sampling 0.553 0.525 0.520 0.321
+AverageSteerConf 0.280 0.327 0.603 0.465
+ConfTuner 0.311 0.339 0.599 0.449
+Ours0.155 0.204 0.6930.501
+Table 1: MedGemma-4B-IT results for the OmniMedVQA-trained pathway. Best values inbold, second best
+underlined. ↓: lower is better, ↑: higher is better. ∗Statistically significant vs. second-best ( p <0.05 , paired
+bootstrap,B=10k).
+ful discrimination: AUROC ranges from 0.48 to
+0.51 across all methods and both architectures. At
+approximately 20% base accuracy, the signal for
+separating correct from incorrect predictions is in-
+sufficient for any verbalized confidence approach.
+Accuracy preservation.Our method preserves
+accuracy relative to the base model under both ar-
+chitectures: OOD accuracy changes are within
+±0.8 percentage points, while ID accuracy in-
+creases by +10.0 (MedGemma) and +7.3 (Qwen)
+points on OmniMedVQA. The top- k KL diver-
+gence regularizer anchors the fine-tuned distribu-
+tion to a frozen copy of the base model, providing
+consistent accuracy preservation across both archi-
+tectures. The ID accuracy gain reflects the operat-
+ing point rather than a training objective; whether
+calibration gains persist under stricter accuracy con-
+straints remains an open question for future work.
+Cross-dataset transfer.To test whether the train-
+ing objective generalizes beyond the source dis-
+tribution, we train a MedGemma model on PMC-
+VQA instead of OmniMedVQA and evaluate on all
+three benchmarks (Table 4; per-benchmark results
+in Table 7, Appendix). ConfTuner is re-trained on
+the same PMC-VQA split for a symmetric compar-
+ison.
+The PMC-trained model achieves the best aver-
+age ECE (0.123), Brier Score (0.226), and AUROC
+(0.624), outperforming all baselines on calibration
+and discrimination. The OmniMedVQA-trained
+pathway (Tables 1, 2) yields stronger overall re-
+sults, but the PMC-trained pathway still outper-
+forms all baselines on average, confirming that the
+training objective is not specific to a single source
+dataset. Figures 2 and 3 show reliability diagrams
+on PMC-VQA for both architectures.
+Component ablation.Pairwise ablations on both
+architectures isolate the contribution of each loss
+component:
+• Without alignment( α= 0 ): Removing the
+alignment term causes AUROC to drop sharply
+(by 20.5% on OmniMedVQA and 12.2% on
+PMC-VQA) and Brier Score increases by 72.1%
+on OmniMedVQA (Table 8). ECE improves
+on OmniMedVQA (9.8%), indicating that confi-
+dence values become more conservative but less
+discriminative. Without the alignment term, con-
+fidence scores are well-calibrated but less infor-
+mative.
+• Without KL( β= 0 ): Removing the KL
+regularizer causes accuracy collapse on out-of-
+distribution data: −15.0 percentage points on
+PMC-VQA and −11.3 points on MedXpertQA,
+while ID accuracy decreases modestly ( −2.0
+points) (Table 9). Without the KL constraint,
+the model overfits to the confidence training sig-
+nal at the expense of maintaining its question-
+answering capabilities.
+On Qwen, the same component roles hold (Ta-
+6
+Test Set Method ECE↓Brier↓AUROC↑Acc.
+Base Model 0.381 0.381 0.567 0.587
+Top-K Sampling 0.184 ±.004 0.259±.002 0.669±.006 0.606±.004
+OmniMedVQA (ID)SteerConf 0.082 ±.004 0.222±.001 0.705±.004 0.562±.004
+ConfTuner0.0680.148 0.860 0.674
+Ours 0.1360.143 0.884 ∗ 0.660
+Base Model 0.504 0.503 0.517 0.488
+Top-K Sampling 0.377 ±.006 0.381±.004 0.617±.009 0.440±.006
+PMC-VQA (OOD)SteerConf 0.199 ±.006 0.264±.003 0.692±.006 0.484±.005
+ConfTuner 0.229 0.295 0.672 0.503
+Ours0.058 ∗ 0.216∗ 0.7030.490
+Base Model 0.790 0.786 0.501 0.198
+Top-K Sampling 0.569 ±.003 0.491±.002 0.491±.005 0.206±.002
+MedXpertQA (OOD)SteerConf 0.351 ±.006 0.315±.005 0.520±.017 0.196±.007
+ConfTuner 0.360 0.369 0.504 0.209
+Ours0.314 ∗ 0.278∗ 0.487 0.194
+Base Model 0.558 0.557 0.528 0.424
+Top-K Sampling 0.377 0.377 0.592 0.417
+AverageSteerConf 0.211 0.267 0.639 0.414
+ConfTuner 0.219 0.271 0.679 0.462
+Ours0.169 0.212 0.6910.448
+Table 2: Qwen2-VL-7B-Instruct results for the OmniMedVQA-trained pathway. Best values inbold, second
+best underlined. ↓: lower is better, ↑: higher is better. ∗Statistically significant vs. second-best (p <0.05, paired
+bootstrap,B=10k).
+Hyperparameter Symbol Value Explored range
+Brier–Anchor interpol.λ0.2{0.0,0.1, . . . ,1.0}
+Alignment weightα2.0{0.5,1.0, . . . ,3.0}
+KL divergence weightβ1.0{1.0,2.0, . . . ,5.0}
+Top-kfor KLk15{5,10,15,50}
+KL temperatureT KL 4{1,2, . . . ,5}
+Table 3: Loss hyperparameters for the final
+OmniMedVQA-trained configuration. The explored
+range indicates the values tested during hyperparameter
+search.
+Method ECE↓Brier↓AUROC↑Acc.
+Base Model 0.416 0.427 0.549 0.466
+Top-K Sampling 0.553 0.525 0.520 0.321
+SteerConf 0.280 0.327 0.603 0.465
+ConfTuner 0.437 0.445 0.563 0.459
+Ours (PMC-trained)0.123 0.226 0.6240.461
+Table 4: Cross-dataset transfer (MedGemma): average
+results across all three benchmarks for the PMC-VQA-
+trained pathway. Best inbold, second best underlined .
+bles 11, 12, Appendix): removing alignment pre-
+serves accuracy but drops AUROC from 0.884 to
+0.835 on OmniMedVQA, and removing KL de-
+grades accuracy by −11.2 points on OmniMed-
+VQA and −16.2 on PMC-VQA. Removing KL ad-
+ditionally causes confidence format drift: approxi-
+mately 22% of outputs revert to alternative formats,
+producing confidence as ratios, on a 0–100 scale, or
+as linguistic terms instead of the expected integer
+scale (Table 10), while the full model maintains
+100% format compliance. The base model already
+follows the confidence format from pretraining;
+without the KL constraint, fine-tuning erodes this
+ability, showing that the regularizer preserves not
+only the answer distribution but also the model’s
+existing instruction-following capabilities.
+Practical implications.To examine whether
+these calibration gains translate to deployment-
+relevant behavior, we analyze two simplified clin-
+ical scenarios in Appendix A.8: an AI-assisted
+setting where the model recommends only when
+confident, and a clinician-assisted setting where
+low-confidence predictions are routed for human
+review. Our method adapts its recommendation vol-
+ume to dataset difficulty and catches a larger share
+of errors across the full threshold range compared
+to all baselines.
+5 Conclusions
+We presented a training-based framework for ver-
+balized confidence calibration in Medical VQA,
+built on three contributions: a 2×2 factorial per-
+turbation design that exposes how the model uses
+visual and textual evidence, a composite calibration
+loss that combines Brier-based calibration with con-
+trastive alignment across perturbation conditions,
+and a top- k KL divergence regularizer that pre-
+serves the answer distribution during confidence
+training.
+7
+0.0 0.2 0.4 0.6 0.8 1.0
+Normalized Confidence
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0Accuracy
+n=0 n=1 n=0
+n=16
+n=0 n=0 n=0
+n=14
+n=68
+n=1901
+Reliability Plot for: Verbalized
+PMCVQA | Acc: 0.455 | Brier: 0.445 | ECE: 0.4451
+Perfect Calibration
+Model Accuracy
+(a) Base model
+0.0 0.2 0.4 0.6 0.8 1.0
+Normalized Confidence
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0Accuracy
+n=0 n=0 n=2
+n=36
+n=38 n=213
+n=104
+n=246
+n=672
+n=689
+Reliability Plot for: SteerConf
+PMCVQA | Acc: 0.455 | Brier: 0.341 | ECE: 0.3115
+Perfect Calibration
+Model Accuracy (b) SteerConf
+0.0 0.2 0.4 0.6 0.8 1.0
+Normalized Confidence
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0Accuracy
+n=0 n=0 n=0
+n=763
+n=376
+n=188
+n=110
+n=88 n=203
+n=272
+Reliability Plot for: OursPMC
+PMCVQA | Acc: 0.465 | Brier: 0.233 | ECE: 0.0703
+Perfect Calibration
+Model Accuracy (c) Ours (PMC-trained)
+Figure 2: Reliability diagrams on PMC-VQA (MedGemma). Bar color indicates the number of samples in each bin
+(Sample count shown above each bin); error bars show the standard error of the bin accuracy.
+0.0 0.2 0.4 0.6 0.8 1.0
+Normalized Confidence
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0Accuracy
+n=0 n=0 n=2 n=1 n=0
+n=2
+n=0
+n=24
+n=71
+n=1900
+Reliability Plot for: Verbalized
+PMCVQA | Acc: 0.487 | Brier: 0.503 | ECE: 0.5043
+Perfect Calibration
+Model Accuracy
+(a) Base model
+0.0 0.2 0.4 0.6 0.8 1.0
+Normalized Confidence
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0Accuracy
+n=0 n=4
+n=71
+n=135
+n=249
+n=294
+n=323
+n=170
+n=448
+n=306
+Reliability Plot for: SteerConf
+PMCVQA | Acc: 0.474 | Brier: 0.266 | ECE: 0.2039
+Perfect Calibration
+Model Accuracy (b) SteerConf
+0.0 0.2 0.4 0.6 0.8 1.0
+Normalized Confidence
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0Accuracy
+n=0 n=0
+n=52 n=476
+n=544
+n=296
+n=199
+n=205
+n=227
+n=1
+Reliability Plot for: Ours
+PMCVQA | Acc: 0.490 | Brier: 0.216 | ECE: 0.0583
+Perfect Calibration
+Model Accuracy (c) Ours (OmniMed-trained)
+Figure 3: Reliability diagrams on PMC-VQA (Qwen2-VL). Bar color indicates the number of samples in each bin
+(Sample count shown above each bin); error bars show the standard error of the bin accuracy.
+Our results show that MLLMs can learn mean-
+ingful verbalized confidence through targeted fine-
+tuning. Under both MedGemma and Qwen2-VL,
+our method achieves the best average ECE, Brier
+Score, and AUROC across all three benchmarks,
+with calibration and discrimination improving si-
+multaneously across three accuracy regimes. The
+learned confidence behavior generalizes under dis-
+tribution shift: on MedGemma, both training path-
+ways beat all baselines on average metrics, and
+consistent improvements on Qwen suggest that the
+gains are not architecture-specific. Accuracy is
+preserved within practical margins when the KL
+regularizer constrains the answer distribution. The
+ablation study shows that each loss component
+serves a distinct role: the alignment term drives
+discrimination, while the KL regularizer prevents
+forgetting and preserves the model’s instruction-
+following capabilities, including confidence format
+compliance.
+Two directions for future work emerge from
+these findings. Evaluating on larger model scales
+and extending to open-ended VQA would test
+whether the observed gains persist in more clini-
+cally realistic settings. On the methodological side,
+the anchor and alignment terms in our composite
+loss make explicit properties that the Brier loss
+encodes only implicitly. A calibration loss where
+these properties arise from the formulation itself,
+without requiring separate corrective terms, would
+be a more principled alternative.
+Limitations
+Discrimination on MedXpertQA remains at chance
+level for all methods across both model architec-
+tures. This means verbalized confidence cannot
+meaningfully distinguish correct from incorrect
+predictions on questions requiring multi-step clin-
+8
+ical reasoning, limiting the practical utility of cal-
+ibrated confidence in the most challenging diag-
+nostic scenarios. Both models in this work are
+small-scale (4B and 7B parameters). All experi-
+ments use multiple-choice VQA, where the model
+selects from a fixed set of options rather than gen-
+erating free-form answers. This constrains the an-
+swer space in ways that simplify both prediction
+and calibration: correctness is binary and unam-
+biguous. In open-ended clinical settings, where
+answers vary in granularity and partial correctness
+is common, calibrating verbalized confidence is a
+fundamentally harder problem that this work does
+not address.
+Ethics Statement
+Uncalibrated Medical AI systems pose a direct
+safety risk: a model that expresses 90% confidence
+when it is correct less than half the time actively
+misleads clinicians. Our method uses only publicly
+available benchmarks and does not make use of pri-
+vate clinical data. Medical deployment would there-
+fore require further evaluation under real clinical
+conditions. Calibration quality may vary across pa-
+tient populations, imaging modalities, and clinical
+contexts not represented in the evaluation datasets.
+This work evaluates calibration in a retrospective,
+multiple-choice setting; translating these gains to
+open-ended clinical tasks requires further valida-
+tion. Finally and importantly, calibrated confidence
+estimation is intended to support clinical decision-
+making, but not to replace human judgment.
+References
+Kiana Avestimehr, Emily Aye, Zalan Fabian, and Erum
+Mushtaq. 2025. Detecting unreliable responses in
+vision-language models via visual uncertainty. In
+ICLR 2025 Workshop on QUESTION.
+Yavuz Faruk Bakman, Duygu Nur Yaldiz, Baturalp
+Buyukates, Chenyang Tao, Dimitrios Dimitriadis,
+and Salman Avestimehr. 2024. MARS: Meaning-
+aware response scoring for uncertainty estimation in
+generative LLMs. InProceedings of the 62nd An-
+nual Meeting of the Association for Computational
+Linguistics (ACL), pages 7752–7767.
+Glenn W. Brier. 1950. Verification of forecasts ex-
+pressed in terms of probability.Monthly Weather
+Review, 78(1):1–3.
+Arslan Chaudhry, Sridhar Thiagarajan, and Dilan Gorur.
+2024. Finetuning language models to emit lin-
+guistic expressions of uncertainty.arXiv preprint
+arXiv:2409.12180.
+Mehul Damani, Isha Puri, Stewart Slocum, Idan
+Shenfeld, and Jacob Andreas. 2025. ReCali-
+brate: RL for uncertainty-aware reasoning in LLMs.
+OpenReview: https://openreview.net/forum?
+id=hiiCjfRhZI.
+Tobias Groot and Matias Valdenegro-Toro. 2024. Over-
+confidence is key: Verbalized uncertainty evaluation
+in large language and vision-language models.arXiv
+preprint arXiv:2405.02917.
+Chuan Guo, Geoff Pleiss, Yu Sun, and Kilian Q. Wein-
+berger. 2017. On calibration of modern neural net-
+works. InICML.
+Haixia Han, Tingyun Li, Shisong Chen, Jie Shi,
+Chengyu Du, Yanghua Xiao, Jiaqing Liang, and Xin
+Lin. 2024. Enhancing confidence expression in large
+language models through learning from past experi-
+ence.arXiv preprint arXiv:2404.10315.
+James A Hanley and Barbara J McNeil. 1982. The
+meaning and use of the area under a receiver operat-
+ing characteristic (roc) curve.Radiology, 143(1):29–
+36.
+Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan
+Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, and
+Weizhu Chen. 2022. Lora: Low-rank adaptation of
+large language models. InICLR.
+Yutao Hu, Tianbin Li, Quanfeng Lu, Wenqi Shao, Jun-
+jun He, Yu Qiao, and Ping Luo. 2024. Omnimed-
+vqa: A new large-scale comprehensive evaluation
+benchmark for medical lvlm. InProceedings of the
+IEEE/CVF Conference on Computer Vision and Pat-
+tern Recognition.
+Saurav Kadavath, Tom Conerly, Amanda Askell, Tom
+Henighan, Dawn Drain, Ethan Perez, Nicholas
+Schiefer, Zac Hatfield-Dodds, Nova DasSarma, Eli
+Tran-Johnson, Scott Johnston, Sheer El-Showk,
+Andy Jones, Nelson Elhage, Tristan Hume, Anna
+Chen, Yuntao Bai, Sam Bowman, Stanislav Fort, and
+17 others. 2022. Language models (mostly) know
+what they know.arXiv preprint arXiv:2207.05221.
+Anita Kriz, Elizabeth Laura Janes, Xing Shen, and Tal
+Arbel. 2025. Prompt4Trust: A reinforcement learn-
+ing prompt augmentation framework for clinically-
+aligned confidence calibration in multimodal large
+language models.arXiv preprint arXiv:2507.09279.
+Lorenz Kuhn, Yarin Gal, and Sebastian Farquhar. 2023.
+Semantic uncertainty: Linguistic invariances for un-
+certainty estimation in natural language generation.
+InInternational Conference on Learning Representa-
+tions (ICLR).
+Jixuan Leng, Chengsong Huang, Banghua Zhu, and Ji-
+axin Huang. 2025. Taming overconfidence in LLMs:
+Reward calibration in RLHF. InICLR.
+Yibo Li, Miao Xiong, Jiaying Wu, and Bryan Hooi.
+2025. Conftuner: Training large language models
+to express their confidence verbally.arXiv preprint
+arXiv:2508.18847.
+9
+Zehui Liao, Shishuai Hu, Ke Zou, Huazhu Fu, Liangli
+Zhen, and Yong Xia. 2025. Vision-amplified seman-
+tic entropy for hallucination detection in medical vi-
+sual question answering. InProceedings of Medical
+Image Computing and Computer Assisted Interven-
+tion – MICCAI 2025, volume LNCS 15964, pages
+669–679. Springer Nature Switzerland.
+Stephanie Lin, Jacob Hilton, and Owain Evans. 2022.
+Teaching models to express their uncertainty in
+words.TMLR.
+Xin Liu, Mu Akter, Yufei Li, Chien-Sheng Wu,
+and Caiming Xiong. 2024. Enhancing language
+model factuality via activation-based confidence
+calibration and guided decoding.arXiv preprint
+arXiv:2412.02778.
+Andrey Malinin and Mark Gales. 2021. Uncertainty
+estimation in autoregressive structured prediction. In
+International Conference on Learning Representa-
+tions.
+Harsha Nori, Mayank Daswani, Christopher Kelly, Scott
+Lundberg, Marco Tulio Ribeiro, Marc Wilson, Xi-
+aoxuan Liu, Viknesh Sounderajah, Jonathan Carl-
+son, Matthew P. Lungren, Bay Gross, Peter Hames,
+Mustafa Suleyman, Dominic King, and Eric Horvitz.
+2025. Sequential diagnosis with language models.
+arXiv preprint arXiv:2506.22405.
+Indu Padhi, Pin-Yu Chen, Ioana Baldini, and
+Karthikeyan Natesan Ramamurthy. 2025. HAR-
+MONY: Hidden activation representations and model
+output-aware uncertainty estimation for vision-
+language models.arXiv preprint arXiv:2504.12345.
+Andrew Sellergren, Sahar Kazemzadeh, Tiam Jaroensri,
+Atilla Kiraly, Madeleine Traverse, Timo Kohlberger,
+Shawn Xu, Fayaz Jamil, Cían Hughes, Charles Lau,
+and 1 others. 2025. Medgemma technical report.
+arXiv preprint arXiv:2507.05201.
+Chuyang Sheng, Shuo Shen, Li Wang, and 1 others.
+2026. Multimodal large language models challenge
+NEJM image challenge.Scientific Reports.
+Paul Stangel, David Bani-Harouni, Chantal Pellegrini,
+Ege Özsoy, Kamilia Zaripova, Matthias Keicher, and
+Nassir Navab. 2025. Rewarding doubt: A reinforce-
+ment learning approach to calibrated confidence ex-
+pression of large language models.arXiv preprint
+arXiv:2503.02623.
+Katherine Tian, Eric Mitchell, Allan Zhou, Archit
+Sharma, Rafael Rafailov, Huaxiu Yao, Chelsea Finn,
+and Christopher D. Manning. 2023. Just ask for cali-
+bration: Strategies for eliciting calibrated confidence
+scores from language models fine-tuned with human
+feedback.arXiv preprint arXiv:2305.14975.
+Peng Wang, Shuai Bai, Sinan Tan, Shijie Wang, Zhi-
+hao Fan, Jinze Bai, Keqin Chen, Xuejing Liu, Jialin
+Wang, Wenbin Ge, Yang Fan, Kai Dang, Mengfei
+Du, Xuancheng Ren, Rui Men, Dayiheng Liu, Chang
+Zhou, Jingren Zhou, and Junyang Lin. 2024. Qwen2-
+vl: Enhancing vision-language model’s perception
+of the world at any resolution.arXiv preprint
+arXiv:2409.12191.
+Xuezhi Wang, Jason Wei, Dale Schuurmans, Quoc V .
+Le, Ed H. Chi, Sharan Narang, Aakanksha Chowd-
+hery, and Denny Zhou. 2023. Self-consistency im-
+proves chain of thought reasoning in language mod-
+els. InInternational Conference on Learning Repre-
+sentations (ICLR).
+Jiancong Xiao, Bojian Hou, Zhanliang Wang, Ruochen
+Jin, Qi Long, Weijie J. Su, and Li Shen. 2025a.
+Restoring calibration for aligned large language mod-
+els: A calibration-aware fine-tuning approach. In
+ICML.
+Zeguan Xiao, Diyang Dou, Boya Xiong, Yun Chen,
+and Guanhua Chen. 2025b. Enhancing uncertainty
+estimation in LLMs with expectation of aggregated
+internal belief.arXiv preprint arXiv:2509.01564.
+Miao Xiong, Zhiyuan Hu, Xinyang Lu, Yifei Li, Jie
+Fu, Junxian He, and Bryan Hooi. 2024. Can LLMs
+express their uncertainty? an empirical evaluation
+of confidence elicitation in LLMs. InInternational
+Conference on Learning Representations.
+Tianyang Xu, Shujin Wu, Shizhe Diao, Xiaoze Liu,
+Xingyao Wang, Yangyi Chen, and Jing Gao. 2024.
+SaySelf: Teaching LLMs to express confidence
+with self-reflective rationales.arXiv preprint
+arXiv:2405.20974.
+Weihao Xuan, Qingcheng Zeng, Heli Qi, Junjue Wang,
+and Naoto Yokoya. 2025. Seeing is believing, but
+how much? a comprehensive analysis of verbalized
+calibration in vision-language models. InProceed-
+ings of the 2025 Conference on Empirical Methods
+in Natural Language Processing, pages 1408–1450,
+Suzhou, China. Association for Computational Lin-
+guistics.
+Duygu Nur Yaldiz, Yavuz Faruk Bakman, Baturalp
+Buyukates, Chenyang Tao, Anil Ramakrishna, Dim-
+itrios Dimitriadis, Jieyu Zhao, and Salman Aves-
+timehr. 2024. Do not design, learn: A trainable scor-
+ing function for uncertainty estimation in generative
+LLMs.arXiv preprint arXiv:2406.11278.
+Caiqi Zhang, Xiaochen Zhu, Chengzu Li, Nigel Collier,
+and Andreas Vlachos. 2025. Reinforcement learning
+for better verbalized confidence in long-form genera-
+tion.arXiv preprint arXiv:2505.23912.
+Ruiyang Zhang, Hu Zhang, and Zhedong Zheng. 2024a.
+VL-Uncertainty: Detecting hallucination in large
+vision-language model via uncertainty estimation.
+arXiv preprint arXiv:2411.11919.
+Xiaoman Zhang, Chaoyi Wu, Ziheng Zhao, Weixiong
+Lin, Ya Zhang, Yanfeng Wang, and Weidi Xie. 2024b.
+Pmc-vqa: Visual instruction tuning for medical vi-
+sual question answering.Communications Medicine,
+4:233.
+10
+Yunpu Zhao, Rui Zhang, Junbin Xiao, Ruibo Hou, Ji-
+aming Guo, Zihao Zhang, Yifan Hao, and Yunji Chen.
+2025. Object-level verbalized confidence calibration
+in vision-language models via semantic perturbation.
+arXiv preprint arXiv:2504.08750.
+Ziang Zhou, Tianyuan Jin, Jieming Shi, and Qing Li.
+2025. Steerconf: Steering llms for confidence elicita-
+tion.arXiv preprint arXiv:2503.02863.
+Yuxin Zuo, Shang Qu, Yifei Li, Zhangren Chen, Xuekai
+Zhu, Ermo Hua, Kaiyan Zhang, Ning Ding, and
+Bowen Zhou. 2025. Medxpertqa: Benchmarking
+expert-level medical reasoning and understanding. In
+ICML.
+11
+A Appendix
+A.1 Experimental Details
+Table 5 reports the dataset splits used in our ex-
+periments. For OmniMedVQA, we construct a
+20,000-sample pool from the open-access subset
+using quality-aware stratified sampling that pre-
+serves modality proportions and excludes low-
+quality source datasets (e.g., COVID-19-era col-
+lections with variable curation). From this pool,
+4,000 training samples are randomly drawn; 3,000
+test samples are drawn separately from the remain-
+ing open-access data using the same stratification.
+For PMC-VQA, we randomly subsample 4,000
+training instances from the official train split and
+evaluate on a curated subset of 2,000 samples from
+the test split. MedXpertQA serves exclusively as
+an out-of-distribution benchmark, using 2,000 sam-
+ples from its multimodal subset with no training.
+Benchmark Train Test
+OmniMedVQA 4,000 3,000
+PMC-VQA 4,000 2,000
+MedXpertQA — 2,000
+Table 5: Dataset split sizes. MedXpertQA is used exclu-
+sively for out-of-distribution evaluation.
+Figure 4 shows the prompt template used across
+all methods and benchmarks. The model receives
+the medical image, the question, and four answer
+options, and is asked to produce a rationale, an an-
+swer, and a verbalized confidence score on a scale
+of 1 to 10. For SteerConf, a steering instruction
+is inserted at the designated position; for all other
+methods, this field is left empty. Top-K Sampling
+uses a separate template that requests the model’s
+two best guesses with individual confidence scores.
+ConfTuner (Li et al., 2025) was originally de-
+signed for text-only LLMs. We reimplemented
+it for multimodal models following the original
+code repository, training on the same 4,000-sample
+OmniMedVQA split without the perturbation aug-
+mentation used by our method. SteerConf (Zhou
+et al., 2025) was implemented using the prompts
+and sampling parameters from the original code
+repository (T=0.7 , 5 inference passes per sample).
+Top-K Sampling follows (Xiong et al., 2024): the
+model produces its two best guesses with individual
+confidence scores (k=2), sampled at T=0.7 over
+5 passes, and the final confidence is the average
+across responses. The alternative pair-rank aggre-
+gation proposed in the same work performed worse
+{question}
+Choose exactly one answer from the four options
+below.
+Options:
+- A: {option_a} - B: {option_b}
+- C: {option_c} - D: {option_d}
+Based on the image, provide the most likely
+medical finding or answer concisely by
+following the output format below.
+{STEER_INSTRUCTION}
+Output format:
+Rationale: <1–2 concise sentences>
+Answer: <LETTER> — <EXACT OPTION TEXT>
+After the answer please provide your confidence
+on your answer in the following format on a
+scale of 1 to 10:
+Confidence: <1-10>
+Figure 4: Prompt template used for the base model, our
+method, SteerConf, and ConfTuner. Top-K Sampling
+uses a variant that requests the model’s two best guesses
+with individual confidence scores. Qwen2-VL uses the
+same prompt content with model-specific chat format-
+ting.
+Hyperparameter MedGemma Omni MedGemma PMC Qwen Omni
+LoRA rankr8 8 8LoRA scalingαLoRA 32 32 32LoRA dropout 0.05 0.05 0.05
+Learning rate2.1×10 −5 1.4×10−5 1.4×10−5
+Batch size 2 groups (8) 1 group (4) 1 group (4)Brier–Anchorλ0.2 0.7 0.6Alignmentα2.0 1.5 2.0KL weightβ1.0 4.0 1.0Top-kfor KL 15 15 15Selected epoch 2 2 3
+Table 6: Training hyperparameters for all configurations.
+Each group consists of one sample and its three pertur-
+bation variants.
+in our setting, so we report the average-confidence
+variant.
+A.2 Training Configuration
+Table 6 reports the hyperparameters for all training
+configurations. We use the AdamW optimizer with
+no learning rate scheduler and fine-tune with LoRA
+adapters (Hu et al., 2022). For MedGemma-4B-IT
+this yields 3.2M trainable parameters (0.075% of
+4.3B); for Qwen2-VL-7B-Instruct, 2.5M param-
+eters (0.030% of 8.3B) due to grouped-query at-
+tention reducing the value projection dimensions.
+All configurations train for 3 epochs; we select
+epoch 2 for both MedGemma pathways and epoch
+3 for Qwen based on calibration metrics on the
+in-distribution validation set. Training runs use an
+NVIDIA RTX Pro 6000 (Blackwell) GPU, with
+each epoch taking approximately one hour.
+12
+A.3 Accuracy Estimation
+In the multiple-choice setting with K options, a
+single response yields a binary correctness label
+yi ∈ {0,1}. A random guesser achieves expected
+accuracy 1/K, so a single correct response does
+not reliably distinguish genuine knowledge from a
+random guess. For instance, a model that has no
+understanding of a particular question and selects
+uniformly among K= 4 options still answers cor-
+rectly 25% of the time. To obtain a reliable estimate
+of whether the model actually knows the answer
+for a given sample, we generate G independent re-
+sponses for each sample under each condition and
+compute the fraction of correct responses:
+ˆaj(i) = 1
+G
+GX
+g=1
+y(g)
+i,j (9)
+where y(g)
+i,j ∈ {0,1}denotes the correctness of
+the g-th response for sample i under condition
+j∈ {V,VC,V-TP,VC-TP} . The resulting esti-
+mate ˆaj(i)∈ {0, 1
+G , . . . ,1}provides a fractional
+accuracy that estimates the model’s true correctness
+probability pi,j =P(y i,j = 1) under condition j.
+Since the G responses are independent draws at
+temperature T= 1.0 , ˆaj(i) is an unbiased estima-
+tor with variance pi,j(1−p i,j)/G. We set G= 10 ,
+which balances variance reduction against compu-
+tational cost.
+This fractional estimate is the correct training
+target for the Brier loss. Let pi denote the model’s
+true correctness probability for sample i. The ex-
+pected Brier loss over the stochastic binary label
+is:
+Eyi
+
+(yi −ˆci)2
+=p i (1−ˆci)2 + (1−p i) ˆc2
+i
+(10)
+Differentiating with respect to the predicted con-
+fidence ˆci and setting the result to zero gives the
+optimal prediction:
+∂
+∂ˆci
+E
+
+(yi −ˆci)2
+=−2p i + 2ˆci = 0
+=⇒ˆc ∗
+i =p i
+(11)
+The Brier loss is therefore minimized when the
+predicted confidence equals the true correctness
+probability. Our fractional estimate ˆa(i)directly
+approximates pi, providing the model with a train-
+ing target that is close to this theoretical optimum.
+Test Set Method ECE↓Brier↓AUROC↑Acc.
+Base Model 0.146 0.219 0.628 0.705Top-K Sampling 0.403±.0020.406±.0020.553±.0050.459±.003OmniMedVQA (OOD)SteerConf0.050±.0060.196±.0010.693±.0050.696±.001ConfTuner 0.166 0.231 0.633 0.691Ours (PMC-trained) 0.0950.196 0.728∗ 0.688Base Model 0.445 0.445 0.533 0.455Top-K Sampling 0.569±.0030.541±.0020.535±.0060.319±.002PMC-VQA (ID)SteerConf 0.302±.0030.336±.0020.615±.0040.462±.002ConfTuner 0.468 0.462 0.578 0.459Ours (PMC-trained)0.070∗ 0.233∗ 0.660∗ 0.465Base Model 0.656 0.617 0.486 0.238Top-K Sampling 0.686±.0030.628±.0020.471±.0060.184±.003MedXpertQA (OOD)SteerConf 0.487±.0050.448±.0020.501±.0110.238±.005ConfTuner 0.678 0.641 0.478 0.226Ours (PMC-trained)0.205∗ 0.248∗ 0.483 0.229
+Base Model 0.416 0.427 0.549 0.466Top-K Sampling 0.553 0.525 0.520 0.321AverageSteerConf 0.280 0.327 0.603 0.465ConfTuner 0.437 0.445 0.563 0.459Ours (PMC-trained)0.123 0.226 0.6240.461
+Table 7: Per-benchmark cross-dataset transfer results
+for the PMC-VQA-trained pathway. Best values in
+bold, second best underlined. ∗Statistically significant
+vs. second-best (p <0.05, paired bootstrap,B=10k).
+Given that G inference runs are already neces-
+sary to resolve guessing noise, training onG binary
+labels is less efficient than training on the single
+fractional label. Both approaches converge to the
+same optimum, as the following gradient identity
+shows:
+∇ˆci
+1
+G
+GX
+g=1
+(y(g)
+i −ˆci)2 =−2(ˆa(i)−ˆci)
+=∇ ˆci (ˆa(i)−ˆci)2
+(12)
+The equality holds by linearity of the gradient
+and the definition of ˆa(i). Averaging the Brier loss
+gradient over G binary labels produces exactly the
+same update direction as computing the gradient
+from a single Brier loss with the fractional target
+ˆa(i). The two formulations are therefore equiva-
+lent in their optimization signal, but the fractional
+formulation requires only one backward pass in-
+stead ofG. Since both approaches already require
+G forward-only inference passes to obtain the la-
+bels, training on the fractional estimate savesG−1
+backward passes, each of which is more expensive
+than an inference pass due to gradient computation
+and backpropagation. ConfTuner (Li et al., 2025),
+by contrast, trains on a single binary label from
+one inference run and does not have access to a
+fractional estimate ofp i.
+A.4 PMC-VQA-Trained Pathway:
+Per-Benchmark Results
+Table 7 reports the per-benchmark results for the
+PMC-VQA-trained pathway summarized in Ta-
+ble 4.
+13
+A.5 Per-Benchmark Ablation Results
+Tables 8 and 9 report the per-benchmark ablation
+results summarized in Section 4. The ∆ column
+reports the relative change from Full to Ablation; ar-
+rows indicate the direction of performance change
+(↑= improved,↓= degraded).
+Tables 11 and 12 report the Qwen2-VL abla-
+tion results discussed in Section 4. Removing
+KL causes confidence format drift: the model re-
+verts to producing confidence as ratios, on a 0–100
+scale, or as linguistic terms. Table 10 reports the
+format compliance breakdown on OmniMedVQA.
+Unparseable samples in both ablation tables are as-
+signed the midpoint value (maximum uncertainty).
+A.6 Confidence Distribution Analysis
+Figures 5–9 visualize the confidence distributions
+underlying the metrics reported in Section 4.
+Per-sample discrimination.Figure 5 compares
+all methods on OmniMedVQA, splitting predic-
+tions by correctness. The base model, SteerConf,
+and ConfTuner concentrate both correct and incor-
+rect predictions in a similar high-confidence region,
+producing overlapping distributions. Because Om-
+niMedVQA has high accuracy, this high confidence
+is close to the dataset mean, which yields low ECE.
+Our method produces more separated distributions,
+with correct predictions at higher confidence and
+incorrect predictions at lower confidence, which
+yields higher AUROC (Tables 1, 2).
+Table 13 quantifies this separation. We report the
+mean confidence for correct ( µcorr) and incorrect
+(µincorr) predictions, their gap ( ∆µ), the standard
+deviation of all scores ( σ), and the Overlapping
+Coefficient (OVL), which measures the intersection
+area of the correct and incorrect confidence density
+functions (lower indicates better separation).
+On MedGemma, the base model, SteerConf, and
+ConfTuner all exhibit high OVL (≥0.698), indicat-
+ing that their correct and incorrect confidence dis-
+tributions are largely entangled. The corresponding
+∆µ values are small (0.077–0.136), confirming that
+these methods assign similar confidence regardless
+of correctness. This pattern is consistent with the
+overconfidence prior of MLLMs: models default to
+high certainty, and on a high-accuracy benchmark
+this prior happens to align with the dataset mean,
+producing low ECE without per-sample informa-
+tiveness. Our method increases ∆µ to 0.406 and
+reduces OVL to 0.261, achieving clear separation
+between correct and incorrect densities.
+On Qwen2, a similar pattern holds for the base
+model (OVL = 0.431,∆µ = 0.025) and SteerConf
+(OVL = 0.692). ConfTuner achieves a larger mean
+gap (∆µ = 0.460) than our method ( ∆µ = 0.318),
+though our method achieves lower OVL (0.356
+vs. 0.396), indicating tighter separation around
+the means. Both methods improve over the base
+model and SteerConf on this in-distribution bench-
+mark. The difference between ConfTuner and our
+method becomes apparent under distribution shift:
+ConfTuner’s ECE rises from 0.068 on OmniMed-
+VQA to 0.229 on PMC-VQA and 0.360 on MedX-
+pertQA, while our method maintains a narrower
+range (0.058–0.314), suggesting that the separation
+learned by our method is more robust to changes
+in the underlying accuracy regime.
+Adaptivity across difficulty levels.Figures 6–
+9 show how each method’s confidence distribu-
+tion changes across three benchmarks with decreas-
+ing accuracy (OmniMedVQA → PMC-VQA →
+MedXpertQA). The base model, SteerConf, and
+ConfTuner produce distributions that are largely
+fixed: confidence remains concentrated at similar
+values whether dataset accuracy is 0.70 or 0.23. In
+a deployment setting where difficulty varies across
+cases, this rigidity means calibration degrades as
+soon as the input distribution shifts away from the
+training regime. Our method’s distribution tracks
+the underlying accuracy, assigning progressively
+lower confidence as difficulty increases. This is
+consistent with the narrower ECE spread reported
+in Section 4.
+Metric interpretation.ECE measures whether
+average confidence matches average accuracy
+within bins. A method that assigns near-identical
+confidence to every prediction can achieve low
+ECE, but such scores do not distinguish correct
+from incorrect predictions at the sample level. AU-
+ROC measures exactly this ranking ability, and the
+Brier Score captures both calibration and discrim-
+ination in a single quantity. In clinical workflows
+where uncertain predictions should be flagged
+for review, per-sample ranking is directly action-
+able, which motivates optimizing for discrimina-
+tion alongside calibration.
+A.7 Visual Evidence Removal Design
+The 2×2 factorial design (Section 3.1) requires
+a method for removing visual evidence from the
+input. Noise-based alternatives such as Gaussian
+blur or mean pixel padding do not guarantee re-
+14
+Test Set ECE↓Brier↓AUROC↑Acc.
+Full No Align∆Full No Align∆Full No Align∆Full No Align∆
+OmniMedVQA (ID)0.184 0.166 9.8%↑0.111 0.191 72.1%↓0.926 0.736 20.5%↓0.805 0.719 10.7%↓
+PMC-VQA (OOD)0.097 0.154 58.8%↓0.243 0.267 9.9%↓0.640 0.562 12.2%↓0.463 0.465 0.4%↑
+MedXpertQA (OOD)0.184 0.379 106.0%↓0.257 0.327 27.2%↓0.514 0.504 1.9%↓0.234 0.234 0.0%
+Table 8: MedGemma pairwise ablation: full method versus no alignment (α= 0 ). ↑ = performance improved, ↓ =
+performance degraded.
+Test Set ECE↓Brier↓AUROC↑Acc.
+Full No KL∆Full No KL∆Full No KL∆Full No KL∆
+OmniMedVQA (ID)0.184 0.141 23.4%↑0.111 0.125 12.6%↓0.926 0.877 5.3%↓0.805 0.785 2.5%↓
+PMC-VQA (OOD)0.097 0.153 57.7%↓0.243 0.213 12.3%↑0.640 0.704 10.0%↑0.463 0.313 32.4%↓
+MedXpertQA (OOD)0.184 0.390 112.0%↓0.257 0.283 10.1%↓0.514 0.613 19.3%↑0.234 0.121 48.3%↓
+Table 9: MedGemma pairwise ablation: full method versus no KL ( β= 0 ). ↑ = performance improved, ↓ =
+performance degraded.
+Model 0–9 10–100 Frac. Words Pct Other Parse
+Full 3000 0 0 0 0 0 100%
+No-KL 2329 106 521 7 9 28 77.6%
+Table 10: Confidence format compliance on OmniMed-
+VQA (Qwen2-VL, N=3000). Columns show the num-
+ber of outputs in each format category. Parse = percent-
+age producing valid 0–9 integers.
+moval of diagnostic content: determining whether
+a given perturbation intensity actually destroys the
+clinically relevant signal requires domain expertise
+or expert annotation, and the answer varies across
+the diverse imaging modalities in our training data
+(fundus photography, dermatoscopy, X-ray, ultra-
+sound, histopathology). A black image guarantees
+complete evidence removal with no domain ex-
+pertise and no per-modality tuning, making it a
+simple, modality-agnostic solution. The fractional
+accuracy under each condition is then measured
+empirically, so the training signal reflects how the
+model actually behaves under evidence removal
+rather than assumptions about the perturbation.
+Tables 14 and 15 show representative outputs
+under the black-image condition. Both models
+hallucinate visual findings and produce coherent
+medical reasoning based on language priors. The
+outputs are structured and fluent rather than degen-
+erate, indicating that the model falls back on textual
+priors rather than producing artifacts from out-of-
+distribution visual encoder activations. In some
+cases the model also answers correctly under the
+black-image condition, which is expected: certain
+questions are solvable from language priors alone
+(e.g., common medical knowledge or option elimi-
+nation), and the fractional accuracy ˆablack captures
+this. The black image serves as a proxy for probing
+what evidence the model relies on when forming
+its answer. Alternative proxies such as learned oc-
+clusion masks or domain-aware degradation may
+provide a more targeted signal and are a direction
+for future work.
+A.8 Calibrated Confidence in Practice
+Standard calibration metrics such as ECE, Brier
+score, and AUROC quantify statistical properties
+of confidence distributions. To examine what these
+properties imply in a more applied context, we
+consider a simplified deployment scenario: a clin-
+ical setting where an MLLM assists with diag-
+nostic cases. A deployed model encounters both
+familiar and novel cases. OmniMedVQA repre-
+sents in-distribution cases, analogous to a hospi-
+tal’s own historical records on which the model
+was trained. PMC-VQA and MedXpertQA repre-
+sent out-of-distribution cases, analogous to new or
+previously unseen case types. In addition to the
+distribution shift, these datasets vary in relative dif-
+ficulty for the model: OmniMedVQA is the easiest
+(highest accuracy), PMC-VQA is moderate, and
+MedXpertQA is the hardest, collectively approx-
+imating the range of case complexity a deployed
+system may encounter.
+Before deployment, the system must commit to
+a confidence threshold that governs its behavior.
+The choice of threshold determines which cases
+the model acts on and which it defers. We ex-
+amine two paradigms below, both dependent on
+this threshold and therefore on the quality of the
+underlying confidence estimates. This analysis ex-
+amines whether the calibration improvements re-
+15
+Test Set ECE↓Brier↓AUROC↑Acc.
+Full No Align∆Full No Align∆Full No Align∆Full No Align∆
+OmniMedVQA (ID)0.136 0.200 47.1%↓0.143 0.196 37.1%↓0.884 0.835 5.5%↓0.660 0.611 7.4%↓
+PMC-VQA (OOD)0.058 0.036 37.9%↑0.216 0.224 3.7%↓0.703 0.671 4.6%↓0.490 0.481 1.8%↓
+MedXpertQA (OOD)0.314 0.217 30.9%↑0.278 0.211 24.1%↑0.487 0.497 2.1%↑0.194 0.194 0.0%
+Table 11: Qwen2-VL pairwise ablation: full method versus no alignment (α= 0 ). Unparseable confidence outputs
+assigned midpoint value.↑= improved,↓= degraded.
+Test Set ECE↓Brier↓AUROC↑Acc.
+Full No KL∆Full No KL∆Full No KL∆Full No KL∆
+OmniMedVQA (ID)0.136 0.066 51.5%↑0.143 0.231 61.5%↓0.884 0.656 25.8%↓0.660 0.548 17.0%↓
+PMC-VQA (OOD)0.058 0.193 232.8%↓0.216 0.249 15.3%↓0.703 0.628 10.7%↓0.490 0.328 33.1%↓
+MedXpertQA (OOD)0.314 0.349 11.1%↓0.278 0.288 3.6%↓0.487 0.517 6.2%↑0.194 0.182 6.2%↓
+Table 12: Qwen2-VL pairwise ablation: full method versus no KL ( β= 0 ). Unparseable confidence outputs
+assigned midpoint value.↑= improved,↓= degraded.
+Arch. Methodµ corr µincorr ∆µ↑σOVL↓
+Base Model 0.831 0.755 0.077 0.180 0.767
+SteerConf 0.712 0.576 0.136 0.198 0.700
+MedGemmaConfTuner 0.658 0.532 0.126 0.172 0.698
+Ours 0.723 0.317 0.406 0.236 0.261
+Base Model 0.979 0.954 0.025 0.073 0.431
+SteerConf 0.701 0.555 0.145 0.202 0.692
+Qwen2ConfTuner 0.778 0.317 0.460 0.359 0.396
+Ours 0.685 0.367 0.318 0.234 0.356
+Table 13: Confidence distribution statistics on Omn-
+iMedVQA, split by correctness. ∆µ: mean confidence
+gap between correct and incorrect predictions. σ: stan-
+dard deviation of all scores. OVL: Overlapping Coeffi-
+cient between correct and incorrect confidence densities
+(lower = better separated).
+ported in Section 4 translate to observable differ-
+ences in simplified deployment scenarios, bridging
+the gap between aggregate metrics and deployment-
+relevant behavior. As discussed in Section A.1, the
+multiple-choice format enables reliable automated
+correctness assessment, which is necessary for the
+analysis below.
+A.8.1 AI-Assisted Clinician
+In this paradigm the clinician remains the primary
+decision-maker and the model serves as an advisory
+tool. For such a system to be practical, the model
+should provide recommendations selectively, only
+when it is sufficiently confident, rather than on ev-
+ery case. Unrestricted recommendations increase
+clinician workload: each suggestion must be veri-
+fied, and incorrect confident suggestions may intro-
+duce bias or require additional effort to rule out. An
+ideal advisory model would therefore achieve high
+precision in its recommendations, offering fewer
+but more reliable second opinions. Calibrated con-
+#Question / Model Output
+1 “What is the specific abnormality present in this
+image?”(A=Optic neuritis, B=Conjunctivitis,
+C=Proliferative diabetic retinopathy, D=Macular de-
+generation)
+Correct:CModel:“The image shows a fundus
+photograph of the retina. There are no obvious signs
+of optic neuritis, conjunctivitis, macular degeneration,
+or proliferative diabetic retinopathy.”→A
+2 “What is the specific condition depicted in this image?”
+(A=Rubella, B=Measles, C=Cowpox, D=Chickenpox)
+Correct:CModel:“The image shows a clear, well-
+defined, and relatively uniform area of skin discol-
+oration, which is a hallmark of a skin condition.” → A
+3 “What is the diagnosis of the cancer shown in the im-
+age?”(A=Renal cell carcinoma of the left hilum T2
+N1 M0 Stage II, B=Adenocarcinoma, C=Squamous
+cell carcinoma, D=Small cell carcinoma)
+Correct:CModel:“The image shows a solid, ho-
+mogenous mass in the hilum. The most likely diagno-
+sis is renal cell carcinoma based on the location and
+appearance.”→A
+Table 14: MedGemma-4B-IT outputs under the black-
+image condition. The model hallucinates visual findings
+and reasons from language priors, producing coherent
+but incorrect answers.
+fidence could enable this behavior by allowing the
+system to suppress recommendations below a con-
+fidence threshold, surfacing only cases where the
+model’s prediction is likely correct. Such selective
+recommendations could help clinicians catch diag-
+nostic errors, obtain a reliable second opinion on
+ambiguous cases, or prioritize cases that warrant
+closer examination.
+Figure 10 quantifies this effect at confidence
+threshold 6 (on a 1–10 scale), chosen as an illus-
+trative high-precision operating point: an advisory
+system should only surface recommendations it is
+reasonably certain about. Each bar represents 100
+16
+0.0 0.2 0.4 0.6 0.8 1.0
+Confidence
+0.0
+0.5
+1.0
+1.5
+2.0
+2.5
+3.0
+3.5
+4.0
+MedGemma-4B-IT
+Density
+ECE=0.146  AUROC=0.628
+Brier=0.219
+Base Model
+Correct (n=2116)
+Incorrect (n=884)
+Acc (0.71)
+0.0 0.2 0.4 0.6 0.8 1.0
+Confidence
+0.0
+0.5
+1.0
+1.5
+2.0
+2.5 ECE=0.051  AUROC=0.695
+Brier=0.194
+SteerConf
+Correct (n=2088)
+Incorrect (n=912)
+Acc (0.70)
+0.0 0.2 0.4 0.6 0.8 1.0
+Confidence
+0.0
+0.5
+1.0
+1.5
+2.0
+2.5
+3.0 ECE=0.074  AUROC=0.708
+Brier=0.194
+ConfTuner
+Correct (n=2079)
+Incorrect (n=921)
+Acc (0.69)
+0.0 0.2 0.4 0.6 0.8 1.0
+Confidence
+0.0
+0.5
+1.0
+1.5
+2.0
+2.5
+3.0
+ECE=0.184  AUROC=0.926
+Brier=0.111
+Ours
+Correct (n=2416)
+Incorrect (n=584)
+Acc (0.81)
+0.0 0.2 0.4 0.6 0.8 1.0
+Confidence
+0
+2
+4
+6
+8
+10
+12
+Qwen2-VL-7B-Instruct
+Density
+ECE=0.381  AUROC=0.567
+Brier=0.381
+Base Model
+Correct (n=1761)
+Incorrect (n=1239)
+Acc (0.59)
+0.0 0.2 0.4 0.6 0.8 1.0
+Confidence
+0.00
+0.25
+0.50
+0.75
+1.00
+1.25
+1.50
+1.75
+ECE=0.089  AUROC=0.706
+Brier=0.223
+SteerConf
+Correct (n=1652)
+Incorrect (n=1348)
+Acc (0.55)
+0.0 0.2 0.4 0.6 0.8 1.0
+Confidence
+0.0
+0.5
+1.0
+1.5
+2.0
+ECE=0.068  AUROC=0.860
+Brier=0.148
+ConfTuner
+Correct (n=1960)
+Incorrect (n=1040)
+Acc (0.65)
+0.0 0.2 0.4 0.6 0.8 1.0
+Confidence
+0.0
+0.5
+1.0
+1.5
+2.0
+2.5
+3.0
+ECE=0.137  AUROC=0.884
+Brier=0.144
+Ours
+Correct (n=1981)
+Incorrect (n=1019)
+Acc (0.66)
+Confidence Distributions on OmniMedVQA (Split by Correctness)
+Figure 5: Confidence distributions on OmniMedVQA, split by correctness (MedGemma top, Qwen2-VL bottom).
+Baselines cluster predictions near the dataset accuracy (dashed line), achieving low ECE but overlapping correct
+and incorrect distributions. Our method separates the two distributions, yielding higher discrimination (AUROC) at
+the cost of slightly higher ECE.
+0.0 0.2 0.4 0.6 0.8 1.0
+Confidence
+0.0
+0.5
+1.0
+1.5
+2.0
+2.5
+3.0
+3.5
+4.0Density
+ECE=0.146  AUROC=0.628
+Brier=0.219
+OmniMedVQA (ID)
+Correct (n=2116)
+Incorrect (n=884)
+Acc (0.71)
+0.0 0.2 0.4 0.6 0.8 1.0
+Confidence
+0
+2
+4
+6
+8
+ECE=0.445  AUROC=0.533
+Brier=0.445
+PMC-VQA (OOD)
+Correct (n=909)
+Incorrect (n=1091)
+Acc (0.45)
+0.0 0.2 0.4 0.6 0.8 1.0
+Confidence
+0
+2
+4
+6
+8
+10 ECE=0.656  AUROC=0.486
+Brier=0.617
+MedXpertQA (OOD)
+Correct (n=477)
+Incorrect (n=1523)
+Acc (0.24)
+Base Model  Confidence Across Datasets (MedGemma)
+Figure 6: Base Model confidence distributions across datasets (MedGemma). The distribution remains concentrated
+at high confidence regardless of dataset accuracy.
+patients and is divided into correct recommenda-
+tions (green), wrong recommendations (pink), and
+cases where the model abstains (gray). Figure 11
+later confirms that this pattern holds across the full
+threshold range.
+Baselines assign high confidence scores regard-
+less of dataset difficulty. On MedXpertQA, where
+overall accuracy is approximately 20%, the base
+model still recommends on nearly all cases, produc-
+ing 76 wrong recommendations per 100 patients
+for MedGemma and 80 for Qwen2. Our method
+reduces these to 25 and 20 respectively by abstain-
+ing on cases where its confidence is low. The ab-
+stention is not uniform: on OmniMedVQA, where
+accuracy is higher, our method recommends on ap-
+proximately 74% of cases (MedGemma) and 47%
+(Qwen2) with 71 and 45 correct recommendations,
+while producing only 3 wrong recommendations in
+both cases.
+This behavior emerges directly from calibration.
+Because our training procedure encourages con-
+fidence scores that track actual correctness likeli-
+hood, the model naturally scales back its recom-
+mendations on harder datasets without any explicit
+abstention mechanism. An overconfident model
+lacks this adaptivity: it recommends with similar
+frequency on OmniMedVQA and MedXpertQA
+despite a threefold difference in accuracy, exposing
+clinicians to a high volume of incorrect suggestions
+on difficult cases. In practice, each wrong recom-
+mendation requires the clinician to identify the er-
+ror and override the suggestion, adding verification
+effort that may exceed the time saved by correct
+recommendations. A calibrated model that abstains
+17
+0.0 0.2 0.4 0.6 0.8 1.0
+Confidence
+0.0
+0.5
+1.0
+1.5
+2.0
+2.5Density
+ECE=0.051  AUROC=0.695
+Brier=0.194
+OmniMedVQA (ID)
+Correct (n=2088)
+Incorrect (n=912)
+Acc (0.70)
+0.0 0.2 0.4 0.6 0.8 1.0
+Confidence
+0.0
+0.5
+1.0
+1.5
+2.0
+2.5
+3.0
+3.5
+4.0 ECE=0.312  AUROC=0.615
+Brier=0.341
+PMC-VQA (OOD)
+Correct (n=909)
+Incorrect (n=1091)
+Acc (0.45)
+0.0 0.2 0.4 0.6 0.8 1.0
+Confidence
+0.0
+0.5
+1.0
+1.5
+2.0
+2.5
+3.0
+ECE=0.488  AUROC=0.540
+Brier=0.439
+MedXpertQA (OOD)
+Correct (n=467)
+Incorrect (n=1533)
+Acc (0.23)
+SteerConf  Confidence Across Datasets (MedGemma)
+Figure 7: SteerConf confidence distributions across datasets (MedGemma). The distribution shape remains largely
+unchanged despite accuracy dropping from 0.70 to 0.23.
+0.0 0.2 0.4 0.6 0.8 1.0
+Confidence
+0.0
+0.5
+1.0
+1.5
+2.0
+2.5
+3.0Density
+ECE=0.074  AUROC=0.708
+Brier=0.194
+OmniMedVQA (ID)
+Correct (n=2079)
+Incorrect (n=921)
+Acc (0.69)
+0.0 0.2 0.4 0.6 0.8 1.0
+Confidence
+0.0
+0.5
+1.0
+1.5
+2.0
+2.5
+3.0
+3.5
+4.0
+ECE=0.299  AUROC=0.583
+Brier=0.329
+PMC-VQA (OOD)
+Correct (n=873)
+Incorrect (n=1127)
+Acc (0.44)
+0.0 0.2 0.4 0.6 0.8 1.0
+Confidence
+0.0
+0.5
+1.0
+1.5
+2.0
+2.5
+3.0
+3.5
+4.0
+ECE=0.561  AUROC=0.507
+Brier=0.494
+MedXpertQA (OOD)
+Correct (n=436)
+Incorrect (n=1564)
+Acc (0.22)
+ConfTuner  Confidence Across Datasets (MedGemma)
+Figure 8: ConfTuner confidence distributions across datasets (MedGemma). Confidence remains concentrated at
+high values even on MedXpertQA where accuracy is 0.22.
+on uncertain cases reduces this overhead, providing
+fewer but more time-efficient second opinions.
+A.8.2 Clinician-Assisted AI
+In this paradigm the model operates semi-
+autonomously, handling the majority of cases and
+routing predictions with confidence below a thresh-
+old to a human reviewer. This setup is relevant
+to high-throughput settings where case volume ex-
+ceeds clinician capacity, and the model serves as a
+first-pass filter. For such a safety gate to be func-
+tional, low confidence must correspond to cases
+that actually need review. An overconfident model
+assigns high scores indiscriminately, rendering the
+threshold ineffective, and errors pass through unde-
+tected regardless of the chosen operating point.
+Figure 11 plots the fraction of model errors that
+fall below each confidence threshold across the full
+range (1–9), showing that the pattern from Sec-
+tion A.8.1 is not specific to a single threshold. On
+MedGemma (rows 1–2), our method reaches higher
+error catch rates across the full threshold range in
+both ID and OOD settings. On Qwen2 (row 3),
+ConfTuner is competitive on the in-distribution
+dataset at lower thresholds, though our method
+catches a larger fraction at higher thresholds. The
+difference is most visible on out-of-distribution
+datasets, where baseline curves remain near zero at
+moderate thresholds because overconfident scores
+prevent the safety gate from triggering.
+To illustrate with a concrete operating point, we
+examine threshold 3, a high-recall setting where the
+safety net casts a wider net to catch as many errors
+as possible. On MedGemma (OmniMed-trained)
+at this threshold, our method flags 10.6% of cases
+with 91.5% precision (i.e., 9 out of 10 flagged cases
+are genuine errors) and catches 49.8% of all errors.
+At the same threshold, SteerConf flags 4.6% at
+65.7% precision catching 9.9%, and the base model
+flags 0.1% catching effectively nothing. The pat-
+tern is consistent across architectures: on Qwen2
+at threshold 3, our method achieves 92.8% preci-
+sion while catching 29.2% of errors. Overall, the
+improved calibration from our training procedure
+translates to a more practical safety gate, catching
+a larger share of errors at lower review cost com-
+pared to baselines, and suggests higher deployment
+readiness for threshold-based human-in-the-loop
+18
+0.0 0.2 0.4 0.6 0.8 1.0
+Confidence
+0.0
+0.5
+1.0
+1.5
+2.0
+2.5
+3.0Density
+ECE=0.184  AUROC=0.926
+Brier=0.111
+OmniMedVQA (ID)
+Correct (n=2416)
+Incorrect (n=584)
+Acc (0.81)
+0.0 0.2 0.4 0.6 0.8 1.0
+Confidence
+0.0
+0.5
+1.0
+1.5
+2.0
+2.5
+ECE=0.097  AUROC=0.640
+Brier=0.243
+PMC-VQA (OOD)
+Correct (n=925)
+Incorrect (n=1075)
+Acc (0.46)
+0.0 0.2 0.4 0.6 0.8 1.0
+Confidence
+0.0
+0.5
+1.0
+1.5
+2.0
+ECE=0.184  AUROC=0.514
+Brier=0.257
+MedXpertQA (OOD)
+Correct (n=467)
+Incorrect (n=1533)
+Acc (0.23)
+Ours  Confidence Across Datasets (MedGemma)
+Figure 9: Our method’s confidence distributions across datasets (MedGemma). The distribution shifts to track
+dataset accuracy: high confidence on OmniMedVQA (Acc=0.81), moderate on PMC-VQA (Acc=0.46), and low on
+MedXpertQA (Acc=0.23). Correct and incorrect predictions are well-separated on OmniMedVQA and PMC-VQA;
+on MedXpertQA, where accuracy approaches random choice, the distributions converge, reflecting the limit of
+discrimination at this difficulty level.
+#Question / Model Output
+1 “What can be observed in this image?”(A=Joint
+dislocation, B=Enlarged lymph node, C=Soft tissue
+fluid, D=Nerve inflammation)
+Correct:CModel:“The image shows a circular,
+well-defined area with increased signal intensity, which
+is characteristic of an enlarged lymph node.”→B
+2 “What is the noticeable condition depicted in this im-
+age?”(A=Carpal tunnel syndrome, B=Achilles pathol-
+ogy, C=Arthritis, D=Tendonitis)
+Correct:BModel:“The image shows a hand with
+a prominent swelling and tenderness, which is charac-
+teristic of a tendonitis.”→D
+3 “What is the organ depicted in this ultrasound image?”
+(A=Intestine, B=Testis, C=Kidney, D=Pancreas)
+Correct:CModel:“The image shows a structure
+with a central hypoechoic area surrounded by a more
+echogenic rim, which is characteristic of the testis.” →
+B
+Table 15: Qwen2-VL-7B outputs under the black-image
+condition. Same pattern: the model generates plausible
+medical descriptions but answers incorrectly, relying on
+language priors.
+systems.
+While this analysis operates within the multiple-
+choice evaluation setting, it demonstrates a behav-
+ioral prerequisite for clinical deployment: a model
+must be able to reliably modulate its output, ab-
+staining on cases it is likely to answer incorrectly
+and engaging on cases where it can contribute. Our
+calibration framework provides the confidence sig-
+nal necessary to enable this behavior.
+19
+Base Model SteerConf ConfTuner Ours
+0
+20
+40
+60
+80
+100Cases per 100 patients
+66
+51
+59
+71
+25
+14
+20
+9
+35
+21 26
+MedGemma (OmniMed-trained)
+OmniMedVQA
+Correct
+Wrong
+No recommendation
+Base Model SteerConf ConfTuner Ours
+0
+20
+40
+60
+80
+100
+45 40 43
+19
+54
+44
+55
+12
+16
+69
+MedGemma (OmniMed-trained)
+PMC-VQA
+Base Model SteerConf ConfTuner Ours
+0
+20
+40
+60
+80
+100
+24 19 21
+7
+76
+57
+77
+25
+24
+68
+MedGemma (OmniMed-trained)
+MedXpertQA
+Base Model SteerConf ConfTuner Ours
+0
+20
+40
+60
+80
+100Cases per 100 patients
+59
+37
+52
+45
+41
+18
+7
+45 41
+53
+Qwen2 (OmniMed-trained)
+OmniMedVQA
+Base Model SteerConf ConfTuner Ours
+0
+20
+40
+60
+80
+100
+49
+36 38
+23
+51
+27
+29
+8
+38 33
+68
+Qwen2 (OmniMed-trained)
+PMC-VQA
+Base Model SteerConf ConfTuner Ours
+0
+20
+40
+60
+80
+100
+20
+8 10
+80
+30
+41
+20
+62
+50
+76
+Qwen2 (OmniMed-trained)
+MedXpertQA
+Figure 10: Recommendation outcomes per 100 patients at confidence threshold 6. Green: correct recommendations.
+Pink: wrong recommendations. Gray: model abstains. Our method (rightmost bar in each group) produces fewer
+wrong recommendations by abstaining when uncertain, while baselines recommend indiscriminately regardless of
+dataset difficulty.
+20
+1 2 3 4 5 6 7 8 9
+0
+20
+40
+60
+80
+100
+MedGemma (OmniMed-trained)
+Errors caught (%)
+OmniMedVQA (ID)
+Base Model (70.5%)
+SteerConf (69.6%)
+ConfTuner (69.3%)
+Ours (80.5%)
+1 2 3 4 5 6 7 8 9
+0
+20
+40
+60
+80
+100
+PMC-VQA (OOD)
+Base Model (45.5%)
+SteerConf (45.5%)
+ConfTuner (43.6%)
+Ours (46.2%)
+1 2 3 4 5 6 7 8 9
+0
+20
+40
+60
+80
+100
+MedXpertQA (OOD)
+Base Model (23.8%)
+SteerConf (23.4%)
+ConfTuner (21.8%)
+Ours (23.4%)
+1 2 3 4 5 6 7 8 9
+0
+20
+40
+60
+80
+100
+MedGemma (PMC-trained)
+Errors caught (%)
+OmniMedVQA (OOD)
+Base Model (70.5%)
+SteerConf (69.6%)
+ConfTuner (69.1%)
+Ours (68.8%)
+1 2 3 4 5 6 7 8 9
+0
+20
+40
+60
+80
+100
+PMC-VQA (ID)
+Base Model (45.5%)
+SteerConf (45.5%)
+ConfTuner (45.9%)
+Ours (46.5%)
+1 2 3 4 5 6 7 8 9
+0
+20
+40
+60
+80
+100
+MedXpertQA (OOD)
+Base Model (23.8%)
+SteerConf (23.4%)
+ConfTuner (22.6%)
+Ours (22.9%)
+1 2 3 4 5 6 7 8 9
+Confidence threshold
+0
+20
+40
+60
+80
+100
+Qwen2 (OmniMed-trained)
+Errors caught (%)
+OmniMedVQA (ID)
+Base Model (58.7%)
+SteerConf (55.1%)
+ConfTuner (65.3%)
+Ours (66.0%)
+1 2 3 4 5 6 7 8 9
+Confidence threshold
+0
+20
+40
+60
+80
+100
+PMC-VQA (OOD)
+Base Model (48.8%)
+SteerConf (47.4%)
+ConfTuner (48.4%)
+Ours (49.0%)
+1 2 3 4 5 6 7 8 9
+Confidence threshold
+0
+20
+40
+60
+80
+100
+MedXpertQA (OOD)
+Base Model (19.8%)
+SteerConf (19.1%)
+ConfTuner (18.9%)
+Ours (19.4%)
+Figure 11: Error catch rate vs. confidence threshold. Each curve shows the fraction of model errors with confidence
+below the threshold. Percentages in the legend denote each method’s accuracy on that dataset. Rows correspond to
+training configurations; columns to evaluation datasets (ID or OOD).
+21

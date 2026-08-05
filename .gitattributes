@@ -1,0 +1,26 @@
+# Normalize line endings and treat source/text files as UTF-8.
+# https://git-scm.com/docs/gitattributes
+
+* text=auto eol=lf
+
+# Explicitly mark common source/text files as text with LF line endings.
+*.py text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.toml text eol=lf
+*.cfg text eol=lf
+*.ini text eol=lf
+
+# Treat binary files as binary so Git never attempts to convert their line endings.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary

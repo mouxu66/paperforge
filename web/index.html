@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PaperForge · 学术写作助手</title>
+    <style>
+      /* P2-3: 首屏骨架屏 —— 在 JS bundle 加载前立即显示，消除白屏 */
+      #root:empty::before {
+        content: "";
+        display: block;
+        position: fixed;
+        inset: 0;
+        background: #f1f5f9;
+        z-index: 9999;
+      }
+      #root:empty::after {
+        content: "";
+        display: block;
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        width: 36px;
+        height: 36px;
+        margin: -18px 0 0 -18px;
+        border: 3px solid #cbd5e1;
+        border-top-color: #1e40af;
+        border-radius: 50%;
+        animation: pf-boot-spin 0.8s linear infinite;
+        z-index: 10000;
+      }
+      @keyframes pf-boot-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

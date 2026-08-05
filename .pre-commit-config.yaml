@@ -1,0 +1,58 @@
+# PaperForge 提交前质量门禁
+# 安装：pip install pre-commit && pre-commit install
+# 手动全量：pre-commit run --all-files
+# 作用：把代码质量把控前移到"提交瞬间"，低级错误自动拦截。
+
+repos:
+  # 基础文件卫生
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ["--maxkb=2000"]
+      - id: check-merge-conflict
+      - id: debug-statements  # 拦截 pdb/ipdb 等遗留调试语句
+
+  # 自定义：禁止在 mock_api/main.py 中内联定义 worker 函数
+  - repo: local
+    hooks:
+      - id: no-inline-workers
+        name: No inline worker definitions in main.py
+        entry: python scripts/diagnostics/check_no_inline_workers.py mock_api/main.py
+        language: system
+        pass_filenames: false
+        always_run: true
+
+  # ruff：lint + format 一体化（替代 flake8+black+isort）
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.20
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        files: ^mock_api/
+      - id: ruff-format
+        files: ^mock_api/
+
+  # 浏览器扩展测试：防止 content script / background / popup 回归
+  - repo: local
+    hooks:
+      - id: extension-tests
+        name: Extension unit tests
+        # 仅在 node_modules 缺失时执行 npm install，避免每次提交都重新安装
+        entry: bash -c 'cd extension && ([ -d node_modules ] || npm install) && npm test'
+        language: system
+        pass_filenames: false
+        always_run: false
+        files: "^extension/(package\\.json|package-lock\\.json|.*\\.(js|html|json|png))$"
+
+  # mypy：类型检查（仅后端，渐进式）
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.11.2
+    hooks:
+      - id: mypy
+        files: ^mock_api/
+        stages: [manual]  # 存量 335 个类型错误，阶段 3 再打开自动门禁
+        additional_dependencies: [types-requests, types-sqlalchemy]

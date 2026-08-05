@@ -1,0 +1,8 @@
+{
+  "offset": -0.09,
+  "kappa_before": 0.189,
+  "kappa_after": 0.375,
+  "n_samples": 20,
+  "source": "blind_review_comparison_2026-07-24 (LLM-vs-LLM, 20 stratified samples)",
+  "note": "启用方式: 设 PAPERFORGE_DEPTH_SCORE_OFFSET=-0.09 或 DEPTH_AUTO_OFFSET=1"
+}

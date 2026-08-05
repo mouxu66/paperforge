@@ -1,0 +1,1350 @@
+Enhancing LLMs for Graph Tasks via Graph-aware LoRA Generation
+Junshu Sun 1 2 Wanxing Chang 3 Qingming Huang 2 Shuhui Wang 1
+Abstract
+Graph neural networks (GNNs) tightly couple
+their input-output parameters to dataset-specific
+feature spaces and target sets, exhibiting limited
+transferability across different datasets. In con-
+trast, language models (LMs) generalize flexibly
+via a unified input-output interface, motivating
+recent attempts to adapt LMs to graph tasks. How-
+ever, existing methods struggle to encode whole-
+graph information, leading to potential informa-
+tion loss and suboptimal graph understanding. In
+this work, we propose a novel weight-level infor-
+mation injection paradigm for adapting LMs to
+graph tasks. This paradigm injects whole-graph
+information by generating task-specific weight
+updates that interact directly with hidden repre-
+sentations. Instantiating this paradigm following
+low-rank adaptation (LoRA), we introduce GaRA,
+a Graph-aware LoRA generation model. GaRA
+constructs low-rank weight updates conditioned
+on the original graph structures and constrains
+the norm of the generated updates, thus injecting
+whole-graph information and avoiding the opti-
+mization bias in the weight generation. Empirical
+studies demonstrate that GaRA consistently out-
+performs baselines on zero-shot graph learning
+tasks.
+1. Introduction
+Graph neural networks (GNNs) have emerged as effective
+models for supervised graph representation learning, ad-
+dressing tasks such as node classification (Kipf & Welling,
+2017; Sun et al., 2025), link prediction (Zhang & Chen,
+2018), and graph classification (Ying et al., 2021; Sun et al.,
+1State Key Lab. of AI Safety, Institute of Computing Technol-
+ogy, Chinese Academy of Sciences, Beijing, China 2University of
+Chinese Academy of Sciences, Beijing, China 3DAMO Academy,
+Alibaba Group, Hangzhou, China. Correspondence to: Shuhui
+Wang <wangshuhui@ict.ac.cn>.
+Proceedings of the 43 rd International Conference on Machine
+Learning, Seoul, South Korea. PMLR 306, 2026. Copyright 2026
+by the author(s).
+teaser
+(a)
+Output Injection
+(b)
+Input Injection
+(c) Weight Injection
+(
+d
+)
+
+Input
+-
+weight Injection
+LM
+GaRA
+LM
+GaRA
+LM
+subgraphs
+GNN
+LM
+Embeddings
+text
+graph
+Figure 1.Comparison between Graph Injection Paradigms.
+(a) Output-level injection paradigm employs GNNs as the model
+predictor, failing to tackle graphs with diverse labels. (b) Input-
+level injection paradigm transforms input graphs into subgraph
+sequences, overlooking higher-level information in the original
+graphs and leading to potential information loss. (c) Our weight-
+level injection paradigm enables LMs to learn from whole-graph
+information while maintaining the ability to tackle diverse tasks.
+(d) In practice, weight-level injection is complementary to the
+input-level injection, alleviating potential information loss.
+2023) across diverse application scenarios (Li et al., 2021;
+Zhang et al., 2022; Bessadok et al., 2023). However, the
+parameterization of GNNs is inherently tied to the number
+of input feature dimensions and output targets (e.g., labels
+or attributes) in the training data (Zhao et al., 2024). As
+graphs from different datasets exhibit heterogeneous feature
+spaces or target sets (Chen et al., 2024b), pre-trained GNNs
+cannot be directly transferred to downstream graphs without
+modifying model parameters or architectures (Zhao et al.,
+2024). In contrast, language models (LMs) operate on a
+unified textual interface, taking textual sequences as both
+inputs and outputs (Chen et al., 2024a; Li et al., 2024a).
+By varying the length and content of input sequences, LMs
+naturally accommodate heterogeneous feature descriptions
+and produce predictions via textual generalization, enabling
+1
+arXiv:2606.22429v1  [cs.LG]  21 Jun 2026
+Enhancing LLMs for Graph Tasks via Graph-aware LoRA Generation
+flexible transfer across tasks and domains.
+Motivated by the flexibility of LMs, recent studies have
+explored their application to graph learning (Chen et al.,
+2024a). A major challenge in this line of work is enabling
+the model to effectively capture graph topology (Chen et al.,
+2024a). Mainstream solutions can be broadly categorized
+intooutput-levelandinput-levelinjecting methods. Output-
+level injection leverages GNNs to refine LM representations
+and produce final predictions (Liu et al., 2023). However,
+similar to traditional GNNs, these methods remain tightly
+coupled to task-specific target sets and thus exhibit limited
+transferability across different downstream tasks. Differ-
+ently, input-level injection incorporates structural informa-
+tion directly into LM inputs by transforming graph struc-
+tures into prompt sequences, and subsequently fine-tunes
+pre-trained LMs to adapt to these prompts (Chen et al.,
+2024a; Wang et al., 2025). Nevertheless, due to the fully
+connected self-attention mechanism, LMs incur O(n2) com-
+putational complexity for an input sequence of length n.
+As a result, graph-based prompts are typically restricted to
+small subgraphs, discarding the remaining structural context.
+This limitation overlooks higher-level information encoded
+in the original graph and potentially leads to information
+loss and biased graph understanding.
+To alleviate information loss, direct solutions include ex-
+panding the subgraph size or concatenating the global graph
+feature to the input sequence, yet increasing the computa-
+tional overhead quadratically. This suggests that simply
+augmenting information volume at the input level is not a vi-
+able solution. In this paper, we propose a novelweight-level
+injection paradigm for adapting LMs to graph tasks. Specif-
+ically, the injection is realized by generating the weight
+matrix with the whole-graph information and applying the
+resulting weights to the representations in the hidden lay-
+ers. Our weight-level injection complements the subgraph
+information injected at the input level, alleviating poten-
+tial information loss while avoiding a quadratic increase in
+computational cost.
+We then implement this weight-level paradigm with low-
+rank adaptation (LoRA), proposing theGraph-aware LoRA
+generation method, named GaRA, including a LoRA-style
+weight generation module and a norm-rescaling module.
+The weight generation module generates a low-rank matrix
+to construct weight updates, injecting whole-graph infor-
+mation into the LM backbone. The norm-rescaling module
+is proposed to tackle the direction-preserving norm ampli-
+fication problem, which we prove as an architectural opti-
+mization bias during fine-tuning. In the empirical analysis,
+we show that GaRA can consistently surpass baseline meth-
+ods on zero-shot transfer tasks. Our contributions can be
+summarized as follows:
+• We design a novel weight-level information-injecting
+paradigm, which preserves the whole-graph informa-
+tion for LMs on graph tasks.
+• We propose a graph-aware weight generation method,
+GaRA, under the weight-level paradigm, which allevi-
+ates potential information loss and tackles the architec-
+tural optimization bias problem.
+• We demonstrate the advantages of GaRA on zero-shot
+graph learning tasks, which surpass baselines on differ-
+ent transfer tasks.
+2. Related Work
+LMs have demonstrated predominant generalizability across
+a wide range of tasks (OpenAI et al., 2024). In light of this,
+substantial efforts have been devoted to adapting LMs to
+graph tasks (Chen et al., 2024a). However, Wang et al.,
+(2023) suggest that pure LMs struggle to capture structural
+relations in graphs. To address this limitation, recent studies
+incorporate graph structures into LMs (Chen et al., 2024a),
+enabling more effective adaptation to graph tasks. Existing
+work can be broadly categorized into output-level and input-
+level injecting methods.
+2.1. Output-level Injection
+In these methods, LMs typically serve as text encoders,
+while GNNs further enhance the representations and make
+final predictions (Liu et al., 2023; Chen et al., 2024b). Ow-
+ing to the strong textual understanding capabilities, LMs fa-
+cilitate semantic alignment across diverse real-world graphs,
+thereby reducing domain gaps in applications such as bio-
+chemical graphs (Morris et al., 2020), social networks (Lim
+et al., 2021), and e-commerce graphs (Hu et al., 2020).
+Given the LM-encoded textural features, GNNs further in-
+ject structural features through message passing, ensuring
+graph-awareness of the final predictions. Nevertheless, the
+GNN-based predictors fail to tackle graphs with diverse la-
+bels (Zhao et al., 2024), leading to limited adaptability of the
+output-level injection. Due to this limitation, we follow the
+input-level injecting methods to construct our framework in
+this paper.
+2.2. Input-level Injection
+In contrast to output-level methods, input-level injection
+adopts LMs as predictors. Structural information is directly
+injected into the LM inputs by concatenating graph prompts,
+thereby enabling graph-aware learning. Typically, the graph
+prompts can be derived from GNN outputs (Wang et al.,
+2024; Zhang et al., 2024; Lv et al., 2025; He et al., 2025)
+or graph compression strategies (Chen et al., 2024a; Wang
+et al., 2025).
+2
+Enhancing LLMs for Graph Tasks via Graph-aware LoRA Generation
+GNN-based Prompting.GNN-based prompting strategy
+encodes graph structures into prompt embeddings with vari-
+ous GNN models (Kipf & Welling, 2017; Hamilton et al.,
+2017; Sun et al., 2024). However, to ensure computational
+efficiency and training stability, these methods commonly
+freeze the GNN during LM tuning (Wang et al., 2024;
+Li et al., 2024a). In consequence, the resulting graph-
+dependent signals cannot be optimized for downstream
+objectives, which may lead to suboptimal representations
+and exacerbate distribution shifts between pre-training and
+downstream data (Wang et al., 2025). To address this prob-
+lem, GOFA (Kong et al., 2024) interleaves GNN layers
+into a frozen pre-trained LLM, adjusting the prompt sig-
+nal accordingly but also incurring intensive computational
+requirement.
+Graph Compression Prompting.Unlike GNN-based
+prompting, graph compression strategies leverage the re-
+lational modeling capacity of pre-trained LMs, such as large
+language models (LLMs), to learn prompts from node se-
+quences. A key challenge in this paradigm is transforming
+input graphs into sequences while preserving structural in-
+formation. To this end, LLaGA (Chen et al., 2024a) and
+ZeroG (Li et al., 2024a) generate node sequences via neigh-
+borhood sampling for each node 1. However, the sampling
+strategy is permutation-variant, making the compressed rep-
+resentations sensitive to the ordering of the sampled nodes.
+In contrast, UniGTE (2025) restores permutation invariance
+by fixing relative positional encodings between nodes to
+zero and injecting graph structure via attention biases.
+Beyond the characteristics discussed above, due to con-
+straints on model complexity and the goal of task unification,
+both GNN-based methods and graph compression strategies
+reduce all tasks to the graph level by extracting an n-hop
+subgraph centered on the target node or edge. This process
+overlooks higher-level information encoded in the original
+graph, potentially leading to information loss in downstream
+tasks. Different from these methods that solely operate at the
+input level, we propose a weight-level paradigm, injecting
+whole-graph information via weight generation.
+2.3. Weight-level Injection
+Weight-level injection has emerged as a promising paradigm
+for adapting LMs to the visual data. For example,
+VLoRA (Ma et al., 2024) extracts informative features via
+learnable queries and transforms them into low-rank weight
+updates. Adapting this paradigm to graph tasks involves two
+challenges. First, graph datasets typically contain much less
+training data than vision datasets, making weight generation
+1ZeroG also applies message passing after the LM. Since this
+process introduces no learnable parameters, we categorize ZeroG
+as an input-level injecting method.
+more prone to optimization bias during fine-tuning. Second,
+graph data encodes rich relational structures and multi-scale
+information, making it challenging to inject sufficient fea-
+tures via a small number of generated weight updates. To
+address these challenges, GaRA employs norm rescaling
+in weight injection to avoid optimization bias. The global
+features captured by weight injection are combined with the
+local features from input injection, thereby enabling more
+sufficient feature injection.
+3. Preliminaries
+3.1. Notations
+Given an input graph G= (V,E) , where V={v 1, . . . , vn}
+denotes the set of nodes with |V|=n , and E={e i,j |
+vj ∈ N(vi)} denotes the set of edges with |E|=m . For
+a node v∈ V, let N(v) denote its one-hop neighborhood.
+Each node v is associated with a feature vector xv ∈R din
+and a textual description tv, where din denotes the feature
+dimension. Stacking all node features yields the node fea-
+ture matrix X= (x v1 , . . . ,xvn )⊤ ∈R n×din. Traditional
+GNNs are sensitive to the specific feature dimension din
+of different graphs. To tackle the heterogeneous feature
+spaces, pre-trained LMs (Devlin et al., 2019; Reimers &
+Gurevych, 2019) are adopted to embed textual descriptions
+into X, unifying input features in the embedding space.
+Graph structures can be represented by the adjacency matrix
+A∈R n×n, where Ai,j = 1 if vj ∈ N(vi) and 0 otherwise.
+3.2. Model Fine-tuning
+During the adaptation of the LMs, fine-tuning strategies are
+adopted for pre-trained models. Without loss of general-
+ity, given a weight matrix ˆW∈R p×q for a linear trans-
+formation Rp 7→R q, the general adaptation process can
+be formulated as an additive modification to the original
+weights
+(General)W= ˆW+ ∆W,(1)
+where ∆W denotes the weight update. Among differ-
+ent strategies, low-rank adaptation (LoRA) achieves pro-
+nounced efficiency and tuning effectiveness (Hu et al., 2021).
+Given a weight matrix ˆW∈R p×q, LoRA introduces two
+learnable low-rank matrices L∈R p×r,R∈R q×r to en-
+able parameter-efficient fine-tuning. The weight update can
+be reparameterized as
+(LoRA)W= ˆW+ ∆W= ˆW+LR ⊤ (2)
+When r≪min(p, q) , LoRA significantly reduces memory
+consumption and improves training efficiency by optimizing
+only the low-rank matrices while keeping ˆWfixed.
+3
+Enhancing LLMs for Graph Tasks via Graph-aware LoRA Generation
+4. Weight-level Graph Injection
+Despite improved efficiency and enhanced adaptability,
+input-level injection strategies discard higher-level infor-
+mation in the whole-graph context, potentially resulting in
+information loss and suboptimal adaptation of LMs to graph
+tasks. To alleviate information loss, we propose a novel
+weight-level paradigm, injecting whole-graph information
+via weight generation and complementary to the input-level
+subgraph information.
+4.1. Task Description
+To achieve task unification, both node and edge tasks are
+reformulated by extracting task-specific subgraphs as graph-
+level inputs (Tang et al., 2024). Each task is then represented
+by a tuple (G,G s, ttask, tlabel), where Gs ⊆ Gis the sub-
+graph associated with the task,ttask is a textual task descrip-
+tion specifying the prediction objective, and tlabel is the
+corresponding textual label. Graph-level tasks are treated
+as a special case where Gs =G . Under this formulation, an
+LM generates the label description ˆtlabel conditioned on G,
+Gs, andt task.
+Motivated by the ability to bridge the gap between pre-
+training and downstream data, we adopt the graph com-
+pression strategy for our injection framework. It fine-
+tunes an LLM encoder that compresses the input sequence
+tenc = [tGs ∥ttask] into a continuous graph prompt, where
+∥ denotes concatenation, tGs ={t v|v∈ Gs} denotes the
+subgraph node sequence. A frozen LLM decoder then takes
+the learned prompt and the task description ttask as input
+for label generation.
+4.2. Injecting Graph Structures via Weight Generation
+General Formulation.Given the input feature matrix X
+and the adjacency matrix A, we employ a GNN model to
+capture graph information in the whole-graph context
+h=MaxPool(GNN(X,A)),(3)
+where h∈R d denotes the resulting graph-level represen-
+tation. In Eq. 3, the GNN learns node-level features via
+message passing on the input graph, encoding the graph
+topology implicitly. The subsequent MaxPool operation
+lifts node features into a graph-level representation, pro-
+viding whole-graph information for graph-aware weight
+generation.
+Based on the graph-level representation h, a non-linear
+mapping f:R d →R p×q is adopted to generate the weight
+update, reformulating Eq. 1 as
+W= ˆW+ ∆W= ˆW+f(h;Θ),(4)
+where Θ denotes the parameter matrix. To ensure the gen-
+erated matrix covering both positive and negative values
+symmetrically,tanhis employed inf.
+Optimization Bias.Graph-aware weight generation in-
+jects whole-graph information into the adaptation process
+without incurring a quadratic increase in computational cost.
+However, the primary formulation in Eq. 4 introduces an ar-
+chitectural bias during fine-tuning, under which the weight
+update is prone to norm amplification. Consequently, when-
+ever increasing the norm of ∆W decreases the training loss,
+gradient descent will try to amplify ∥∆W∥. This results
+in an architectural optimization bias toward norm-scaling
+weight update.
+Formally, we show that for an adaptation strategy defined
+in Eq. 4, there always exists a parameter update such that
+∆Wcan be scaled with its direction unchanged.
+Theorem 4.1(Direction-preserving Update).Let ∆W=
+f(h;Θ) . For a fixed input h and the Jacobian Jf(Θ) =
+∂f(h;Θ)/∂Θ , there exists a nonzero parameter direction
+δΘ such that under the update Θ←Θ+ϵδΘ , the weight
+update satisfies∆W←(1 +ϵ)∆W+O(ϵ).
+Proof is provided in the Appendix A. Compared to the
+weight generation, the scaling of ∆W in traditional fine-
+tuning methods arises solely from the scaling of the pa-
+rameter matrices, which are discouraged by regularization
+techniques such as weight decay. However, when ∆W is
+generated by the parameteric function f(h;Θ) , weight de-
+cay applied to Θ does not directly constrain the norm of
+∆W. Therefore, the direction-preserving norm amplifica-
+tion still emerges even under regularization.
+4.3. GaRA: Graph-aware LoRA Generation
+LoRA-style Generation.Motivated by the efficiency and
+effectiveness of LoRA for model fine-tuning, we employ the
+low-rank strategy in our weight generation process (Fig. 2).
+Specifically, take the left matrix generation as an example,
+the weight update in Eq. 2 can now be reformulated as
+W= ˆW+ (L+g(h;Θ))R ⊤,(5)
+where g:R d →R dM×r generates the low-rank matrices
+G=g(h;Θ) for LoRA, dM =p when G serves as an
+augmented left low-rank matrix, and dM =q when it serves
+as an augmented right matrix. In practice, we combine
+linear mapping with tanh to implement g. During fine-
+tuning, both Θ and the low-rank matrices L/R are trainable.
+Empirically, augmenting the left low-rank matrix generally
+achieves better adaptation results. Please refer to Sec. 5.3.3
+for more details. Therefore, in the following context, we
+stick to left matrix generation to formulate specific designs
+in GaRA.
+The direction-preserving norm amplification problem also
+exists in the LoRA framework, as the results in Theorem 4.1
+4
+Enhancing LLMs for Graph Tasks via Graph-aware LoRA Generation
+GNNWeightGenerator
+NormRescale LLM (Encoder)GaRA
+!LLM (Decoder)
+❄
+!𝐌𝐋
+𝐆
+learnableparam.
+predicted resultsgraph tokenembeddingstext tokenembeddingslatent tokenembeddings
+!tuned
+❄frozen
+whole-graph injection
+graph-levelrepresentation
+Task DescriptionNode classificationLink predictionGraph classification…
+pipeline
+!
+∆𝐖=+⨀×()𝐋𝐆𝐌𝐑
+(a)
+(b)
+Figure 2.Pipeline of the Graph-aware LoRA Generation model, GaRA.(a) To inject whole-graph information into LLMs, GaRA
+first applies GNN to the whole input graph, extracting a global representation via max pooling. This representation is then fed into an
+MLP-based weight generator to obtain low-rank weight updates G. (b) To tackle the norm-amplification optimization bias, the norm of G
+is further rescaled based on the left low-rank matrix L from LoRA. The norm-rescaled G is combined with the low-rank matrices in
+LoRA to construct the final weight updates.
+directly extend to the low-rank setting. Proof is presented
+in the Appendix A.
+Corollary 4.2(Direction-preserving Update in LoRA-style
+Generation).Let ∆W=LR ⊤ +g(h;Θ)R ⊤. For a fixed
+input h and the Jacobian Jg(Θ) =∂g(h;Θ)/∂Θ , there
+exists a nonzero parameter direction δΘ such that under
+the update Θ←Θ+ϵδΘ , the weight update satisfies
+∆W←(1 +ϵ)∆W+O(ϵ).
+These theoretical results can be verified in the empirical
+evaluation. During the training process, we observe that
+while LoRA exhibits a stable training dynamics, the primary
+LoRA-style generation method leads to continuous norm
+amplification on the generated low-rank matrix. Please refer
+to Sec. 5.2 for more details.
+Influence of Norm Amplification.Norm amplification
+creates an optimization shortcut during fine-tuning, which
+potentially leads to overfitting. Specifically, traditional
+LoRA uses weight decay to regularize the norm of weight
+updates, yielding much smaller values than the original
+weight. As a result, minimizing the loss typically requires
+optimizing both the update and the original weight. In con-
+trast, the existence of direction-preserving updates in weight
+generation scales the norm of weight updates, weakening
+the contribution of the original weight. Therefore, the op-
+timizer can solely rely on the generated weight updates to
+reduce the training loss, making it easier to fit the fine-tuning
+dataset and thus preferred during optimization. Such an op-
+timization bias gradually dilutes the knowledge encoded
+in the original weight via large weight updates, leading to
+ability degradation for general tasks and model overfitting.
+This motivates us to introduce additional constraints in pre-
+venting direction-preserving norm amplification.
+Constraining Norm Amplification.To tackle the uncon-
+strained norm amplification bias during optimization, we
+propose a simple yet effective solution by fixing the average
+column norm of the generated low-rank matrix G to match
+that of the corresponding left matrix L. This choice is moti-
+vated by the fact that both L and G serve as the left factor
+to construct the weight update in the same manner. As a
+result, the norm of L provides a natural and stable reference
+scale without introducing additional hyperparameters. With
+the norm rescaling, Eq. 5 can be reformulated as
+W= ˆW+ (L+G⊙M)R ⊤,
+(GaRA)M= avgj(norm(L·,j))
+avgj(norm(G·,j)) 1⊤,
+G=g(h;Θ),
+(6)
+where ⊙ denotes element-wise multiplication, M denotes
+the rescaling matrix, norm computes the L1 norm of the
+input vector, and 1∈R r denotes the all-one vector. The
+equations in Eq. 3 and Eq. 6 are compiled as GaRA.
+5
+Enhancing LLMs for Graph Tasks via Graph-aware LoRA Generation
+Table 1.Evaluation Results on Zero-shot Dataset Transfer (measured by accuracy for node classification tasks and AUC for graph
+classification tasks: %).“NULL" indicates unsupported tasks.
+NODECLASSIFICATIONGRAPHCLASSIFICATIONLINKPREDICTION
+CORAWIKICS REDDITINSTAGRAMBACE HIV AMAZON
+PHOTO
+BOOK
+HISTORY
+VICUNA-7B 0.155 0.29 0.309 0.391 0.492 0.467 0.576 0.503
+OFA 0.189 0.361 0.498 0.580 0.483 0.404 0.499 0.457
+GRAPHGPT 0.126 - - - - - - -
+LLAGA 0.156 0.601 0.499 0.397 NULLNULL0.659 0.602
+TEA-GLM 0.202 0.449 0.491 0.479 0.467 0.498 0.675 0.584
+GOFA 0.039 0.613 0.493 0.367 0.500 0.481 0.504 -
+UNIGTE 0.216 0.635 0.512 0.603 0.534 0.501 0.681 0.515
+GARA (OURS) 0.251 0.669 0.518 0.611 0.549 0.512 0.708 0.722
+4.4. Model Training Strategy
+Following the common practice in graph compression strat-
+egy (Chen et al., 2024a; Wang et al., 2025), we adopt in-
+struction tuning during the model training. Specifically,
+let D={(G (i),G (i)
+s , t(i)
+Gs , t(i)
+task, t(i)
+label)}D
+i=1 be the training
+dataset. where t(i)
+Gs denotes the i-th subgraph node sequence,
+t(i)
+task and t(i)
+label denotes the corresponding task description
+and label, respectively. The model is required to maximize
+the log-likelihood function
+Θ∗
+GaRA = arg max
+ΘGaRA
+DX
+i=1
+logP ΘGaRA (t(i)
+label|Ii),
+Ii = (G(i),G (i)
+s , t(i)
+Gs , t(i)
+task),
+(7)
+where PΘGaRA denotes the conditional probability distribu-
+tion, ΘGaRA denotes the set of trainable parameters during
+model fine-tuning. This target can be achieved by minimiz-
+ing the cross-entropy loss
+L=−
+DX
+i=1
+|t(i)
+label|X
+j=1
+logP ΘGaRA (t(i)
+label,j|t(i)
+label,<j, Ii),(8)
+where t(i)
+label,<j = (t(i)
+label,k|k < j)denotes all the tokens
+that before thej-th token in the output sequence.
+5. Experiments
+In this section, we provide empirical evaluation results of
+GaRA on real-world benchmarks. GaRA2 is implemented
+with PyTorch (Paszke et al., 2019) and PyTorch Geomet-
+ric (Fey & Lenssen, 2019). The detailed experimental set-
+tings are presented in Appendix B.
+5.1. Effectiveness Study on Zero-shot Dataset Transfer
+Experimental Setup.To evaluate the effectiveness of
+GaRA in generalizing to unseen datasets, we split train-
+2Codes are available at https://github.com/sunjss/
+GaRA.
+ing and inference sources into two non-overlapping sets
+of datasets. Specifically, GaRA and baselines are fine-
+tuned on five datasets: arXiv (Hu et al., 2020), BookChil-
+dren (Yan et al., 2023), AmazonComputer (Shchur et al.,
+2019), FB15K237 (Liu et al., 2023), and ChEMBL (Chen
+et al., 2024b), encompassing node classification, link pre-
+diction, and graph classification tasks. On arXiv, BookChil-
+dren, and AmazonComputer, both node classification and
+link prediction tasks are included. After fine-tuning, GaRA
+and baseline models are evaluated in a zero-shot setting on
+unseen datasets, including (Cora (Wen & Fang, 2023), Wi-
+kiCS (Mernyei & Cangea, 2022), Reddit (Li et al., 2024b),
+and Instagram (Li et al., 2024b)) for node classification,
+(AmazonPhoto and BookHistory) (Yan et al., 2023) for link
+prediction, and (ChemHIV and ChemBACE) (Wu et al.,
+2018) for graph classification. Dataset statistics are summa-
+rized in Tab. A4.
+Baseline models include the output-level injection method
+OFA (Liu et al., 2023), input-level injection methods
+(GraphGPT (Tang et al., 2024), LLaGA (Chen et al., 2024a),
+TEA-GLM (Wang et al., 2024), GOFA (Kong et al., 2024),
+and UniGTE (Wang et al., 2025)), and a pre-trained LLM
+Vicuna-7B (Zheng et al., 2023). GaRA is implemented with
+GCN (Kipf & Welling, 2017) andMaxPooling for whole-
+graph information extraction. In practice, the graph-aware
+weight generation is only applied to the 21-st layer. Please
+refer to Sec. 5.3 for more ablation details.
+Performance.Tab. 1 shows the comparison results be-
+tween GaRA and baseline models for zero-shot dataset trans-
+fer, where GaRA consistently achieves better performance
+across various datasets and task types. For node classifica-
+tion and link prediction tasks, methods that solely depend
+on the input-level injection can only encode subgraph infor-
+mation, where the whole-graph information is discarded. In
+contrast, GaRA further performs weight-level injection by
+explicitly incorporating whole-graph information, encoding
+both local features at the input level and higher-level features
+at the weight level. This design avoids potential information
+loss in the discarded whole graph, resulting in consistently
+6
+Enhancing LLMs for Graph Tasks via Graph-aware LoRA Generation
+Table 2.Evaluation Results in Tackling Norm Amplification (measured by accuracy for node classification tasks and AUC for
+graph classification tasks: %).“Partial" denotes employing arXiv, BookChildren, AmazonComputer, and FB15K237 for tuning,
+where the first three datasets only involve node classification tasks. “Full" denotes employing arXiv, BookChildren, AmazonComputer,
+FB15K237, and ChEMBL for tuning, where the first three datasets involve both node classification and link prediction tasks. “NR."
+denotes norm rescaling. “Rel. Imp." denotes relative improvement of employing norm rescaling in GaRA compared to no explicit norm
+constraints.
+TRAININGDATAMODEL LINKPREDICTIONNODECLASSIFICATION
+AMAZON
+PHOTO
+BOOK
+HISTORY CORAREDDITWIKICS INSTAGRAM
+PARTIAL
+GARA (W/O NR) 0.527 0.580 0.203 0.502 0.611 0.569
+GARA (W NR) 0.529 0.591 0.208 0.513 0.664 0.607
+REL. IMP. 0.37% 1.89% 2.46% 2.19% 8.67% 6.67%
+FULL
+GARA (W/O NR) 0.539 0.581 0.164 0.506 0.603 0.583
+GARA (W NR) 0.708 0.722 0.251 0.518 0.669 0.611
+REL. IMP. 31.35% 24.26% 53.04% 2.37% 10.94% 4.80%
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0L1 Norm
+G in GaRA (w nr)
+G in GaRA (w/o nr)
+L in LoRA
+0 20 40 60 80 100
+Optimization Iterations
+0.006
+0.008
+0.010L1 Norm
+(a)GandL
+0.0000
+0.0025
+0.0050
+0.0075
+0.0100
+0.0125
+0.0150
+0.0175L1 Norm
+W in GaRA (w/o nr)
+Original W
+W in GaRA (w nr)
+W in LoRA
+0 50 100 150 200 250
+Optimization Iterations
+0.0000
+0.0002
+0.0004L1 Norm (b)∆Wand ˆW
+0 2,500 5,000 7,500 10,000
+Optimization Iterations
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+0.8
+0.9
+1.0Similarity
+GaRA (w nr)
+GaRA (w/o nr)
+0 2,500 5,000 7,500 10,000
+Optimization Iterations
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+0.8
+0.9T est Loss
+GaRA (w nr)
+GaRA (w/o nr) (c) Similarity and Test Loss
+Figure 3.Effectiveness in Tackling Norm Amplification.“nr" denotes our norm rescaling strategy. (a) and (b) The lower figures are the
+zoom-in illustrations of the upper figures. (c) “Similarity" denotes the cosine similarity between the updated weight W and the original
+weight ˆW. Results are averaged over the 50 randomly selected test samples, where the selection is refreshed every 50 training steps.
+better performance of GaRA on both node and link tasks.
+Moreover, on graph classification tasks, where whole-graph
+information is directly provided to LLMs, GaRA also sur-
+passes baseline models. We attribute this advantage to the
+explicit injection of whole-graph representations, whereas
+input-injection methods must implicitly infer global struc-
+ture through pairwise node interactions, which can be less
+effective for capturing graph representations.
+5.2. Effectiveness in Tackling Norm Amplification
+To study the effectiveness of GaRA in tackling norm am-
+plification, we start by presenting the norm values of the
+generated low-rank matrix with or without norm rescaling
+in Fig. 3(a) and 3(b). Then we dive into the potential in-
+fluence of norm amplification. Based on the analysis in
+Section 4.3, norm amplification may lead to dilution of
+the original weight and model overfitting. Here, Fig. 3(c)
+presents the cosine similarity between the updated weight
+W and the original weight ˆW for weight dilution and the
+test loss for model overfitting. The results are from the
+value matrix projection in the 21-st layer of the LLM en-
+coder Vicuna-7B.
+As shown in Fig. 3(a), without norm rescaling, the fine-
+tuning process exhibits continuous amplification on the
+norm of the generated low-rank matrix. By employing
+the generated low-rank matrix to compute the weight up-
+date ∆W, either the norm or the direction of the updated
+weight W is dominated by the update part over the orig-
+inal weight ˆW (Fig. 3(b) and Fig. 3(c) left). As a result,
+the model without norm rescaling is prone to overfitting
+(Fig. 3(c) right), leading to degraded performance on trans-
+fer tasks. In contrast, GaRA with norm rescaling better
+preserves the knowledge in the original weights, while only
+partially adjusting the final weights through the generated
+updates.
+Besides the analysis on model characteristics, Tab. 2 fur-
+ther presents the performance comparison with and without
+norm rescaling. It shows that weight generation without
+norm rescaling achieves inferior performance compared
+to generating with norm rescaling. When the amount of
+training data increases, norm rescaling empowers GaRA
+to gain enhanced transferability, while generating without
+norm rescaling gains limited improvements. Therefore, the
+performance gap between the two methods becomes larger.
+7
+Enhancing LLMs for Graph Tasks via Graph-aware LoRA Generation
+CoRA Reddit Amazon
+ Photo
+ (Link Pred.)
+Book
+ History
+ (Link Pred.)
+Instagram WikiCS
+20
+30
+40
+50
+60Performance
+In (SubGraph)
+In (SubGraph+Whole)
+Weight
+In+Out
+In+Weight
+Figure 4.Comparison Among Injection Paradigms.“Sub-
+Graph" solely employs subgraph features as input. “Whole"
+further concatenates global features to the input sequences.
+1 11 21 31 32
+Depth of the Injected Layer
+40
+42
+44
+46
+48
+50Average Model Performance
+Average
+Left Matrix
+Right Matrix
+Figure 5.Impact of the Injection Position and Generation
+Target.“Left/Right" denotes that the generated low-rank matrix
+serves as an augmented left or right matrix.
+All these results indicate the negative impact of the norm
+amplification during optimization and the effectiveness of
+our norm-rescaling strategy in tackling this architectural
+optimization bias. Except for norm rescaling, there are
+other potential strategies for constraining norm amplifica-
+tion. Please refer to Appendix B.5 for more details.
+5.3. Ablation Study
+In this section, we conduct ablation studies on the architec-
+tural designs in GaRA, including comparing GaRA with
+other injection solutions, the position choice for weight-
+level graph information injection, and different generating
+inputs and targets. Model variants are fine-tuned on arXiv,
+BookChildren, AmazonComputer, and FB15K237, where
+arXiv, BookChildren, and AmazonComputer contain only
+node classification tasks.
+5.3.1. IMPACT OF THEINJECTIONPARADIGM
+GaRA combines input-level and weight-level injection to
+provide graph structures for LM backbones. To isolate
+the contribution of our weight-level injection, we compare
+parameter-matching models under the same UniGTE frame-
+work with subgraph input injection, whole-graph input injec-
+tion, weight injection, input-weight injection (GaRA), and
+input-output injection. Specifically, subgraph input injec-
+tion is based on UniGTE, while whole-graph input injection
+directly concatenates whole-graph information learned by
+GNN at the input level. Weight injection gains graph in-
+formation solely from the weight generator by masking the
+graph embedding in the LM input. Input-output injection
+applies a GNN to the whole graph to extract node-level
+representations and add them to the LLM encoder output.
+Results are presented in Fig. 4, following the “Partial" setup
+in Tab. 2. We can see that combining input and weight in-
+jection consistently achieves better performance than other
+variants, indicating that the two injection paradigms provide
+complementary benefits.
+5.3.2. IMPACT OF THEWEIGHTINJECTINGPOSITION
+In practice, GaRA applies weight-level injection to only
+a single layer of the backbone LLM. To study the impact
+of different injection positions, we adopt Vicuna-7B as the
+backbone model, which consists of 32 layers. Injection po-
+sitions are selected from {1,11,21,31,32} -th layer. Fig. 5
+reports the average performance across the node classifica-
+tion and link prediction datasets from Tab. 1. We can see
+that injecting at the 21-st layer achieves the best average
+performance. As the injection position moves from shal-
+low to intermediate layers, performance gradually improves
+and then degrades near the output layer. This is because
+injecting graph-aware features into deeper layers yields a
+more direct influence on the final predictions. However, the
+recovery trend does not extend to the final layer, as such late-
+stage perturbations bypass most of the backbone’s forward
+transformations and disrupt the final output representations.
+5.3.3. IMPACT OF THEGENERATIONTARGET
+GaRA adopts low-rank fine-tuning to adapt pre-trained
+LLMs to graph tasks. During the generation process, either
+the left or right low-rank matrix can serve as the weight-level
+injection target. To investigate the impact of the two genera-
+tion targets, we conduct an ablation study by employing the
+generated low-rank matrix G as an augmented left or right
+low-rank matrix. Following the same experimental setup in
+Sec 5.3.2, Fig. 5 compares the average performance with
+the two generation targets. Results show that generating the
+augmented left low-rank matrix consistently outperforms
+the augmented right matrix. We also note that either gener-
+ating the left or the right matrix for layers at different depths
+follows the same performance trend in Sec. 5.3.2, further
+verifying our conclusion.
+5.3.4. IMPACT OF THEGENERATIONINPUT
+GaRA employs the whole-graph representation to gener-
+ate weight updates. To validate the benefit of whole-graph
+8
+Enhancing LLMs for Graph Tasks via Graph-aware LoRA Generation
+Reddit Amazon
+Photo
+(Link Pred.)
+Book
+History
+(Link Pred.)
+Instagram WikiCS
+40
+45
+50
+55
+60
+65
+70Model Performance
+Random
+Non-Graph
+SubGraph
+Whole (GaRA)
+Figure 6.Comparison Among Generation Inputs.“Random",
+“Non-Graph", and "SubGraph" denote generating low-rank ma-
+trices from random vectors, embedded task description, and
+GNN-processed subgraph features, respectively.
+CoRA WikiCS Reddit Instagram
+0.00
+0.05
+0.10
+0.15
+0.20
+0.25
+0.30
+0.35
+0.40Model Performance
+0.0004 0.0009 0.0023 0.0017
+0.2355
+0.4276
+0.3792
+0.3081
+Whole (GaRA)
+SubGraph
+Figure 7.Redundancy Analysis with Similarity Comparison.
+Cosine similarity is computed between hidden representations
+obtained with the vanilla LoRA versus GaRA with “Whole"
+graph/“SubGraph" as generator inputs.
+Table 3.Cost Analysis (s/sample).
+UNIGTE GARA LLAGA VICUNA-7B
+TRAIN1.28 1.46 0.83 -
+INFERENCE0.67 0.71 0.12 1.32
+information, we compare different generation inputs, in-
+cluding random vectors, non-graph representations from
+the embedded task description, subgraph representations,
+and whole-graph representations (GaRA). We also compare
+GaRA with an MLP variant to isolate the contribution of
+graph-level representations. Please refer to Appendix B.4
+for details. Results in Fig. 6 show that GaRA consistently
+achieves better performance than other variants. Specifically,
+random vectors cannot provide any informative features and
+result in the worst performance. Non-graph and subgraph
+representations achieve similar performance, where discard-
+ing whole-graph information leads to inferior performance.
+This stems from the fact that global features are comple-
+mentary to the input-level local features, while adding more
+local features shows redundancy.
+To further demonstrate such redundancy, we compute the
+cosine similarity between hidden representations obtained
+with pure LoRA versus the variant with subgraph represen-
+tations and GaRA. 50 samples are randomly selected from
+the test sets. Averaged results in Fig. 7 show that generating
+with local information offers similar features to the original
+features, indicating redundancy. In contrast, generating with
+global information offers less similar features to the original
+ones, indicating complementarity. All these results demon-
+strate the importance of further complementing whole-graph
+information for the primary input injection.
+5.4. Cost Analysis
+GaRA depends on a GNN model to learn global features and
+a single-layer perceptron to generate the low-rank weight
+matrix. In practice, we employ GCN (Kipf & Welling, 2017)
+as the backbone to construct our GNN model, which re-
+quires a computational complexity of O(m) +O(n). There-
+fore, the computational bottleneck mainly comes from the
+LLM backbone instead of our external weight generation
+module. To empirically evaluate the efficiency of GaRA, we
+conduct a cost analysis during both the tuning and the infer-
+ence processes. Specifically, we employ (arXiv, BookChil-
+dren, AmazonComputer, and FB15K237) as the training
+datasets, and (Cora, BookHistory, and AmazonPhoto) as the
+inference datasets, computing the average cost per sample.
+Results in Tab. 3 show that GaRA stays on par with other
+LLM-based models.
+6. Conclusion
+In this paper, we proposed a novel weight-level injec-
+tion paradigm for adapting LMs to graph tasks. Unlike
+prior input- or output-level methods, which either overlook
+higher-level information from the whole-graph context or
+struggle to generalize across tasks, our paradigm enables
+explicit whole-graph injection by generating weight updates
+during fine-tuning and applying them to hidden-layer repre-
+sentations. In this way, weight-level injection complements
+subgraph information introduced at the input level and miti-
+gates potential information loss. Building on this paradigm,
+we then proposed a graph-aware weight generation method,
+named GaRA. GaRA consists of a LoRA-style weight gener-
+ation module and a norm-rescaling module. The weight gen-
+eration module produces weight updates that inject whole-
+graph information without incurring a quadratic increase in
+computational cost. The norm-rescaling module addresses
+a direction-preserving norm amplification issue, which we
+identify and theoretically characterize as an architectural
+optimization bias in primary weight generation. Empirical
+results demonstrate that GaRA consistently outperforms ex-
+isting baselines on zero-shot transfer tasks and effectively
+alleviates norm amplification, validating both the effective-
+ness and robustness of the proposed approach. For the
+limitation discussion, please refer to Appendix C.
+9
+Enhancing LLMs for Graph Tasks via Graph-aware LoRA Generation
+Acknowledgement
+This work was supported in part by the National Key R&D
+Program of China under Grant 2023YFC2508704, in part
+by the National Natural Science Foundation of China under
+grant number 62236008, in part by the Natural Science
+Foundation of Beijing under grant number L251082, and in
+part by Shandong Provincial Natural Science Foundation
+under project ZR2025ZD01. The authors would like to
+thank the anonymous reviewers for their helpful comments
+and suggestions that improved this manuscript.
+Impact Statement
+This paper presents work whose goal is to advance the field
+of Machine Learning. There are many potential societal
+consequences of our work, none of which we feel must be
+specifically highlighted here.
+References
+Introducing Llama 3.1: Our most capable models to date.
+https://ai.meta.com/blog/meta-llama-3-1/, 2024.
+Bessadok, A., Mahjoub, M. A., and Rekik, I. Graph Neu-
+ral Networks in Network Neuroscience.IEEE Transac-
+tions on Pattern Analysis and Machine Intelligence, 45
+(5):5833–5848, 2023. ISSN 1939-3539.
+Chen, R., Zhao, T., Jaiswal, A. K., Shah, N., and Wang,
+Z. LLaGA: Large Language and Graph Assistant. In
+International Conference on Machine Learning, pp. 7809–
+7823. PMLR, 2024a.
+Chen, Z., Mao, H., Liu, J., Song, Y ., Li, B., Jin, W., Fatemi,
+B., Tsitsulin, A., Perozzi, B., Liu, H., and Tang, J. Text-
+space Graph Foundation Models: Comprehensive Bench-
+marks and New Insights. InAdvances in Neural Infor-
+mation Processing Systems, volume 37, pp. 7464–7492,
+December 2024b.
+Devlin, J., Chang, M.-W., Lee, K., and Toutanova, K. BERT:
+Pre-training of Deep Bidirectional Transformers for Lan-
+guage Understanding. In Burstein, J., Doran, C., and
+Solorio, T. (eds.),Conference of the North American
+Chapter of the Association for Computational Linguis-
+tics: Human Language Technologies, pp. 4171–4186,
+Minneapolis, Minnesota, 2019. Association for Computa-
+tional Linguistics.
+Fey, M. and Lenssen, J. E. Fast Graph Representation Learn-
+ing with PyTorch Geometric. InInternational Conference
+on Learning Representations Workshop on Graphs and
+Manifolds, 2019.
+Hamilton, W. L., Ying, R., and Leskovec, J. Inductive rep-
+resentation learning on large graphs. InInternational
+Conference on Neural Information Processing Systems,
+pp. 1025–1035, Red Hook, USA, 2017. Curran Asso-
+ciates Inc.
+He, Y ., Sui, Y ., He, X., and Hooi, B. UniGraph: Learn-
+ing a Unified Cross-Domain Foundation Model for Text-
+Attributed Graphs. InProceedings of the 31st ACM
+SIGKDD Conference on Knowledge Discovery and Data
+Mining V.1, KDD ’25, pp. 448–459, New York, NY ,
+USA, 2025. Association for Computing Machinery. doi:
+10.1145/3690624.3709277.
+Hu, E. J., Shen, Y ., Wallis, P., Allen-Zhu, Z., Li, Y ., Wang,
+S., Wang, L., and Chen, W. LoRA: Low-Rank Adaptation
+of Large Language Models. InInternational Conference
+on Learning Representations, 2021.
+Hu, W., Fey, M., Zitnik, M., Dong, Y ., Ren, H., Liu, B.,
+Catasta, M., and Leskovec, J. Open Graph Benchmark:
+Datasets for Machine Learning on Graphs. InAdvances
+in Neural Information Processing Systems, volume 33,
+pp. 22118–22133. Curran Associates, Inc., 2020.
+Kipf, T. N. and Welling, M. Semi-Supervised Classification
+with Graph Convolutional Networks. InInternational
+Conference on Learning Representations, Toulon, France,
+2017.
+Kong, L., Feng, J., Liu, H., Huang, C., Huang, J., Chen, Y .,
+and Zhang, M. GOFA: A Generative One-For-All Model
+for Joint Graph Language Modeling. InThe Thirteenth
+International Conference on Learning Representations,
+October 2024.
+Li, G., Müller, M., Qian, G., Delgadillo, I. C., Abualshour,
+A., Thabet, A., and Ghanem, B. DeepGCNs: Making
+GCNs Go as Deep as CNNs.IEEE Transactions on
+Pattern Analysis and Machine Intelligence, pp. 1–1, 2021.
+ISSN 0162-8828, 2160-9292, 1939-3539. doi: 10/gk3x7j.
+Li, Y ., Wang, P., Li, Z., Yu, J. X., and Li, J. ZeroG: Investi-
+gating Cross-dataset Zero-shot Transferability in Graphs.
+InACM SIGKDD Conference on Knowledge Discovery
+and Data Mining, pp. 1725–1735, New York, NY , USA,
+2024a. Association for Computing Machinery.
+Li, Y ., Wang, P., Zhu, X., Chen, A., Jiang, H., Cai, D.,
+Chan, V . W., and Li, J. GLBench: A Comprehensive
+Benchmark for Graph with Large Language Models.Ad-
+vances in Neural Information Processing Systems, 37:
+42349–42368, 2024b.
+Lim, D., Hohne, F., Li, X., Huang, S. L., Gupta, V .,
+Bhalerao, O., and Lim, S. N. Large Scale Learning on
+Non-Homophilous Graphs: New Benchmarks and Strong
+Simple Methods. InAdvances in Neural Information Pro-
+cessing Systems, volume 34, pp. 20887–20902. Curran
+Associates, Inc., 2021.
+10
+Enhancing LLMs for Graph Tasks via Graph-aware LoRA Generation
+Liu, H., Feng, J., Kong, L., Liang, N., Tao, D., Chen, Y ., and
+Zhang, M. One For All: Towards Training One Graph
+Model For All Classification Tasks. InInternational
+Conference on Learning Representations, 2023.
+Lv, R., Zhang, Z., Zhang, K., Liu, Q., Gao, W., Liu, J., Yan,
+J., Yue, L., and Yao, F. GraphPrompter: Multi-Stage
+Adaptive Prompt Optimization for Graph In-Context
+Learning. In2025 IEEE 41st International Conference on
+Data Engineering (ICDE), pp. 3917–3930. IEEE Com-
+puter Society, 2025. doi: 10.1109/ICDE65448.2025.
+00292.
+Ma, F., Xue, H., Zhou, Y ., Wang, G., Rao, F., Yan, S., Zhang,
+Y ., Wu, S., Shou, M. Z., and Sun, X. Visual perception
+by large language model’s weights. InProceedings of
+the 38th International Conference on Neural Information
+Processing Systems, volume 37, pp. 28615–28635, Red
+Hook, NY , USA, 2024. Curran Associates Inc.
+Mernyei, P. and Cangea, C. Wiki-CS: A Wikipedia-Based
+Benchmark for Graph Neural Networks. InInterna-
+tional Conference on Machine Learning Workshop on
+Graph Representation Learning and Beyond. arXiv, Jan-
+uary 2022.
+Morris, C., Kriege, N. M., Bause, F., Kersting, K., Mutzel,
+P., and Neumann, M. TUDataset: A collection of bench-
+mark datasets for learning with graphs. InInternational
+Conference on Machine Learning Workshop on Graph
+Representation Learning and Beyond, Virtual Only, 2020.
+arXiv.
+OpenAI, Hurst, A., Lerer, A., Goucher, A. P., Perelman,
+A., Ramesh, A., Clark, A., Ostrow, A. J., Welihinda, A.,
+Hayes, A., Radford, A., M ˛ adry, A., Baker-Whitcomb, A.,
+and Beutel, A. e. a. GPT-4o System Card, 2024.
+Paszke, A., Gross, S., Massa, F., Lerer, A., Bradbury, J.,
+Chanan, G., Killeen, T., Lin, Z., Gimelshein, N., Antiga,
+L., Desmaison, A., Köpf, A., Yang, E., DeVito, Z., Rai-
+son, M., Tejani, A., Chilamkurthy, S., Steiner, B., Fang,
+L., Bai, J., and Chintala, S. PyTorch: An imperative style,
+high-performance deep learning library. InInternational
+Conference on Neural Information Processing Systems,
+pp. 8026–8037, Red Hook, NY , USA, 2019. Curran As-
+sociates Inc.
+Reimers, N. and Gurevych, I. Sentence-bert: Sentence em-
+beddings using siamese bert-networks. InProceedings
+of the 2019 Conference on Empirical Methods in Natu-
+ral Language Processing. Association for Computational
+Linguistics, 11 2019.
+Shchur, O., Mumme, M., Bojchevski, A., and Günne-
+mann, S. Pitfalls of Graph Neural Network Evaluation.
+arXiv:1811.05868 [cs, stat], 2019.
+Sun, J., Wang, S., Han, X., Xue, Z., and Huang, Q. All in
+a row: Compressed convolution networks for graphs. In
+International Conference on Machine Learning, volume
+202, pp. 33061–33076, Honolulu, USA, 2023. PMLR.
+Sun, J., Yang, C., Ji, X., Huang, Q., and Wang, S. Towards
+Dynamic Message Passing on Graphs. InConference on
+Neural Information Processing Systems, December 2024.
+Sun, J., Chang, W., Yang, C., Huang, Q., and Wang, S. Re-
+lieving the Over-Aggregating Effect in Graph Transform-
+ers. InThe Thirty-ninth Annual Conference on Neural
+Information Processing Systems, 2025.
+Tang, J., Yang, Y ., Wei, W., Shi, L., Su, L., Cheng, S.,
+Yin, D., and Huang, C. GraphGPT: Graph Instruction
+Tuning for Large Language Models. InProceedings of the
+47th International ACM SIGIR Conference on Research
+and Development in Information Retrieval, pp. 491–500,
+New York, NY , USA, 2024. Association for Computing
+Machinery.
+Van der Maaten, L. and Hinton, G. Visualizing data using
+t-sne.Journal of machine learning research, 9(11), 2008.
+Wang, D., Zuo, Y ., Li, F., and Wu, J. LLMs as zero-shot
+graph learners: Alignment of GNN representations with
+LLM token embeddings. InProceedings of the 38th
+International Conference on Neural Information Process-
+ing Systems, volume 37, pp. 5950–5973, Red Hook, NY ,
+USA, 2024. Curran Associates Inc.
+Wang, D., Zuo, Y ., Lu, G., and Wu, J. UniGTE: Uni-
+fied Graph–Text Encoding for Zero-Shot Generalization
+across Graph Tasks and Domains. InThe Thirty-ninth
+Annual Conference on Neural Information Processing
+Systems, 2025.
+Wang, H., Feng, S., He, T., Tan, Z., Han, X., and Tsvetkov,
+Y . Can language models solve graph problems in natural
+language? InInternational Conference on Neural Infor-
+mation Processing Systems, pp. 30840–30861, Red Hook,
+NY , USA, 2023. Curran Associates Inc.
+Wen, Z. and Fang, Y . Augmenting Low-Resource Text
+Classification with Graph-Grounded Pre-training and
+Prompting. InProceedings of the 46th International
+ACM SIGIR Conference on Research and Development
+in Information Retrieval, pp. 506–516, New York, NY ,
+USA, 2023. Association for Computing Machinery. doi:
+10.1145/3539618.3591641.
+Wu, Z., Ramsundar, B., Feinberg, E. N., Gomes, J., Ge-
+niesse, C., Pappu, A. S., Leswing, K., and Pande, V .
+MoleculeNet: A benchmark for molecular machine learn-
+ing.Chemical Science, 9(2):513–530, 2018. ISSN 2041-
+6520. doi: 10.1039/c7sc02664a.
+11
+Enhancing LLMs for Graph Tasks via Graph-aware LoRA Generation
+Xu, K., Hu, W., Leskovec, J., and Jegelka, S. How Powerful
+are Graph Neural Networks? InInternational Conference
+on Learning Representations, New Orleans, LA, USA,
+2019.
+Yan, H., Li, C., Long, R., Yan, C., Zhao, J., Zhuang, W.,
+Yin, J., Zhang, P., Han, W., Sun, H., Deng, W., Zhang, Q.,
+Sun, L., Xie, X., and Wang, S. A comprehensive study on
+text-attributed graphs: Benchmarking and rethinking. In
+Proceedings of the 37th International Conference on Neu-
+ral Information Processing Systems, pp. 17238–17264,
+Red Hook, NY , USA, 2023. Curran Associates Inc.
+Ying, C., Cai, T., Luo, S., Zheng, S., Ke, G., He, D., Shen,
+Y ., and Liu, T.-Y . Do Transformers Really Perform Bad
+for Graph Representation? InAdvances in Neural Infor-
+mation Processing Systems, volume 34, pp. 28877–28888.
+Curran Associates, Inc., 2021.
+Zhang, L., Chen, M., Arnab, A., Xue, X., and Torr, P. H. S.
+Dynamic Graph Message Passing Networks.IEEE Trans-
+actions on Pattern Analysis and Machine Intelligence, pp.
+5712–5730, 2022.
+Zhang, M. and Chen, Y . Link Prediction Based on Graph
+Neural Networks. InInternational Conference on Neural
+Information Processing Systems, pp. 5171–5181, Red
+Hook, NY , USA, 2018. Curran Associates Inc.
+Zhang, M., Sun, M., Wang, P., Fan, S., Mo, Y ., Xu, X.,
+Liu, H., Yang, C., and Shi, C. GraphTranslator: Aligning
+Graph Model to Large Language Model for Open-ended
+Tasks. InThe Web Conference 2024, May 2024.
+Zhao, J., Zhu, Z., Galkin, M., Mostafa, H., Bronstein, M. M.,
+and Tang, J. Fully-inductive Node Classification on Arbi-
+trary Graphs. InThe Thirteenth International Conference
+on Learning Representations, 2024.
+Zheng, L., Chiang, W.-L., Sheng, Y ., Zhuang, S., Wu, Z.,
+Zhuang, Y ., Lin, Z., Li, Z., Li, D., Xing, E., Zhang, H.,
+Gonzalez, J. E., and Stoica, I. Judging LLM-as-a-Judge
+with MT-Bench and Chatbot Arena.Advances in Neural
+Information Processing Systems, 36:46595–46623, 2023.
+12
+Enhancing LLMs for Graph Tasks via Graph-aware LoRA Generation
+Table A4.Dataset Statistics.“NC", “LP", “GC" denote node classification, link prediction, and graph classification, respectively.
+TYPEDATASETTASK#NODES#EDGES#CLASSES/TAKS#GRAPHS
+TRAIN ARXIVNC, LP 169,343 1,166,243 40 1
+TRAINAMAZONCOMPUTERSNC, LP 87,229 721,081 10 1
+TRAINBOOKCHILDRENNC, LP 76,875 1,554,578 24 1
+TRAINFB15K237 LP 14,541 310,116 237 1
+TRAINCHEMBL GC 26 56 1,048 365,065
+TESTINSTAGRAMNC 11,339 144,010 2 1
+TESTREDDITNC 33,434 198,438 2 1
+TESTWIKICS NC 11,701 216,123 10 1
+TESTCORANC 25,120 91,140 70 1
+TESTBOOKHISTORYLP 41,551 358,574 12 1
+TESTAMAZONPHOTOLP 48,362 500,928 12 1
+TESTCHEMBACE GC 34 74 1 1,513
+TESTCHEMHIV GC 25,51 54,95 1 41,127
+A. Proof
+Theorem4.1 (Direction-preserving Update).Let ∆W=f(h;Θ) . For a fixed input h and the Jacobian Jf(Θ) =
+∂f(h;Θ)/∂Θ , there exists a nonzero parameter direction δΘ such that under the update Θ←Θ+ϵδΘ , the induced
+weight update satisfies∆W←(1 +ϵ)∆W+O(ϵ 2).
+Proof.Based on the first-order Taylor expansion
+f(h;Θ+ϵδΘ) =f(h;Θ) +ϵJ f(Θ)δΘ +O(ϵ 2).(A9)
+Our target is to achievef(h;Θ+ϵδΘ) = (1 +ϵ)f(h;Θ). Substituting Eq. A9 into the above equation yields
+f(h;Θ) +ϵJ f(Θ)δΘ +O(ϵ 2) = (1 +ϵ)f(h;Θ).(A10)
+Ignoring higher-order terms, this equation is reduced to a linear function
+Jf(Θ)δΘ =f(h;Θ).(A11)
+In practice, f:R d →R p×q is typically implemented as a single-layer perceptron. Therefore, the number of parameters
+in f is no smaller than the output dimension p×q . Under this implementation, the Jacobian Jf(Θ) is full row-rank,
+there exists a solution δΘ for Eq. A11 given any f(h;Θ) . The results also holds when f(h;Θ) is employed to generate
+the low-rank matrices for weight updates ∆W=f(h;Θ)R ⊤ or ∆W=Lf(h;Θ) , since left or right multiplication by
+low-rank matrices does not change the above derivation. This completes the proof.
+Corollary4.2 (Direction-preserving Update on LoRA-style Generation).Let ∆W=LR ⊤ +g(h;Θ)R ⊤. For a fixed
+input h and the Jacobian Jg(Θ) =∂g(h;Θ)/∂Θ , there exists a nonzero parameter direction δΘ such that under the
+updateΘ←Θ+ϵδΘ, the induced weight update satisfies∆W←(1 +ϵ)∆W+O(ϵ).
+Proof.The result in Theorem 4.1 directly extends to the LoRA setting. Specifically, Eq. A11 can be written as
+Jg(Θ)δΘ =g(h;Θ).(A12)
+When f(h;Θ) is employed to generate the weight update via ∆W=LR ⊤ +g(h;Θ)R ⊤ =f(h;Θ)R ⊤ or ∆W=
+LR⊤ +Lg(h;Θ) =Lf(h;Θ) , we have f(h;Θ) =g(h;Θ) +L or g(h;Θ) +R ⊤. Since L and R is independent of Θ,
+the Jacobian Jg(Θ) =J f(Θ), and thus remains full row rank. Therefore, Eq. A12 also admits a solution for any g(h;Θ) ,
+empowering the direction-preserving update property to hold in the low-rank scenario.
+13
+Enhancing LLMs for Graph Tasks via Graph-aware LoRA Generation
+B. Details on Experimental Settings
+B.1. Datasets
+GaRA and baselines are fine-tuned on five datasets: arXiv (Hu et al., 2020), BookChildren (Yan et al., 2023), Amazon-
+Computer (Shchur et al., 2019), FB15K237 (Liu et al., 2023), and ChEMBL (Chen et al., 2024b), encompassing node
+classification, link prediction, and graph classification tasks. On arXiv, BookChildren, and AmazonComputer, both node
+classification and link prediction tasks are included. After fine-tuning, GaRA and baseline models are evaluated in a
+zero-shot setting on unseen datasets, including (Cora (Wen & Fang, 2023), WikiCS (Mernyei & Cangea, 2022), Reddit (Li
+et al., 2024b), and Instagram (Li et al., 2024b)) for node classification, (AmazonPhoto and BookHistory) (Yan et al., 2023)
+for link prediction, and (ChemHIV and ChemBACE) (Wu et al., 2018) for graph classification. The statistics of these datasets
+are summarized in Tab. A4. For data splitting, we follow standard splits for node classification and graph classification from
+their original papers. For link prediction, we randomly split the data into train/valid/test sets with a ratio of 8:1:1. During
+training, a subset of instances is sampled from each training dataset to stay under the same experimental setup as previous
+work (Wang et al., 2025). Specifically, 45,470 instances are sampled from arXiv, 21,888 from BookChildren, 31,378 from
+AmazonComputers for node classification tasks, 10,000 each from (arXiv, BookChildren, and AmazonComputers) and
+29,440 from FB15K237 for link prediction tasks, and 74,242 from ChEMBL for graph classification. The task descriptions
+for each dataset are presented in Tab. A7.
+B.2. Experimental Setup
+GaRA follows UniGTE (Wang et al., 2025) to construct the input-injection framework and adds a graph-aware weight
+generation module to incorporate whole-graph information. Specifically, GaRA employs BERT (Devlin et al., 2019) as the
+pre-trained LM, and Vicuna-7B (Zheng et al., 2023) as the LLM backbone. During the model tuning process, the learning
+rate is set as 2e−4 for LoRA and the graph-aware weight generator, while the rest of the module follows the same setting
+as in UniGTE. All experiments are conducted on NVIDIA A100.
+Cora
+BookHistory
+AmazonPhoto
+WikiCS
+Instagram
+Figure A8.Distribution of the Generated Weight Updates.The t-SNE results of the generated weight updates from different datasets
+are compared. For each dataset, 20% of the node features are randomly masked to generate 50 perturbed views. Different colors indicate
+different datasets.
+B.3. Graph-awareness of GaRA
+GaRA encodes whole-graph information as weight updates for LLM adaptation. To verify whether the generated updates
+capture dataset-specific features, we conduct a graph-awareness analysis on the resulting low-rank matrices. Specifically,
+for each input graph, we randomly mask 20% of the node features to generate 50 perturbed views of the same graph. The
+generated low-rank matricesGfrom Cora, BookHistory, AmazonPhoto, Instagram, and WikiCS are then visualized using
+14
+Enhancing LLMs for Graph Tasks via Graph-aware LoRA Generation
+Table A5.Evaluation Results with More Backbones (measured by accuracy for node classification tasks: %).“LP" denotes link
+prediction.
+VICUNA-7B LLAMA3
+IN GARA IN GARA
+GCN GAT GIN MLP GCN
+AMAZONPHOTO(LP) 50.352.952.4 52.5 51.8 51.256.6
+BOOKHISTORY(LP) 48.359.158.9 58.4 48.6 44.151.3
+INSTAGRAM58.5 60.764.763.8 60.0 59.161.6
+CORA17.2 20.8 21.121.820.1 29.631.8
+REDDIT50.6 51.352.852.3 50.6 51.451.7
+WIKICS 63.2 66.467.763.8 63.5 65.157.1
+Table A6.Comparison with Different Strategies for Constraining Norm Amplification (measured by accuracy for node classification
+tasks: %).“LP" denotes link prediction. “No Constraint" denotes GaRA without norm rescaling.
+NO
+CONSTRAINT
+NORM
+RESCALING
+(GARA)
+NORMALI
+-ZATION GATINGPENALTYCLIPPING
+AMAZONPHOTO(LP) 52.7 52.9 52.1 49.7 49.3 53.3
+BOOKHISTORY(LP) 58.0 59.1 52.4 53.4 52.7 60.6
+INSTAGRAM56.9 60.7 60.1 59.2 60.4 61.3
+CORA20.3 20.8 11.6 18.7 10.7 18.8
+REDDIT50.2 51.3 50.6 51.0 50.7 50.2
+WIKICS 61.1 66.4 18.7 53.7 57.5 63.3
+t-SNE (Van der Maaten & Hinton, 2008). As shown in Fig. A8, different generating resultsG corresponding to the same
+dataset tend to cluster together, while results from different datasets form well-separated clusters. This observation suggests
+that GaRA encodes dataset-specific graph features, effectively empowering graph-aware adaptation of the LLM across
+diverse input graphs.
+B.4. Evaluation with More Backbones
+To evaluate the compatibility of GaRA with other backbones, GaRA is further implemented with MLP, GAT (Kipf &
+Welling, 2017), and GIN (Xu et al., 2019) for the GNN backbone. LLaMA3.1 8B-Instruct (lla, 2024) is adopted as the LLM
+alternative. Experimental setup follows the “Partial" setting in Tab. 2. Results in Tab. A5 show that GaRA with different
+backbones consistently outperforms input-injection baselines, demonstrating its backbone compatibility. Notably, GaRA
+with different GNNs achieves better performance than the MLP variant. This indicates that the performance gains are from
+both graph representations and LoRA generation.
+B.5. Strategies for Constraining Norm Amplification
+Except for norm rescaling, there are other potential strategies for constraining norm amplification on the generated low-rank
+weight update G. Specifically, we consider loss penalty by adding a loss term (Penalty), normalization by applying Frobenius
+normalization on G (Norm), element clipping by clipping elements in G that are larger than the largest element in the
+left low-rank matrix L from LoRA (Clipping), and learnable gating by multiplying a learnable scalar with G (Gating).
+Experimental setup follows the "Partial" setting in Tab. 2. Tab. A6 shows that GaRA with norm rescaling consistently
+outperforms Gating, Penalty, and Norm, while being comparable with Clipping, which also constrains the norm with the
+LoRA component L. Therefore, both norm rescaling and clipping preserve useful norm information while preventing
+excessive norm amplification. These results suggest that effective constraints control the norm value and preserve meaningful
+scale information. Our norm rescaling follows these principles, while Clipping serves as a potential alternative. We will
+explore this direction in future work.
+C. Limitation
+In this paper, we introduce a weight-level injection paradigm that incorporates whole-graph information into LLM adaptation
+via weight generation. This paradigm is designed as a complementary strategy to input-level injection, which primarily relies
+on subgraph sequences and discards higher-level information from the original graphs. However, the proposed weight-level
+15
+Enhancing LLMs for Graph Tasks via Graph-aware LoRA Generation
+paradigm has not yet been explored as a fully independent injection mechanism. In practice, the implemented model,
+GaRA, is built upon an input-level injection framework and leverages both input- and weight-level information. How to
+enable LLMs to perform graph tasks using only the weight-level injection paradigm, without relying on input-level prompts,
+remains an open problem and an interesting direction for future work.
+16
+Enhancing LLMs for Graph Tasks via Graph-aware LoRA Generation
+Table A7.Dataset Description.“NC", “LP", “GC" denotes node classification, link prediction, and graph classification, respectively.
+Datasets Task Type Description
+arXiv, Cora NC Given a representation of a paper with the following information: Title: {title},
+Abstract: {abstract}. Question: Which arXiv CS sub-category does this paper
+belong to? Please directly give the most likely answer from the following sub-
+categories: {candidate_labels}.
+LP Given the representation of two papers: Title: First Paper: {title}, Second Paper:
+{title}. Question: Do these two papers have citation relationships? Please choose
+the most likely answer from: "Yes, they have citation relationships" or "No, they
+do not have citation relationships".
+BookHistory, BookChildren NC Given a representation of a book with the following information: Name: {ti-
+tle}, Content: {abstract}. Question: Which category does this book belong to?
+Please directly give the most likely answer from the following categories: {candi-
+date_labels}.
+LP Given the representation of two books: Title: First Book: {title}, Second Book:
+{title}. Question: Do these two books have co-purchased or co-viewed relation-
+ships? Choose from: "Yes, they have co-purchased or co-viewed relationships" or
+"No, they do not have co-purchased or co-viewed relationships".
+AmazonComputers, AmazonPhoto NC Given a representation of a book with the following information: Name: {ti-
+tle}, Content: {abstract}. Question: Which category does this book belong to?
+Please directly give the most likely answer from the following categories: {candi-
+date_labels}.
+LP Given the representation of two electronic products: Title: First Product: {com-
+ment}, Second Product: {comment}. Question: Do these two products have
+co-purchased or co-viewed relationships? Choose from: "Yes, they have co-
+purchased or co-viewed relationships" or "No, they do not have co-purchased or
+co-viewed relationships".
+WikiCS NC Given a representation of a Wikipedia page with the following information: Name:
+{name}, Content: {content}. Question: Which category does this Wikipedia
+page belong to? Please directly give the most likely answer from the following
+categories: {candidate_labels}.
+Reddit NC Given a representation of a user with the following information: Previous posts:
+{posts}. Question: Which category does this user belong to? Please directly give
+the most likely answer from the following categories: {candidate_labels}.
+Instagram NC Given a representation of a user with the following information: Personal in-
+troduction: {introduction}. Question: Which category does this user belong
+to? Please directly give the most likely answer from the following categories:
+{candidate_labels}.
+FB15K237 LP Given the representation of two entities: First entity: Name: {name}, Description:
+{description}. Second entity: Name: {name}, Description: {description}. Ques-
+tion: Which category should the relation between these two entities be classified
+as? Please directly give the most likely answer from the following categories:
+{candidate_labels}.
+ChEMBL, ChemHIV , ChemBACE GC Given a representation of a molecule with the following information: SMILES:
+{smiles}. Question: {task} Please answer: "Yes, this molecule is effective to this
+assay" or "No, this molecule is not effective to this assay".
+NC Determine this node’s most likely category within the network’s classification
+schema
+LP Determine whether there is a specific relationship between these two nodes.
+GC Determine whether the molecule possesses specific physicochemical or bioactivity
+properties.
+17

@@ -1,0 +1,775 @@
+Emergence of Gamma-Type Upward-Phase Statistics in the Collatz Map: An Effective Poisson
+Process Mechanism
+Weicheng Fu1,2,3,∗ Xiaobin Liu 1,† and Yisen Wang 3,4‡
+1 Department of Physics, Tianshui Normal University, Tianshui 741001, Gansu, China
+2 Key Laboratory of Atomic and Molecular Physics&Functional Material of Gansu Province,
+College of Physics and Electronic Engineering, Northwest Normal University, Lanzhou 730070, China
+3 Lanzhou Center for Theoretical Physics, Lanzhou University, Lanzhou 730000, Gansu, China
+4 Key Laboratory for Quantum Theory and Applications of the Ministry of Education, Lanzhou University, Lanzhou, Gansu 730000, China
+(Dated: June 26, 2026)
+The Collatz map is a simple deterministic transformation whose orbit structure remains highly nontrivial.
+A recent direction-phase decomposition partitions each orbit into upward and downward steps, and numerical
+observations indicate that the number of upward phases,N↑, follows an approximate Gamma distribution. In this
+work, we provide a mechanistic explanation for this statistical regularity by modeling the occurrence of upward
+phases in the odd-compressed, or Syracuse, version of the Collatz map as a homogeneous Poisson process. From
+the mean-field logarithmic balance and the geometric distribution of 2-adic valuations, we derive closed-form
+expressions for the Gamma parameters: the scale parameterθ=2/(2−log 2 3)2 ≈11.61 is constant, whereas
+the shape parameterKgrows logarithmically with the maximal initial valueX 0 =2L+1. We also analyze the
+closure conditions for periodic orbits, showing that nontrivial cycles are severely constrained, which supports
+the plausibility of the statistical framework. Numerical validation forLranging from 10 5 to 1015 confirms the
+theory with relative errors below 3%, and a bias-corrected mean estimate reduces the error to 10 −3–10−2%.
+These results establish a quantitative link between the arithmetic properties of the Collatz map and Gamma-type
+statistics, and suggest possible extensions to generalized Collatz-type problems.
+I. INTRODUCTION
+The Collatz map is a classical problem at the intersection of
+discrete dynamical systems [1–7], elementary number theory
+[8–10], and probabilistic modeling [11, 12]. It is defined by
+X=
+(
+3X+1,Xis odd;
+X/2,Xis even. (1)
+The Collatz conjecture asserts that, for every positive integer
+X, repeated iteration eventually enters the period-three cycle
+4→2→1→4. The problem was proposed by L. Collatz in
+the 1930s [9]. Despite its elementary formulation, the asso-
+ciated orbit structure is highly intricate, and a complete proof
+remains out of reach. A substantial body of work has inves-
+tigated the problem from the perspectives of stopping times,
+total stopping times, modular structures, random models, 2-
+adic dynamics, and probabilistic methods [13–16].
+In recent years, several noteworthy developments have fur-
+ther advanced the study of the Collatz problem. One impor-
+tant direction is to understand the typical behavior of Collatz
+orbits through probability theory and random dynamical mod-
+els [15, 16]. Tao proved that almost all Collatz orbits attain
+almost bounded values. Although this result does not show
+that every orbit reaches 1, it demonstrates that, in the sense of
+logarithmic density, the overwhelming majority of orbits ex-
+hibit a strong tendency toward descent [15]. This work refines
+the long-standing random-walk heuristic for the Collatz prob-
+lem into a more precise probabilistic framework, suggesting
+∗ fuweicheng@tsnu.edu.cn
+† liuxb@tsnu.edu.cn
+‡ wys@lzu.edu.cn
+that the deterministic Collatz map may display effective ran-
+domness at appropriate scales. Closely related to this view-
+point, random models of Collatz orbits have long served as an
+important tool for understanding the problem. Kontorovich
+and Lagarias systematically studied random models for the
+3X+1 and 5X+1 problems, showing that forward iteration
+can be approximated by additive random walks, biased ran-
+dom walks, or Markov processes [9].
+Another active direction concerns large-scale computa-
+tional verification. Although computational evidence cannot
+replace a rigorous proof, it provides important support for un-
+derstanding the statistical structure of orbits and for excluding
+counterexamples within large finite ranges [17, 18]. Barina
+recently extended the verification of the Collatz conjecture to
+X<2 71, using improved algorithms and parallel computation,
+and discussed the role of GPU and distributed computing in
+accelerating this task [18]. Such computations show that no
+nontrivial cycle or divergent orbit appears within an extremely
+large range of initial values.
+Beyond stopping-time analysis and computational verifi-
+cation, recent work has also attempted to characterize the
+structure of Collatz orbits from the perspective of nonlinear
+dynamical systems. In Ref. [19], Collatz orbits were de-
+composed into upward and downward phases, leading to a
+direction-phase decomposition and a family of recursive func-
+tions parameterized by the number of upward phasesN ↑. A
+key numerical observation in that work is that the statistics of
+odd integers classified by the number of upward phases are
+well described by a Gamma-type distribution. This suggests
+that the number of local growth events in Collatz orbits is not
+merely an irregular count, but may instead exhibit a stable sta-
+tistical law.
+The present work is motivated by the following question:
+what mechanism gives rise to Gamma-type statistics in the
+arXiv:2606.26811v1  [nlin.CD]  25 Jun 2026
+2
+number of upward phases of Collatz orbits? To answer this
+question, we model the occurrence of upward phases in the
+odd-compressed, or Syracuse, version of the Collatz map as
+a homogeneous Poisson process. Combining the mean-field
+logarithmic balance with the geometric distribution of the
+2-adic valuations, we obtain closed-form estimates for the
+Gamma parameters and explain why the scale parameter is
+approximately constant whereas the shape parameter grows
+logarithmically with the maximal initial value. Large-scale
+numerical experiments are then performed to validate the pro-
+posed Poisson process mechanism and the resulting Gamma
+distribution approximation. Beyond its implications for the
+statistical analysis of Collatz dynamics, this framework also
+provides a pedagogically useful example for undergraduate
+and graduate courses in nonlinear dynamics, number theory,
+computational physics, and computational mathematics, illus-
+trating how deterministic arithmetic rules can be effectively
+described through probabilistic and statistical models.
+The remainder of this paper is organized as follows. Sec-
+tion II introduces the Collatz map and defines the direction-
+phase decomposition, including the numbers of upward and
+downward phases. Section III develops a probabilistic approx-
+imation for the odd-compressed Collatz dynamics and derives
+the Gamma distribution approximation for the statistics ofN↑,
+together with theoretical estimates for the fitting parameters
+and the mean value. Section IV discusses exact closure condi-
+tions for possible periodic orbits and clarifies the role of finite-
+size corrections in the double-logarithmic asymptotic picture.
+Section V presents numerical results that test the theoretical
+predictions over a wide range ofL. Finally, Section VI sum-
+marizes the main conclusions and discusses the scope and lim-
+itations of the proposed approximation.
+II. THE COLLA TZ MAP AND DEFINITION OF
+DIRECTION PHASES
+For brevity, the map (1) is abbreviated as
+Xn =F(X n−1) =Fn(X0),(2)
+wheren,X n ∈Z +. The Collatz conjecture asserts
+lim
+n→∞
+F n(X0) ={4,2,1}for∀X 0 ∈Z +.(3)
+To formalize the dynamics, we introduce “direction phases”
+[20]:
+(
+P↑(n) =1,ifX n+1 >X n (up phase);
+P↓(n) =−1,ifX n+1 <X n (down phase). (4)
+Notably,N ↑ andN ↓ correspond to the counts of odd and
+even terms in the sequence. The total iterations satisfy
+N=N ↑ +N ↓,withF N(X0) =1,(5)
+whereN ↓ is parameterized as a function ofN ↑ as follows
+N↓ =
+
+N↑ log2
+
+3+ 1
+X0
+
++log 2(X0)
+
+,(6)
+20 23 26
+Xn
+20
+23
+26Xn+1
+y=3xy=3x+1
+y=x
+y=x=2
+(a)
+X0=19
+20 24 28 212
+Xn
+20
+24
+28
+212 (b)
+X0=31
+FIG. 1. Cobweb plot of the orbits withX 0 =19 (a) andX 0 =31 (b),
+respectively. The red lines are the iterative trajectories of the odd-
+compressed Collatz map.
+here⌊x⌉denotes roundingxto the nearest integer [19].
+Clearly, for a givenX 0, the total number of iterations is com-
+pletely determined under the condition thatN ↑ is known. Nu-
+merical experiments show that, within a specified range, the
+statistical distribution ofN ↑ corresponding to oddX 0 approxi-
+mately follows a Gamma distribution [19], which will be the-
+oretically analyzed and estimated below.
+III. POISSON-PROCESS MECHANISM FOR
+GAMMA-TYPE UPW ARD-PHASE STA TISTICS
+The standard Collatz map consists of an odd step, 3X+
+1, and an even step,X/2. Since 3X+1 is always even for
+any odd integerX, an odd step is necessarily followed by one
+or more successive divisions by 2. It is therefore natural to
+combine these consecutive even steps and consider the odd-
+only accelerated map acting on the set of positive odd integers:
+Xn+1 = 3Xn +1
+2hn
+,h n =ν 2(3Xn +1),(7)
+whereν 2(m)denotes the 2-adic valuation ofm, i.e., the expo-
+nent of the highest power of 2 dividingm. This map is also re-
+ferred to as the reduced Collatz function, the accelerated Col-
+latz function, the odd-only Collatz map, or the Syracuse func-
+tion [15]. In this compressed representation, each step from
+Xn toX n+1 consists of one upward operation,X n 7→3X n +1,
+followed byh n downward divisions by 2. Hence, for an orbit
+segment containingMcompressed steps, the number of up-
+ward phases isN ↑ =M, while the total number of downward
+phases is
+N↓ =
+M−1
+∑
+n=0
+hn.(8)
+Thus, the number of iterations of the odd-compressed map is
+naturally identified with the number of upward phases.
+Figures 1(a) and 1(b) compare the iteration trajectories of
+the odd-compressed map, indicated by the red lines, with the
+cobweb plots of the original Collatz map for the initial val-
+uesX 0 =19 andX 0 =31, respectively. For these two initial
+3
+values, the corresponding numbers of upward and downward
+phases are(N ↑,N ↓) = (6,14)and(39,67), respectively. The
+trajectory generated by the odd-compressed map consists en-
+tirely of odd integers, as illustrated by the red dots in Fig-
+ure 1. In the log2–log2 coordinate system, the grid lines corre-
+spond to powers of two. Therefore, except for the fixed point
+X=1=2 0, no point along the odd-compressed trajectory can
+coincide with these power-of-two grid lines.
+We now introduce an effective statistical approximation. In
+the odd-compressed Collatz dynamics, each compressed iter-
+ation corresponds to one upward phase. We assume that the
+occurrence of these upward phases can be approximated by a
+homogeneous Poisson process mechanism. Under this view-
+point, the Gamma distribution arises naturally as the distribu-
+tion of an accumulated waiting time in a Poisson process. We
+therefore use the Gamma family as a continuous approxima-
+tion to the statistics ofN ↑, i.e.,
+ρ(N↑) = 1
+Γ(K)θ K NK−1
+↑ exp
+
+− N↑
+θ
+
+,(9)
+whereKandθare the shape and scale parameters, respec-
+tively.
+The remaining task is to estimateKandθfrom the arith-
+metic structure of the odd-compressed Collatz map. Taking
+logarithms of the compressed map yields
+log2 Xn+1 =log 2(3Xn +1)−h n.(10)
+For sufficiently largeX n, we use the approximation
+log2(3Xn +1)≃log 2(3Xn) =log2 Xn +log 2 3.(11)
+Substituting this approximation into Eq. (10) gives
+log2 Xn+1 ≃log 2 Xn +log 2 3−h n.(12)
+Equivalently, the logarithmic evolution can be written as
+log2 Xn+1 ≃log 2 Xn −ξ n,(13)
+where
+ξn =h n −log 2 3 (14)
+denotes the single-step logarithmic decrease. Sinceh n has
+mean value larger than log2 3, the average value ofξ n is pos-
+itive, corresponding to a net logarithmic contraction on aver-
+age.
+For odd integers that are approximately uniformly dis-
+tributed among residue classes modulo powers of 2, the 2-
+adic valuationh n =ν 2(3Xn +1)may be approximated by a
+geometric distribution [15], i.e.,
+P(hn =h)≃2 −h,h=1,2,3, . . . .(15)
+This approximation gives
+E[hn] =2,Var(h n) =2.(16)
+Sinceξ n =h n −log 2 3, it follows that
+µ≡E[ξ n] =2−log 2 3≃0.4150375,(17)
+and
+σ 2 ≡Var(ξ n) =Var(hn) =2.(18)
+For an initial odd integerX 0, reaching the small attracting
+cycle requires the accumulated logarithmic decrease to be of
+the order of log 2 X0. At the mean-field level, this logarithmic
+balance gives
+µ⟨N↑⟩ ≃log2 X0.(19)
+TakingX 0 =2L+1 as the representative upper boundary of
+the sampling interval, we obtain
+⟨N↑⟩ ≃log2 X0
+µ = log2(2L+1)
+2−log 2 3 ≈ 1+log 2 L
+2−log 2 3
+≈2.4094+8.0039log 10 L.
+(20)
+This estimate is in good agreement with the numerical results
+reported in Ref. [19].
+We next estimate the variance ofN ↑ by error propagation.
+AfterN ↑ compressed steps, the accumulated logarithmic de-
+crease is
+SN↑ =
+N↑
+∑
+n=1
+ξn.(21)
+Within the independent-increment approximation, the vari-
+ablesξ n have varianceσ 2, and hence, for a fixed value of
+N↑,
+Var(SN↑)≃σ 2N↑.(22)
+At the mean-field level, the accumulated logarithmic decrease
+is related to the number of upward phases by
+SN↑ ≃µN ↑.(23)
+Thus, a small fluctuation inS N↑ induces a corresponding fluc-
+tuation inN ↑ according to
+∆N↑ ≃
+∆SN↑
+µ .(24)
+It follows that
+Var(N↑)≃
+Var(SN↑)
+µ2 ≃ σ 2
+µ2 ⟨N↑⟩.(25)
+For a Gamma distribution with shape parameterKand scale
+parameterθ, one has
+E[N↑] =Kθ,Var(N ↑) =Kθ2.(26)
+Therefore,
+θ= Var(N↑)
+E[N↑] ≃ σ 2
+µ2 = 2
+(2−log 2 3)2 ≃11.6106,(27)
+and
+K= E[N↑]2
+Var(N↑) ≃ ⟨N↑⟩
+θ ≃ 2−log 2 3
+2 (1+log 2 L)
+≈0.2075+0.6894log 10 L.
+(28)
+4
+Thus, the theoretical estimate predicts thatθis independent of
+L, whileKgrows logarithmically withL. In the effective Pois-
+son process interpretation, the constant scale parameter corre-
+sponds to a constant inverse rate, supporting the use of a ho-
+mogeneous Poisson process approximation for the occurrence
+of upward phases in the odd-compressed Collatz dynamics.
+IV . CLOSURE CONDITIONS FOR PERIODIC ORBITS
+The statistical description developed above implicitly con-
+cerns orbits that eventually enter the known cycle. If other
+nontrivial periodic orbits existed, their long-time behavior
+would not be described by the same convergent-orbit statis-
+tics. It is therefore useful to examine the exact closure condi-
+tions for periodic orbits of the accelerated Collatz map.
+Suppose that there exists a periodic orbit of the accelerated
+map on positive odd integers with periodM, namely,
+X0 →X 1 → · · · →XM−1 →X 0,(29)
+whereX M =X 0. Iterating the accelerated map gives the exact
+balance condition
+2N↓ =
+M−1
+∏
+n=0
+
+3+ 1
+Xn
+
+,(30)
+whereN ↓ = ∑M−1
+n=0 hn is the total number of downward divi-
+sions by 2 along the cycle. For the known cycle 1→4→2→
+1, the accelerated map has the fixed pointX0 =1, correspond-
+ing toM=1 andN ↓ =2. In this case, Eq. (30) reduces to
+22 =3+1.
+Equation (30) may be rewritten as
+2N↓
+3M =
+M−1
+∏
+n=0
+
+1+ 1
+3Xn
+
+.(31)
+For any nontrivial positive cycle, all odd elements satisfyXn ≥
+3. Hence,
+1< 2N↓
+3M <
+10
+9
+M
+.(32)
+Taking logarithms, we obtain the necessary condition
+log2 3< N↓
+M <log 2
+10
+3 .(33)
+Moreover, ifm=min{X 0,X1, . . . ,XM−1}, then
+0< N↓
+M −log 2 3<log 2
+
+1+ 1
+3m
+
+< 1
+3mln2 .(34)
+Thus, any large nontrivial cycle would require the rational
+numberN ↓/Mto approximate the irrational number log 2 3
+from above with extremely high accuracy.
+For example, the numerical verification of the Collatz con-
+jecture up toX 0 <2 71 implies that any possible nontrivial pos-
+itive cycle must havem>2 71 >2.361183×10 21. Substituting
+this lower bound into Eq. (34) gives
+0< N↓
+M −log 2 3< 1
+3×2 71 ln2 <2.0368×10 −22. (35)
+L=105
+L=1015
+0 100 200 300 400 500 600 700N"
+100
+102
+104
+106
+108
+1010
+1012
+1014
+N(N")
+FIG. 2. The orange dots denote the countsN(N ↑)as a function of
+N↑ forX 0 ∈ {3,5, . . . ,2L+1}, plotted on a semilogarithmic scale.
+The dots from bottom to top correspond toL=10 5, . . . ,1015. The
+blue stars are obtained in the same way, but withX 0 restricted to
+X0 ∈ {2L×10−1 +1, . . . ,2L+1}. The green solid curves are the
+theoretical estimate, i.e.,N(N ↑) =Lρ(N↑), see Eq. (9).
+Therefore, if one considers a hypothetical sequence of non-
+trivial cycles withm→∞, thenN ↓/Mwould have to converge
+to log2 3 from above with an error tending to zero.
+In the asymptotic approximation where 3Xn +1 is replaced
+by 3Xn, the closure condition would reduce to
+N↓ =Mlog 2 3.(36)
+This equation cannot hold exactly, sinceN↓ andMare integers
+whereas log2 3 is irrational. Hence, in the double-logarithmic
+asymptotic picture, nontrivial periodic closure is excluded in
+the limitm→∞. The constraint becomes increasingly strin-
+gent as the minimum elementmof the cycle increases.
+However, this asymptotic obstruction is not a proof of the
+nonexistence of all nontrivial cycles. The finite correction
+1/Xn in 3X n +1 cannot be discarded rigorously in the inte-
+ger dynamics, because it determines the 2-adic valuation and
+hence the parity structure of the subsequent trajectory. Indeed,
+this correction is precisely what produces the known cycle
+1→4→2→1. Therefore, a complete exclusion of all finite-
+size corrections would amount to proving the uniqueness of
+the known Collatz cycle. This illustrates the subtle differ-
+ence between taking asymptotic limits in the real-valued log-
+arithmic approximation and preserving the exact arithmetic
+structure of the dynamics on positive integers. For exam-
+ple, in the real-valued asymptotic sense, the approximation
+3Xn +1≃3X n is valid asX n →∞. In the integer dynamics,
+however, this approximation is not innocuous: for oddX n, the
+quantity 3Xn +1 is even, whereas 3X n remains odd. Thus, re-
+placing 3Xn +1 by 3X n changes the parity structure and, con-
+sequently, the 2-adic valuation that determines the subsequent
+divisions by 2.
+5
+(b)
+0 100 200 300 400 500 600 700N"
+0
+0.2
+0.4
+0.6
+0.8
+1CDF
+0 100 200 300 400 500 600 700N"
+!0:004
+!0:002
+0
+0:002
+0:004
+"
+(a)
+0 100 200 300 400 500 600 700N"
+0
+0.005
+0:010
+0:015
+FrequencyofN"
+100 101 102 10310!20
+10!10
+100
+FIG. 3. (a) Frequency distribution ofN ↑ as a function ofN ↑ for
+X0 ∈ {3,5, . . . ,2L+1}at fixedL=1015. The red solid curve de-
+notes the Gamma distribution fit. Inset: the same data plotted on a
+log-log scale. (b) Empirical cumulative distribution function of the
+frequency statistics. The solid curve represents the cumulative dis-
+tribution function of the fitted Gamma distribution. The fitting pa-
+rameters areK=10.70924±0.00621 andθ=11.24522±0.00661,
+with a reduced chi-square of 4.3560117×10−7 and an adjustedR 2 of
+0.9999961. Inset: residuals between the empirical data and the fitted
+Gamma distribution, defined as the difference between the empirical
+and fitted values.
+V . NUMERICAL RESULTS
+Figure 2 shows the statistical counts ofN ↑ forX 0 ∈
+{3,5, . . . ,2L+1}andL=105, . . . ,1015 on a semilogarithmic
+scale. The orange dots denote the numerical counts, while
+the blue stars show the corresponding results obtained by re-
+strictingX 0 to odd values in the rangeX 0 ∈ {0.2L+1,0.2L+
+3, . . . ,2L+1}. The two sets of data nearly overlap, indicat-
+ing that, for sufficiently largeX 0, the statistical distribution
+ofN ↑ is insensitive to the lower cutoff of the sampling inter-
+val. The green curves represent the theoretical prediction ob-
+tained from the probability density function in Eq. (9), namely
+N(N ↑) =Lρ(N↑), which agrees well with the numerical re-
+sults.
+Figure 3(a) shows the frequency distribution ofN ↑ as a
+function ofN ↑ forX 0 ∈ {3,5, . . . ,2L+1}at fixedL=1015.
+The red solid curve denotes the Gamma distribution fit. To
+better resolve the discrepancy between the numerical data and
+the fitted curve at small frequencies, the same data are re-
+plotted on a double-logarithmic scale in the inset. The fitted
+curve shows excellent overall agreement with the numerical
+results. Figure 3(b) presents the empirical cumulative dis-
+tribution function constructed from the frequency statistics.
+Since the cumulative curve is smooth, we fit it using the cu-
+mulative distribution function of the Gamma distribution to
+determine the fitting parameters. The fitted curve in Fig. 3(a)
+is then drawn using these parameters. The red solid curve in
+Fig. 3(b) denotes the fitted cumulative distribution function.
+To further illustrate the fitting accuracy, the inset shows the
+residual∆between the empirical and fitted values. The resid-
+ual satisfies|∆|<4×10 −3, indicating that the Gamma distri-
+bution provides an accurate approximation to the statistics of
+N↑.
+To quantitatively characterize the dependence of the
+Gamma approximation on the sampling range ofX 0, Fig. 4(a)
+shows the fitted Gamma parametersKandθas functions ofL.
+AsLincreases, the fitted value ofθgradually approaches an
+(a)
+2
+4
+6
+8
+10
+12
+14K; 3
+K3 K232
+KT3T
+(b)
+N"
+!0:5
+0
+0:5
+1
+Slope
+K3 K232
+0:68940
+(c)
+5 10 15log10(L)
+40
+60
+80
+100
+120hN"i
+NumericalK3 Numerical2K232
+5 10 15log10(L)
+7.8
+7.9
+8Slope (d)
+5 10 15log10(L)
+1
+3Er(%)
+Er=11!hN"iKT3T
+2#100
+Er=11!K3KT3T
+2#100
+Er2=11!hN"i2KT3T
+2#100
+Er2=11!K232KT3T
+2#100
+FIG. 4. (a) Fitting parametersθ(upward triangles) andK(circles) of
+the Gamma distribution as functions ofL, forX 0 ∈ {3,5, . . . ,2L+1}.
+The solid and dash-dotted lines denote the theoretical predictionsθ T
+[Eq. (27)] andK T [Eq. (28)], respectively. (b) Local slopes obtained
+from linear fits between adjacent data points in panel (a) as func-
+tions ofL. The horizontal reference lines indicate the corresponding
+theoretical values. (c) Statistical mean ofN ↑ (circles) and the mean
+estimated from the Gamma distribution fit,Kθ(upward triangles),
+as functions ofL. The solid line represents the theoretical estimate
+KTθT [Eq. (20)]. Inset: local slopes obtained from linear fits between
+adjacent data points in the main panel. The horizontal reference line
+indicates the theoretical value. (d) Relative error between the mean
+ofN ↑ shown in panel (c) and the corresponding theoretical predic-
+tion. Quantities labeled with the subscript 2 are obtained in the same
+way, but withX 0 restricted toX 0 ∈ {0.2L+1, . . . ,2L+1}.
+approximately constant value,θ≃11.245, which is slightly
+smaller than the theoretical predictionθ T ≃11.61. The fit-
+ted value ofKchanges from slightly below to slightly above
+the theoretical prediction, while its overall logarithmic growth
+remains consistent with the theory. Quantities without sub-
+scripts in the legend are obtained from the statistics forX 0 ∈
+{3,5, . . . ,2L+1}, whereas quantities with the subscript 2 are
+obtained from the restricted rangeX0 ∈ {0.2L+1, . . . ,2L+1}.
+The difference between the two data sets is small, indicating
+that the lower cutoff ofX 0 does not affect the qualitative be-
+havior of the distribution.
+Figure 4(b) further examines this dependence by plotting
+the local slopes obtained from linear fits between adjacent
+data points forKandθ. The slope ofθapproaches zero as
+Lincreases, consistent with an asymptotically constant scale
+parameter. In contrast, the slope ofKconverges toward its
+theoretical value, as indicated by the horizontal reference line.
+Figure 4(c) shows the mean value ofN ↑ as a function ofL.
+The mean estimated from the Gamma distribution fit agrees
+closely with the directly computed statistical mean, whereas
+the theoretical estimate is slightly larger. The inset shows the
+corresponding local slopes obtained from adjacent-point lin-
+ear fits. The slope of the statistical mean is nearly identical to
+the theoretical prediction. Although the slope obtained from
+the fitted mean is slightly smaller, it gradually approaches the
+theoretical value 8.0039 asLincreases.
+Figure 4(d) shows the relative errors of the statistical mean
+6
+(a)
+5 10 15log10(L)
+40
+60
+80
+100
+120hN"i
+Numerical2K232KT3T
+(b)
+5 10 15log10(L)
+10!3
+10!2
+10!1
+100
+Er(%)
+Er=---1!hN"i2KT3T
+---#100
+Er=11!K232KT3T
+2#100
+FIG. 5. Same as panels (c) and (d) of Fig. 4, but with the theo-
+retical estimate replaced by Eq. (37), whereX 0 ∈ {0.2L+1,0.2L+
+3, . . . ,2L+1}.
+and the fitted mean with respect to the theoretical prediction,
+i.e.,⟨N ↑⟩=K TθT. The relative error remains below 3% over
+the full range ofL. WhenX 0 is restricted to the range from
+0.2L+1 to 2L+1, the relative error is further reduced to ap-
+proximately 2%. Overall, the error decreases with increasing
+L, consistent with the large-X0 approximation used in Eq. (11).
+Thus, larger values ofX 0 lead to smaller approximation errors
+in the theoretical derivation.
+Figures 4(c) and 4(d) show that the original theoretical pre-
+diction slightly overestimates the mean value ofN ↑, while ac-
+curately capturing its scaling slope. WhenX 0 is restricted
+to the intervalX 0 ∈ {0.2L+1,0.2L+3, . . . ,2L+1}, the nu-
+merical results agree better with the theoretical prediction.
+This indicates that using the upper boundaryX 0 =2L+1
+in Eq. (20) as the representative logarithmic scale of the
+whole sampling interval leads to a systematic overestima-
+tion for smaller values ofX 0. This bias decreases asX 0 ap-
+proaches 2L+1. To reduce this bias, we replace log 2(2L)in
+Eq. (20) by the arithmetic mean of the logarithmic small in-
+terval[log 2 L,log 2(2L)], namely 1/2+log 2 L. The corrected
+theoretical estimate is therefore
+⟨N↑⟩ ≃1/2+log 2 L
+2−log 2 3 ≈1.2047+8.0039log 10 L.(37)
+Figure 5(a) compares this corrected prediction with the nu-
+merical results, showing good agreement. Figure 5(b) further
+displays the relative error of the directly computed statistical
+mean as a function ofL. With the corrected theory, the relative
+error is reduced to the order of 10 −3%–10−2%. In addition,
+the relative error of the mean estimated from the fitted Gamma
+parameters decreases and falls below 0.1% atL=10 15.
+VI. SUMMARY AND DISCUSSION
+In summary, we have provided a mechanistic explanation
+for the emergence of Gamma-type statistics in the direction-
+phase structure of Collatz orbits. By decomposing the Collatz
+dynamics into upward and downward phases and using the
+odd-compressed representation, we modeled the occurrence
+of upward phases through an effective homogeneous Poisson
+process mechanism. Together with the geometric approxima-
+tion for the 2-adic valuationsh n, this framework leads natu-
+rally to a Gamma-family approximation for the statistics of
+N↑. The corresponding Gamma parameters can be estimated
+analytically from the arithmetic structure of the map. The
+scale parameter is predicted to beθ T = σ 2
+µ2 = 2
+(2−log2 3)2 ≃
+11.61. In contrast, the shape parameterKgrows logarithmi-
+cally withL, consistent with the mean-field logarithmic bal-
+ance between the accumulated decrease and log 2 X0. A cor-
+rected estimate for the mean value ofN ↑, obtained by replac-
+ing the upper-boundary approximation with the average loga-
+rithmic scale of the sampling interval, further reduces the rel-
+ative error to the order of 10−3%–10−2%.
+We also examined the closure conditions for possible peri-
+odic orbits of the accelerated Collatz map. The exact balance
+condition 2N↓ = ∏M−1
+n=0 (3+1/X n)implies that any nontrivial
+large cycle would requireN ↓/Mto approximate log 2 3 from
+above with an accuracy better than 1/(3mln2), wheremis
+the minimum element of the cycle. Asm→∞, this condition
+becomes arbitrarily stringent. In the asymptotic approxima-
+tion where 3X n +1 is replaced by 3X n, the closure condition
+reduces toN ↓ =Mlog 2 3, which is impossible because log 2 3
+is irrational. This provides an asymptotic obstruction to large
+nontrivial cycles, although it does not constitute a rigorous
+exclusion of all finite-size corrections.
+Several questions remain open. The effective Poisson pro-
+cess assumption is strongly supported by the numerical re-
+sults, but a rigorous derivation from the deterministic Col-
+latz dynamics is still lacking. In particular, it would be im-
+portant to quantify correlations among successive values of
+ν2(3Xn +1)and to determine whether a suitable limit theo-
+rem can be established for the odd-compressed map. Another
+direction is to extend the direction-phase framework to gener-
+alized Collatz-type maps, such asaX+bproblems, in order
+to clarify whether the observed Gamma-type statistics are spe-
+cific to the classical 3X+1 map or reflect a broader feature of
+parity-driven integer dynamics.
+Beyond its implications for the statistical analysis of Col-
+latz dynamics, the present framework also provides a useful
+pedagogical example. For undergraduate and graduate teach-
+ing, it provides a compact example showing how an elemen-
+tary deterministic rule can generate highly nontrivial behavior
+and how number-theoretic structure, discrete dynamics, prob-
+abilistic modeling, and numerical evidence can interact. In
+this sense, the Collatz problem is not only a classical topic
+in elementary number theory, but also an instructive model
+for illustrating how deterministic arithmetic dynamics may
+admit effective stochastic descriptions, while numerical ev-
+idence can motivate but not replace rigorous mathematical
+analysis.
+ACKNOWLEDGMENTS
+This research was funded by the National Natural Science
+Foundation of China (Grants No. 12465010, No. 12247106,
+and No.12575040). W. Fu was also supported by the Gansu
+Province Long-yuan Youth Talent Project, the Fei-tian Schol-
+ars Project of Gansu Province, the Leading Talent Project of
+Tianshui City, the Innovation Fund from the Department of
+Education of Gansu Province (Grant No. 2023A-106), the
+Open Project Program of the Key Laboratory of Atomic and
+7
+Molecular Physics & Functional Material of Gansu Province
+(Grant No. 6016-202404), and Young Faculty Achievement
+Award (Grant No. PYJ-01252291) & Graduate Program Con-
+struction Project (Grant No. TKXM2601) of Tianshui Normal
+University.
+[1] R. E. Crandall, On the “3x +1 ” problem, Math. Comput.32,
+1281 (1978).
+[2] J. J. Kozak, M. K. Musho, and M. D. Hatlee, Chaos, periodic
+chaos, and the random-walk problem, Phys. Rev. Lett.49, 1801
+(1982).
+[3] I. Krasikov, How many numbers satisfy the 3x + 1 conjecture?,
+Internat. J. Math. & Math. Sci.12, 791 (1989).
+[4] R. H. Abraham, L. Gardini, and C. Mira,Chaos in Discrete
+Dynamical Systems, 1st ed. (Springer New York, NY , 1997).
+[5] G. J. Wirsching,The Dynamical System Generated by the 3n+1
+Function, 1st ed., Lecture Notes in Mathematics, V ol. 1681
+(Springer Berlin, Heidelberg, 1998).
+[6] G. J. Wirsching,The dynamical system generated by the 3n+ 1
+function(Springer, 2006).
+[7] M. C. Siegel, The collatz conjecture & non-archimedean spec-
+tral theory - part i - arithmetic dynamical systems and non-
+archimedean value distribution theory, p-Adic Numbers, Ultra-
+metric Analysis and Applications16, 143 (2024).
+[8] E. Akin, Why is the 3x+ 1 problem hard?, Contemporary Math-
+ematics356, 1 (2004).
+[9] J. C. Lagarias, ed.,The ultimate challenge: the 3x+1 problem
+(American Mathematical Society, Providence, R.I., 2010).
+[10] M. Wang, Y . Yang, Z. He, and M. Wang, The proof of the 3x +
+1 conjecture, Advances in Pure Mathematics12, 10 (2022).
+[11] K. A. Borovkov and D. Pfeifer, Estimates for the syracuse prob-
+lem via a probabilistic model, Theory of Probability & Its Ap-
+plications45, 300 (2001).
+[12] Y . G. Sinai, Statistical (3x + 1) problem, Commun. Pure Appl.
+Math.56, 1016 (2003).
+[13] R. Terras, A stopping time problem on the positive integers,
+Acta Arithmetica30, 241 (1976).
+[14] J. C. Lagarias, The 3x + 1 problem and its generalizations, The
+American Mathematical Monthly92, 3 (1985).
+[15] T. Tao, Almost all orbits of the collatz map attain almost
+bounded values, Forum of Mathematics, Pi10, e12 (2022).
+[16] J. G. Polli, E. P. Raposo, G. M. Viswanathan, and M. G. E.
+da Luz, Stochastic-like characteristics of arithmetic dynamical
+systems: the collatz hailstone sequences, Journal of Physics:
+Complexity5, 015011 (2024).
+[17] D. Barina, Convergence verification of the collatz problem, J.
+Supercomput.77, 2681 (2021).
+[18] D. Barina, Improved verification limit for the convergence of
+the collatz conjecture, J. Supercomput.81, 810 (2025).
+[19] W. Fu and Y . Wang, The structure of the route to the period-
+three orbit in the collatz map, Mathematical and Computational
+Applications31, 23 (2026).
+[20] W. Wang, Z. Liu, and B. Hu, Phase order in chaotic maps and
+in coupled map lattices, Phys. Rev. Lett.84, 2610 (2000).

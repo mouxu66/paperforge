@@ -1,0 +1,1109 @@
+/* PaperForge 全局样式 — 学术风格 */
+@import "./card.css";
+@import "./layout.css";
+@import "./markdown.css";
+
+:root {
+  /* 语义底色（浅色） */
+  --pf-bg-primary: #ffffff;
+  --pf-bg-secondary: #f3f6fb;
+  --pf-bg-tertiary: #f8fafc;
+  --pf-bg-elevated: rgba(255, 255, 255, 0.82);
+  --pf-text-primary: #1a1a2e;
+  --pf-text-secondary: #475569;
+  --pf-text-muted: #64748b;
+  --pf-text-placeholder: #94a3b8;
+  --pf-border: #e8ecf1;
+  --pf-border-light: #e2e8f0;
+  /* 品牌色 */
+  --pf-primary: #3157c8;
+  --pf-primary-hover: #2445ad;
+  --pf-primary-soft: #e9efff;
+  --pf-accent: #0f9fbd;
+  --pf-glow: rgba(49, 87, 200, 0.18);
+  --pf-radius-sm: 10px;
+  --pf-radius-md: 16px;
+  --pf-radius-lg: 22px;
+  /* 感悟报告强调色（暖琥珀，呼应纸质文档） */
+  --pf-report-accent: #b45309;
+  --pf-report-accent-soft: rgba(180, 83, 9, 0.08);
+  /* 侧边栏导航专用（图标系统，2026-07-20） */
+  --pf-nav-icon: #666666;
+  --pf-nav-active: #3b82f6;
+  /* 状态色 */
+  --pf-success: #16a34a;
+  --pf-warning: #faad14;
+  --pf-error: #dc2626;
+  --pf-info: #3b82f6;
+  /* 引用情感色（WP-2.2） */
+  --pf-sentiment-supportive: #16a34a;
+  --pf-sentiment-critical: #dc2626;
+  --pf-sentiment-background: #6b7280;
+  /* 兼容旧变量 */
+  --pf-ink: #1a1a2e;
+  --pf-muted: #6b7280;
+  --pf-line: #e8ecf1;
+  --pf-bg: #f3f6fb;
+  --pf-shadow-sm: 0 4px 14px rgba(25, 45, 90, 0.05);
+  --pf-shadow-md: 0 14px 36px rgba(25, 45, 90, 0.09);
+  /* 滚动条（G2 令牌化，2026-07-16） */
+  --pf-scrollbar: #cbd5e1;
+  --pf-scrollbar-hover: #94a3b8;
+}
+
+[data-theme="dark"] {
+  --pf-bg-primary: #151821;
+  --pf-bg-secondary: #10131a;
+  --pf-bg-tertiary: #1b202b;
+  --pf-bg-elevated: rgba(27, 32, 43, 0.86);
+  --pf-text-primary: rgba(255, 255, 255, 0.88);
+  --pf-text-secondary: rgba(255, 255, 255, 0.65);
+  --pf-text-muted: rgba(255, 255, 255, 0.45);
+  --pf-text-placeholder: rgba(255, 255, 255, 0.3);
+  --pf-border: #303030;
+  --pf-border-light: #3a3a3a;
+  --pf-primary: #7898ff;
+  --pf-primary-hover: #9bb2ff;
+  --pf-primary-soft: rgba(120, 152, 255, 0.16);
+  --pf-accent: #57d7e7;
+  --pf-glow: rgba(120, 152, 255, 0.22);
+  /* 感悟报告强调色（暗色模式提亮） */
+  --pf-report-accent: #f59e0b;
+  --pf-report-accent-soft: rgba(245, 158, 11, 0.12);
+  /* 侧边栏导航专用（图标系统，2026-07-20） */
+  --pf-nav-icon: rgba(255, 255, 255, 0.62);
+  --pf-nav-active: #3b82f6;
+  --pf-success: #4ade80;
+  --pf-warning: #facc15;
+  --pf-error: #f87171;
+  --pf-info: #60a5fa;
+  --pf-ink: rgba(255, 255, 255, 0.88);
+  --pf-muted: rgba(255, 255, 255, 0.45);
+  --pf-line: #303030;
+  --pf-bg: #10131a;
+  --pf-shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.2);
+  --pf-shadow-md: 0 16px 40px rgba(0, 0, 0, 0.3);
+  --pf-scrollbar: rgba(255, 255, 255, 0.25);
+  --pf-scrollbar-hover: rgba(255, 255, 255, 0.4);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background:
+    radial-gradient(circle at 88% -8%, rgba(49, 87, 200, 0.08), transparent 28rem),
+    radial-gradient(circle at 8% 18%, rgba(15, 159, 189, 0.045), transparent 22rem),
+    var(--pf-bg);
+  color: var(--pf-ink);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+/* 衬线标题，营造学术感 */
+.pf-serif {
+  font-family: "Georgia", "Times New Roman", "Songti SC", "SimSun", serif;
+}
+
+.pf-page-title {
+  font-family: "Georgia", "Times New Roman", "Songti SC", serif;
+  font-size: clamp(1.55rem, 2.4vw, 2rem);
+  font-weight: 600;
+  color: var(--pf-ink);
+  margin: 0;
+  letter-spacing: -0.025em;
+}
+
+.pf-subtitle {
+  font-size: 0.85rem;
+  color: var(--pf-muted);
+  margin-top: 4px;
+  line-height: 1.6;
+  max-width: 680px;
+}
+
+/* 页面骨架：内容不再贴着浏览器边缘，背景层次由全局 token 统一控制 */
+.pf-page-shell {
+  width: min(100%, 1480px);
+  margin: 0 auto;
+}
+
+.pf-content {
+  min-width: 0;
+  overflow: auto;
+  padding: 30px clamp(20px, 3vw, 42px) 48px !important;
+}
+
+.pf-link {
+  color: var(--pf-primary);
+  cursor: pointer;
+}
+
+.pf-link:hover {
+  text-decoration: underline;
+}
+
+/* 滚动条 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--pf-scrollbar);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--pf-scrollbar-hover);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 论文摘要段落 */
+.pf-abstract {
+  color: var(--pf-text-secondary);
+  line-height: 1.8;
+  font-size: 14px;
+  text-align: justify;
+}
+
+/* 卡片悬浮上浮（保留旧类，PaperCard 内联样式将覆盖关键属性） */
+.pf-card-hover {
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+}
+.pf-card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.1);
+}
+
+/* 流式问答打字机光标 */
+.pf-streaming-cursor {
+  display: inline-block;
+  width: 8px;
+  height: 1em;
+  background: var(--pf-primary);
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: pf-blink 1s step-end infinite;
+}
+
+@keyframes pf-blink {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  51%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* 模型切换器：平滑过渡 + 成功后的短暂高亮 */
+.pf-model-selector {
+  transition:
+    box-shadow 0.3s ease,
+    border-color 0.3s ease,
+    opacity 0.25s ease;
+}
+
+.pf-model-selector.pf-switching {
+  opacity: 0.7;
+}
+
+.pf-model-selector.pf-just-switched {
+  border-color: var(--pf-primary) !important;
+  box-shadow: 0 0 0 2px rgba(30, 64, 175, 0.25);
+  animation: pf-glow 1.2s ease-out;
+}
+
+@keyframes pf-glow {
+  0% {
+    box-shadow: 0 0 0 0 rgba(30, 64, 175, 0.5);
+  }
+  60% {
+    box-shadow: 0 0 0 6px rgba(30, 64, 175, 0.15);
+  }
+  100% {
+    box-shadow: 0 0 0 2px rgba(30, 64, 175, 0.25);
+  }
+}
+
+/* 写作大纲树：节点操作按钮默认半透明，悬浮/选中时高亮 */
+.pf-outline-actions {
+  opacity: 0.4;
+  transition: opacity 0.18s ease;
+}
+
+.ant-tree-node-content-wrapper:hover .pf-outline-actions,
+.ant-tree-treenode-selected .pf-outline-actions {
+  opacity: 1;
+}
+
+/* ---- 大纲树：缩进引导线（VS Code 风格垂直线）+ 16px 层级间距 ---- */
+.pf-outline-tree.ant-tree {
+  font-size: 13px;
+}
+
+/* 层级缩进从默认 8px 增加到 16px，使层级关系更清晰 */
+.pf-outline-tree .ant-tree-list-holder-inner > .ant-tree-treenode {
+  padding: 2px 0;
+}
+
+/* 垂直引导线：每层缩进左侧绘制 1px 浅灰竖线 */
+.pf-outline-tree .ant-tree-indent-unit {
+  width: 16px;
+  position: relative;
+}
+
+.pf-outline-tree .ant-tree-indent-unit::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--pf-border-light);
+}
+
+/* 最后一层缩进不画完整竖线（叶子节点对齐更整洁） */
+.pf-outline-tree .ant-tree-treenode-leaf-line .ant-tree-indent-unit:last-child::before {
+  background: transparent;
+}
+
+/* 拖拽预览：蓝色水平插入线（Ant Design 内置 drop-indicator 增强为蓝色） */
+.pf-outline-tree .ant-tree-drop-indicator {
+  height: 2px;
+  background: var(--pf-primary);
+  border-radius: 1px;
+  box-shadow: 0 0 4px rgba(30, 64, 175, 0.4);
+}
+
+/* 拖入节点内部时（作为子节点）：父节点高亮浅蓝色背景 */
+.pf-outline-tree .ant-tree-drop-container .ant-tree-node-content-wrapper,
+.pf-outline-tree .ant-tree-treenode-dragging .ant-tree-node-content-wrapper {
+  border-radius: 4px;
+}
+
+.pf-outline-tree .ant-tree-drop-container .ant-tree-node-content-wrapper {
+  background: rgba(30, 64, 175, 0.08) !important;
+  box-shadow: inset 0 0 0 1px rgba(30, 64, 175, 0.2);
+}
+
+/* 拖拽中的源节点半透明 */
+.pf-outline-tree .ant-tree-treenode-dragging {
+  opacity: 0.5;
+}
+
+/* 节点悬浮时整体背景过渡 */
+.pf-outline-tree .ant-tree-node-content-wrapper {
+  transition: background 0.15s ease;
+  border-radius: 4px;
+}
+
+/* 多文件上传：单文件状态行 */
+.pf-upload-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(245, 247, 251, 0.7);
+  margin-bottom: 4px;
+  font-size: 13px;
+  transition: background 0.2s ease;
+}
+
+.pf-upload-item:hover {
+  background: rgba(232, 236, 241, 0.9);
+}
+
+.pf-upload-item .pf-upload-name {
+  flex: 1;
+  color: var(--pf-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pf-upload-item .pf-upload-status {
+  font-size: 12px;
+  color: var(--pf-text-muted);
+  white-space: nowrap;
+}
+
+.pf-upload-item.pf-upload-success .pf-upload-status {
+  color: var(--pf-success);
+}
+
+.pf-upload-item.pf-upload-failed .pf-upload-status {
+  color: var(--pf-error);
+}
+
+.pf-upload-item.pf-upload-uploading .pf-upload-status {
+  color: var(--pf-primary);
+}
+
+/* 写作编辑器：@ 引用搜索浮层 */
+.pf-mention-popover {
+  min-width: 280px;
+  max-width: 380px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--pf-bg-primary);
+  border: 1px solid var(--pf-border-light);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
+  padding: 4px;
+}
+
+.pf-mention-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.pf-mention-item.active {
+  background: rgba(30, 64, 175, 0.08);
+}
+
+.pf-mention-item .pf-mention-id {
+  font-size: 11px;
+  color: var(--pf-text-placeholder);
+  font-family: Consolas, Monaco, monospace;
+}
+
+.pf-mention-hint {
+  padding: 12px;
+  font-size: 13px;
+  color: var(--pf-text-placeholder);
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+/* 大纲树节点字数小标签 */
+.pf-word-badge {
+  display: inline-block;
+  padding: 0 6px;
+  margin-left: 4px;
+  color: var(--pf-text-placeholder);
+  background: rgba(148, 163, 184, 0.12);
+  border-radius: 8px;
+  line-height: 1.5;
+  font-family: Consolas, Monaco, monospace;
+  user-select: none;
+}
+
+/* 全屏写作模式覆盖层 */
+.pf-fullscreen-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: var(--pf-bg-primary);
+  display: flex;
+  flex-direction: column;
+  animation: pf-fade-in 0.3s ease;
+}
+
+.pf-fullscreen-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--pf-border);
+  background: var(--pf-bg-tertiary);
+  flex-shrink: 0;
+}
+
+.pf-fullscreen-editor {
+  flex: 1;
+  overflow: hidden;
+  padding: 16px 24px;
+}
+
+@keyframes pf-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 深度审稿详情页：从主页跳转时的高亮脉冲动画 */
+@keyframes pf-highlight-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(250, 173, 20, 0.5);
+    border-color: #faad14;
+  }
+  50% {
+    box-shadow: 0 0 24px 4px rgba(250, 173, 20, 0.2);
+    border-color: #ffc53d;
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(250, 173, 20, 0);
+    border-color: #faad14;
+  }
+}
+
+/* 统一 Lucide 图标尺寸，跟随父级字体大小（替代 antd 图标的 1em 行为） */
+svg.lucide {
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.125em;
+  flex-shrink: 0;
+}
+
+/* 替换 antd 的 spin 属性：加载中图标旋转动画 */
+/* 首屏标题的轻量品牌标记 */
+.pf-page-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 10px;
+  color: var(--pf-primary);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.pf-page-kicker::before {
+  content: "";
+  width: 22px;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.65;
+}
+
+.pf-page-hero {
+  position: relative;
+  padding: 2px 0 24px;
+}
+
+.pf-page-hero::after {
+  content: "";
+  position: absolute;
+  right: 5%;
+  top: -12px;
+  width: 120px;
+  height: 120px;
+  border: 1px solid var(--pf-glow);
+  border-radius: 50%;
+  box-shadow: 0 0 0 14px rgba(49, 87, 200, 0.025), 0 0 0 28px rgba(49, 87, 200, 0.018);
+  pointer-events: none;
+}
+
+@media (max-width: 767px) {
+  .pf-content {
+    padding: 22px 16px 32px !important;
+  }
+
+  .pf-pulse-row-title {
+    align-items: flex-start;
+  }
+
+  .pf-pulse-row-title .ant-tag {
+    margin-top: 1px;
+  }
+
+  .pf-page-hero::after {
+    right: -36px;
+    opacity: 0.55;
+  }
+}
+
+@keyframes pf-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.pf-spin {
+  animation: pf-spin 1s linear infinite;
+}
+
+/* 顶栏：把品牌、导航和工具区拉开层次，同时避免 Ant Menu 的默认硬边框 */
+.pf-top-nav {
+  gap: 14px;
+  height: 64px !important;
+  padding-inline: clamp(16px, 2.5vw, 34px) !important;
+  background: color-mix(in srgb, var(--pf-bg-primary) 94%, transparent) !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+[data-theme="dark"] .pf-top-nav,
+.dark .pf-top-nav {
+  background: color-mix(in srgb, var(--pf-bg-primary) 94%, transparent) !important;
+}
+
+.pf-brand {
+  flex: 0 0 auto;
+  margin-right: clamp(12px, 2vw, 32px) !important;
+  color: inherit;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.pf-brand:hover {
+  opacity: 0.86;
+  transform: translateY(-1px);
+}
+
+.pf-top-nav .ant-menu {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-inline: 0;
+  overflow: hidden;
+}
+
+.pf-top-nav .ant-menu-overflow {
+  min-width: 0;
+}
+
+.pf-top-nav .ant-menu-item,
+.pf-top-nav .ant-menu-submenu {
+  margin-inline: 2px !important;
+}
+
+.pf-top-nav .ant-menu-overflow-item {
+  border-radius: 10px;
+  transition: background 0.18s ease;
+}
+
+.pf-top-nav .ant-menu-overflow-item:hover {
+  background: var(--pf-primary-soft);
+}
+
+.pf-nav-actions {
+  flex: 0 0 auto;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.pf-nav-actions .ant-btn,
+.pf-nav-actions .ant-select-selector {
+  transition:
+    color 0.18s ease,
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.pf-nav-actions .ant-btn:hover {
+  color: var(--pf-primary) !important;
+  background: var(--pf-primary-soft) !important;
+}
+
+/* 首页搜索区做成一块明确的工具带，输入框负责视觉主次 */
+.pf-search-bar {
+  align-items: stretch;
+  flex-wrap: wrap;
+  padding: 10px;
+  border: 1px solid var(--pf-border-light);
+  border-radius: var(--pf-radius-md);
+  background: var(--pf-bg-elevated);
+  box-shadow: var(--pf-shadow-sm);
+}
+
+.pf-search-bar .ant-space-item:first-child {
+  flex: 1 1 360px;
+  min-width: min(100%, 280px);
+}
+
+.pf-search-bar .ant-select,
+.pf-search-bar .ant-select-selector,
+.pf-search-bar .ant-input-affix-wrapper {
+  border-radius: 11px !important;
+}
+
+.pf-search-bar .ant-input-affix-wrapper {
+  height: 42px;
+  border-color: transparent;
+  background: var(--pf-bg-secondary);
+  box-shadow: none;
+}
+
+.pf-search-bar .ant-input-affix-wrapper:focus-within {
+  border-color: var(--pf-primary) !important;
+  background: var(--pf-bg-primary);
+  box-shadow: 0 0 0 4px var(--pf-glow);
+}
+
+.pf-search-bar .ant-select {
+  min-width: 148px;
+}
+
+@media (max-width: 1100px) {
+  .pf-top-nav .ant-menu {
+    margin-inline: 0;
+  }
+
+  .pf-nav-actions {
+    gap: 8px !important;
+  }
+
+  .pf-theme-button,
+  .pf-language-button {
+    padding-inline: 7px;
+  }
+
+  .pf-theme-button {
+    font-size: 0;
+  }
+
+  .pf-theme-button .lucide,
+  .pf-language-button .lucide {
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 767px) {
+  .pf-top-nav {
+    gap: 8px;
+    height: 58px !important;
+    padding-inline: 12px !important;
+  }
+
+  .pf-top-nav .pf-brand {
+    min-width: 0;
+  }
+
+  .pf-top-nav .pf-brand > div:first-child {
+    flex-shrink: 0;
+    width: 32px !important;
+    height: 32px !important;
+  }
+
+  .pf-top-nav .ant-menu,
+  .pf-nav-actions > .pf-nav-status,
+  .pf-nav-actions > .pf-model-selector,
+  .pf-nav-actions > .pf-nav-devtools,
+  .pf-nav-actions > a,
+  .pf-nav-actions > span {
+    display: none;
+  }
+
+  .pf-brand {
+    margin-right: auto !important;
+  }
+
+  .pf-brand > div:last-child {
+    display: none;
+  }
+
+  .pf-search-bar {
+    gap: 8px !important;
+    padding: 8px;
+  }
+
+  .pf-search-bar .ant-space-item:first-child {
+    flex-basis: 100%;
+  }
+
+  .pf-search-bar .ant-select {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pf-brand,
+  .pf-nav-actions .ant-btn,
+  .pf-nav-actions .ant-select-selector,
+  .pf-search-bar .ant-input-affix-wrapper {
+    transition: none;
+  }
+}
+
+/* ============================================================
+   Research workspace home
+   A calm, scan-first surface for the library workflow.
+   ============================================================ */
+.pf-page-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  min-height: 176px;
+  margin: -8px 0 22px;
+  padding: 26px clamp(22px, 4vw, 48px);
+  overflow: hidden;
+  border: 1px solid var(--pf-border-light);
+  border-radius: var(--pf-radius-lg);
+  background: var(--pf-bg-primary);
+  box-shadow: var(--pf-shadow-sm);
+}
+
+.pf-page-hero::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 42%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, var(--pf-primary-soft));
+  opacity: 0.42;
+  pointer-events: none;
+}
+
+.pf-page-hero::after {
+  display: none;
+}
+
+.pf-hero-copy {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+}
+
+.pf-hero-copy .pf-page-title {
+  max-width: 640px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: clamp(2rem, 3.7vw, 3rem);
+  font-weight: 700;
+  line-height: 1.12;
+  letter-spacing: -0.045em;
+  color: var(--pf-text-primary);
+}
+
+.pf-hero-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 11px;
+  margin-top: 15px;
+  color: var(--pf-text-muted);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+.pf-hero-signal {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--pf-success);
+  font-weight: 600;
+}
+
+.pf-hero-signal-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--pf-success);
+}
+
+.pf-hero-divider {
+  width: 1px;
+  height: 14px;
+  background: var(--pf-border-light);
+}
+
+.pf-hero-flow {
+  color: var(--pf-text-muted);
+}
+
+.pf-hero-art {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 224px;
+  width: 224px;
+  height: 150px;
+  margin-right: 1%;
+}
+
+.pf-hero-material-stack {
+  position: absolute;
+  inset: 5px 14px 15px 0;
+  transform: rotate(-3deg);
+}
+
+.pf-hero-material {
+  position: absolute;
+  overflow: hidden;
+  border: 5px solid var(--pf-bg-primary);
+  border-radius: 7px;
+  background: var(--pf-bg-tertiary);
+  box-shadow: 0 12px 24px rgba(23, 35, 70, 0.14);
+}
+
+.pf-hero-material img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: saturate(0.72) contrast(0.95);
+}
+
+.pf-hero-material::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--pf-primary) 20%, transparent), transparent 60%),
+    repeating-linear-gradient(0deg, transparent 0 9px, color-mix(in srgb, var(--pf-primary) 12%, transparent) 10px);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.pf-hero-material.is-failed {
+  background:
+    radial-gradient(circle at 70% 25%, var(--pf-primary-soft), transparent 34%),
+    repeating-linear-gradient(0deg, transparent 0 10px, color-mix(in srgb, var(--pf-primary) 10%, transparent) 11px),
+    var(--pf-bg-tertiary);
+}
+
+.pf-hero-material.is-failed::after {
+  opacity: 1;
+}
+
+.pf-hero-material--wide {
+  top: 19px;
+  left: 2px;
+  width: 130px;
+  height: 88px;
+  transform: rotate(-7deg);
+}
+
+.pf-hero-material--tall {
+  top: 0;
+  right: 3px;
+  width: 76px;
+  height: 110px;
+  transform: rotate(7deg);
+}
+
+.pf-hero-material--small {
+  right: 41px;
+  bottom: -3px;
+  width: 91px;
+  height: 67px;
+  transform: rotate(4deg);
+}
+
+.pf-hero-material-mark {
+  position: absolute;
+  top: 52px;
+  left: 82px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 47px;
+  height: 47px;
+  border: 1px solid var(--pf-primary);
+  border-radius: 9px;
+  color: var(--pf-primary);
+  background: color-mix(in srgb, var(--pf-bg-primary) 90%, transparent);
+  box-shadow: inset 0 0 0 4px var(--pf-primary-soft), 0 8px 18px rgba(23, 35, 70, 0.12);
+}
+
+.pf-hero-art-lines {
+  position: absolute;
+  right: 0;
+  bottom: 22px;
+  display: grid;
+  gap: 6px;
+  width: 58px;
+}
+
+.pf-hero-art-lines span {
+  display: block;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--pf-border-light);
+}
+
+.pf-hero-art-lines span:first-child {
+  width: 58px;
+  background: var(--pf-primary);
+}
+
+.pf-hero-art-lines span:nth-child(2) {
+  width: 39px;
+}
+
+.pf-hero-art-lines span:nth-child(3) {
+  width: 48px;
+}
+
+.pf-hero-art-label {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  color: var(--pf-text-placeholder);
+  font-family: Consolas, Monaco, monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+}
+
+.pf-home-tabs .ant-tabs-nav {
+  margin-bottom: 0;
+}
+
+.pf-home-tabs .ant-tabs-tab {
+  padding: 8px 2px 12px;
+  color: var(--pf-text-muted);
+  font-size: 14px;
+}
+
+.pf-home-tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--pf-primary);
+  font-weight: 700;
+}
+
+.pf-home-tabs .ant-tabs-ink-bar {
+  height: 3px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--pf-primary), var(--pf-accent));
+}
+
+.pf-home-search {
+  position: relative;
+  z-index: 3;
+}
+
+.pf-advanced-tools .ant-collapse-header {
+  border: 1px solid var(--pf-border-light);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.38);
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.pf-advanced-tools .ant-collapse-header:hover {
+  border-color: var(--pf-glow);
+  background: var(--pf-primary-soft);
+}
+
+[data-theme="dark"] .pf-page-hero,
+.dark .pf-page-hero {
+  border-color: var(--pf-border-light);
+  background: var(--pf-bg-primary);
+  box-shadow: var(--pf-shadow-sm);
+}
+
+[data-theme="dark"] .pf-advanced-tools .ant-collapse-header,
+.dark .pf-advanced-tools .ant-collapse-header {
+  background: rgba(27, 32, 43, 0.42);
+}
+
+@media (max-width: 1023px) {
+  .pf-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767px) {
+  .pf-stat-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .pf-page-hero {
+    min-height: 0;
+    margin-top: -2px;
+    padding: 22px 20px 20px;
+    border-radius: 20px;
+  }
+
+  .pf-page-hero::before {
+    width: 70%;
+    opacity: 0.32;
+  }
+
+  .pf-hero-art {
+    display: none;
+  }
+
+  .pf-hero-copy .pf-page-title {
+    font-size: clamp(2rem, 11vw, 2.65rem);
+  }
+
+  .pf-hero-meta {
+    gap: 8px;
+    font-size: 10px;
+  }
+
+  .pf-hero-divider {
+    display: none;
+  }
+}
+
+/* ============================================================
+   Shared page banner
+   The supplied PaperForge artwork is a desktop-only brand anchor.
+   ============================================================ */
+.pf-page-banner {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .pf-page-banner {
+    display: block;
+    width: 100%;
+    height: clamp(138px, 11vw, 180px);
+    margin: -8px 0 18px;
+    border: 1px solid rgba(120, 152, 255, 0.38);
+    border-radius: var(--pf-radius-lg);
+    position: relative;
+    overflow: hidden;
+    background: #17365d;
+    box-shadow: 0 16px 34px rgba(15, 52, 88, 0.18);
+  }
+}
+
+/* ============================================================
+   Desktop editorial surface
+   让研究工作区脱离“白底 + 同质卡片”的平面感。
+   仅增强桌面端，不改变移动端布局。
+   ============================================================ */
+@media (min-width: 1024px) {
+  body {
+    background-color: var(--pf-bg);
+    background-image:
+      radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--pf-primary) 8%, transparent) 1px, transparent 1.2px),
+      radial-gradient(circle at 88% -8%, color-mix(in srgb, var(--pf-primary) 9%, transparent), transparent 28rem),
+      radial-gradient(circle at 8% 18%, color-mix(in srgb, var(--pf-accent) 6%, transparent), transparent 22rem);
+    background-size: 22px 22px, auto, auto;
+  }
+
+  .pf-content {
+    position: relative;
+  }
+
+  .pf-home-tabs {
+    padding-inline: 6px;
+    border-bottom: 1px solid color-mix(in srgb, var(--pf-primary) 12%, var(--pf-border-light));
+  }
+}
+
+@media (min-width: 1024px) {
+  [data-theme="dark"] body,
+  .dark body {
+    background-image:
+      radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--pf-primary) 10%, transparent) 1px, transparent 1.2px),
+      radial-gradient(circle at 88% -8%, color-mix(in srgb, var(--pf-primary) 13%, transparent), transparent 28rem),
+      radial-gradient(circle at 8% 18%, color-mix(in srgb, var(--pf-accent) 8%, transparent), transparent 22rem);
+  }
+}

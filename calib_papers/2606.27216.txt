@@ -1,0 +1,1022 @@
+HIERARCHICAL MUON: TILED NEWTON–SCHULZ UPDATES
+FOR EFFICIENT MUON OPTIMIZATION
+ZIYUAN TANG∗, TIANSHI XU†, YOUSEF SAAD∗,ANDYUANZHE XI†
+Abstract.Muon-type optimizers construct update directions for dense neural-network weights
+by applying a finite Newton–Schulz map to momentum-gradient matrices. For anH×Wmatrix,
+withr= min{H, W}ands= max{H, W},Ksteps of the full-matrix Newton–Schulz update require
+O(r2sK) work and couple all rows and columns through repeated Gram matrix products. We
+introduce Hierarchical Muon (HiMuon), a tiled Newton–Schulz scheme for Muon-type optimization.
+HiMuon partitions each momentum-gradient matrix intoT×Ttiles, applies the same finite Newton–
+Schulz map independently to each tile, and reassembles the results. For finiteTbelow the matrix
+dimensions, HiMuon defines a local matrix-function map rather than a convergent approximation
+to the full-matrix update: spectral interactions are preserved within tiles and discarded across tile
+boundaries. For fixed finiteT, the leading Newton–Schulz work decreases toO(HWTK), and the
+computation decomposes into independent small dense matrix operations. This structure enables tile-
+size-dependent GPU kernels, cross-layer batching, memory-bounded chunking, and runtime tile-size
+schedules. Experiments on transformer training and controlled matrix-function diagnostics show that
+HiMuon improves optimizer-step efficiency while keeping training behavior close to full-matrix Muon
+in the tested regimes. Our implementation is publicly available at https://github.com/tang0389/
+himuon.
+Key words.Newton–Schulz iteration, tiled matrix-function updates, polar decomposition, LLM
+training, batched GPU linear algebra, finite-precision arithmetic
+MSC codes.65F30, 90C06, 68T07
+1. Introduction.In transformer models, a large share of the parameter count
+and arithmetic cost is concentrated in dense projection matrices in the attention and
+feed-forward sublayers. The gradients of these parameters inherit the same matrix
+form. Muon-type optimizers exploit this structure by applying a finite Newton–Schulz
+(NS) iteration to the momentum-gradient matrix associated with each matrix param-
+eter [15]. The output is used as the update direction. This finite-step matrix function
+acts as a polar-factor surrogate: it drives the singular values of the update direction
+toward a common scale. Such matrix-function updates have been shown empirically
+to improve pretraining efficiency across several model scales [21, 31, 26].
+The full-matrix Newton–Schulz map is a major computational component of the
+Muon optimizer step. For anH×Wmomentum-gradient matrix, letr= min{H, W}
+ands= max{H, W}. With the iteration oriented so that the Gram matrix has
+dimensionr,KNewton–Schulz steps require
+O(r2sK) =O(HWmin{H, W}K)
+operations. WhenH≤W, this becomesO(H2WK). The repeated Gram matrix
+products also create global spectral coupling: an entry of the update can depend on
+the entire momentum-gradient matrix. Thus the computational cost of the update
+and its spectral behavior are linked. Retaining full-matrix spectral coupling gives
+the standard Muon update, but doing so at every optimizer step requires large dense
+matrix products. In distributed parameter-sharded training, the full-matrix Newton–
+∗Department of Computer Science and Engineering, University of Minnesota, Minneapolis
+(tang0389@umn.edu, saad@umn.edu). The research of Tang and Saad is supported by the NSF
+award DMS-2513117.
+†Department of Mathematics, Emory University, Atlanta, GA 30322 (tianshi.xu@emory.edu,
+yxi26@emory.edu). The research of Xi and Xu is supported by NSF award DMS-2513118.
+1arXiv:2606.27216v1  [math.NA]  25 Jun 2026
+2Z. TANG, T. XU, Y. SAAD, AND Y. XI
+Schulz iteration may also require reconstructing matrix shards through additional
+collective communication inside the optimizer step.
+In this paper, we study a tiled formulation in which the extent of this spectral
+coupling is controlled explicitly by the tile size. Tiling simultaneously reduces the
+cost of dense matrix products, localizes the Newton–Schulz computation within shard-
+resident submatrices, and exposes more parallel work to the hardware. Full-matrix
+Muon represents one extreme, where the Newton–Schulz map is applied to the entire
+matrix. Coordinatewise methods represent the opposite extreme, where no matrix-
+level spectral interaction is retained. Between these regimes is a family of local matrix-
+function updates: the same Newton–Schulz map is applied, but only to submatrices
+of a prescribed size. The goal is to retain useful local spectral behavior while reducing
+the cost of the optimizer step and exposing more parallel work to the hardware.
+We introduce Hierarchical Muon (HiMuon), a tiled Newton–Schulz method based
+on this principle. Let Φ Kdenote theK-step Newton–Schulz map used in Muon.
+For a tile sizeT, HiMuon partitions a momentum-gradient matrix into anR×C
+grid ofT×Ttiles, applies Φ Kindependently to each tile, and reassembles the tile
+outputs. For fixed finiteTbelow the matrix dimensions, this construction does not
+recover the full-matrix Muon map. It defines a distinct local matrix-function update:
+spectral interactions are preserved within each tile and removed across tile boundaries.
+The tile size therefore acts as both a numerical parameter, controlling the amount of
+retained spectral coupling, and a computational parameter, controlling the cost of the
+Newton–Schulz computation. For fixedT≪min{H, W}, the leading Newton–Schulz
+work scales as
+O(HWTK).
+The tiled formulation changes more than the arithmetic count. Once the par-
+tition is fixed, all tilewise Newton–Schulz evaluations are independent, so the opti-
+mizer step becomes a batched small-matrix linear algebra workload rather than a
+sequence of large full-matrix operations. HiMuon exploits this structure through tile-
+size-dependent kernels, cross-layer batching, memory-bounded chunking, and runtime
+tile-size schedules. The same representation also supports distributed layouts in which
+each rank performs its tiled Newton–Schulz work locally. In this sense, the numerical
+locality of the update and the GPU execution strategy are designed together.
+The main contributions of this work are summarized as follows.
+•A tiled Newton–Schulz formulation of Muon.We define HiMuon as a
+finite-tile matrix-function update for Muon-type optimization. The formula-
+tion makes the degree of spectral coupling explicit through the tile size and
+distinguishes the full-matrix Muon update from local tiled alternatives.
+•An end-to-end GPU implementation.We develop an implementation
+that maps the tiled Newton–Schulz workload to batched small dense matrix
+operations, using tile-size-dependent kernels, cross-layer batching, memory-
+bounded chunking, and support for distributed parameter layouts.
+•Empirical characterization across quality, speed, and precision.We
+evaluate HiMuon at the matrix-function, layer, optimizer-step, and end-to-
+end training levels. The experiments study real transformer weight shapes,
+kernel and tile-shape choices, cross-layer batching, finite-precision Newton–
+Schulz computation, and the resulting training-quality trade-off. We also
+use an associative-memory benchmark as a structural diagnostic for tile-size
+selection.
+The remainder of the paper is organized as follows. Section 2 introduces notation,
+HIMUON3
+the polar decomposition, the finite Newton–Schulz iteration, and the baseline Muon
+optimizer. Section 3 reviews efficient variants of Muon-type optimization and alter-
+native reductions of the Newton–Schulz computation. Section 4 presents the HiMuon
+algorithm and its GPU implementation. Section 5 introduces a capacity-based diag-
+nostic for the tiled map. Section 6 reports numerical experiments on training quality,
+computational efficiency, cross-layer batching, and finite-precision behavior. Section 7
+concludes the paper.
+2. Preliminaries.This section fixes the notation and the full-matrix Muon up-
+date used as the baseline throughout the paper. We first introduce matrix norms and
+the tiling operator, then distinguish the exact polar factor from the finite Newton–
+Schulz map used by Muon, and finally state the optimizer update that HiMuon mod-
+ifies.
+2.1. Notation.Matrices are denoted by bold uppercase letters, e.g.,A, andI
+denotes an identity matrix of the appropriate dimension. The model parameters are
+collected inθ, and the training objective isL(θ). Subscripttdenotes the optimizer
+step. ForA∈RH×W, we write∥A∥Fand∥A∥2for the Frobenius and spectral norms.
+For a finite tile sizeT, letB Tdenote the tiling operator. GivenA∈RH×W,
+define
+R=⌈H/T⌉, C=⌈W/T⌉.
+The operatorB TpadsAwith zeros, if needed, to an (RT)×(CT) matrix and partitions
+the padded matrix into anR×Cgrid ofT×Ttiles:
+BT(A) ={A rc}r=1,...,R;c=1,...,C ,A rc∈RT×T.
+The inverse operationB−1
+Tdenotes reassembly of the tiles followed by removal of
+the padding. We reserve the notationT=∞for the no-tiling case, in which the full
+matrix is processed as a single object rather than padded to a square tile. Rectangular
+tiles (T h, Tw) are used only in the tile-shape study of Figure 8; elsewhereT h=Tw=T.
+2.2. Polar Factor and Newton–Schulz Map.We first recall the row-oriented
+polar factor. SupposeA∈RH×Whas full row rank andH≤W. Its row polar
+decomposition is
+(2.1)A=UP,
+whereU∈RH×Whas orthonormal rows,UU⊤=I, andP= (A⊤A)1/2is symmetric
+positive semidefinite [11, 10]. The factorU= polar(A) is the closest row-orthonormal
+matrix toAin any unitarily invariant norm. WhenAis rank deficient, the polar
+factor need not be unique. In this paper, polar(A) is used only as an exact reference
+matrix function; the optimizer update itself is defined by the finite Newton–Schulz
+map below.
+Muon uses a quintic Newton–Schulz iteration as a finite polar-factor surrogate.
+For a nonzero matrixA∈RH×WwithH≤W, set
+X0=A
+∥A∥F.
+The row-oriented recurrence is
+(2.2)X k+1= 
+aI+bX kX⊤
+k+c(X kX⊤
+k)2
+Xk,
+4Z. TANG, T. XU, Y. SAAD, AND Y. XI
+with coefficients
+(2.3) (a, b, c) = (3.4445,−4.7750,2.0315),
+as in the Muon implementation [15]. HereIhas dimensionH×H. IfH > W, the
+same recurrence is applied toA⊤and the result is transposed back, so the Gram
+matrix in the iteration always has dimension min{H, W}. For the zero matrix, we set
+ΦK(0) =0.
+We denote the result afterKNewton–Schulz steps by
+(2.4) Φ K(A) :=X K.
+The map Φ Kshould not be identified with the exact polar factor. It is a finite
+Newton–Schulz map used to construct the optimizer direction. Although it drives
+singular values toward a common scale, it is not an exact polar decomposition.
+2.3. The Muon Update.We now state the full-matrix Muon update that
+HiMuon modifies. LetW t−1∈RH×Wbe a two-dimensional parameter matrix at
+optimizer stept, and let
+Gt=∇WL(θt−1)
+be its gradient. Muon first updates a momentum buffer,
+(2.5)M t=βM t−1+G t,
+and then forms the Nesterov-type momentum gradient
+(2.6) bGt=G t+βM t.
+The matrix-valued update direction is obtained by applying the finite Newton–Schulz
+map to this momentum gradient:
+(2.7)U t= Φ K(bGt).
+With learning rateηand decoupled weight-decay coefficientλ, the core parameter
+update is
+(2.8)W t= (1−ηλ)W t−1−ηU t.
+Equations (2.7)–(2.8) define the full-matrix baseline. HiMuon keeps the momentum
+and weight-decay structure of Muon, but replaces the single full-matrix application
+of Φ Kin (2.7) by tilewise applications of the same finite map.
+3. Related Work.This section places HiMuon in context with prior work on
+Muon-type optimization and efficient matrix-function updates. We organize the dis-
+cussion around five themes: update scaling, structured decompositions of the Newton–
+Schulz computation, alternative reductions of the Muon matrix function, batched
+GPU execution, and theoretical or diagnostic benchmarks.
+3.1. Scaling and normalization in Muon-type optimizers.Muon-type op-
+timizers apply a finite Newton–Schulz map to momentum-gradient matrices, but their
+practical behavior also depends on how the resulting update is scaled. Liu et al. [21]
+identify weight growth and shape-dependent update magnitudes as obstacles to scal-
+ing Muon, and address them through decoupled weight decay and a shape-dependent
+learning-rate scaler. Other variants modify the normalization before or after the
+HIMUON5
+Newton–Schulz map. MuonEq [4] equilibrates rows and columns before applying the
+map; Muon+ [36] and NorMuon [20] normalize the update after the map; RMNP [7]
+replaces the map by row-wise normalization; and TrasMuon [5] adds feature-wise
+trust-region clipping. These methods show that Muon-type optimization depends
+not only on singular-value homogenization, but also on how update magnitudes are
+balanced across rows, neurons, and parameter shapes.
+3.2. Structured decompositions of Newton–Schulz updates.A closely
+related line of work reduces the cost of Muon by replacing one global Newton–Schulz
+update with smaller structured subproblems. GLM-5 [9] applies Muon independently
+to each attention-head submatrix, while Group Muon [34] treats the head-group size as
+a tunable hyperparameter; Boreiko et al. [3] study row-wise, column-wise, and square
+block splitting whose block sizes follow the tensor-parallel degree. MuonBP [16] uses
+block orthogonalization together with periodic global correction, while DASH [23]
+demonstrates the efficiency of batched block updates in Shampoo-type methods.
+TEON [35] takes a different direction by coupling multiple layers through tensorized
+orthogonalization. These methods decompose matrix-valued update computations
+using units motivated by model semantics, parallel layouts, correction schemes, or
+cross-layer tensor structure. HiMuon instead uses fixed two-dimensional intra-matrix
+tiles whose size is not determined by the sharding layout, making the tile size both a
+numerical parameter and a GPU execution parameter.
+3.3. Alternative reductions of the Muon matrix function.Other ap-
+proaches reduce Muon cost by changing the matrix being transformed, the polynomial
+map, or the matrix-function surrogate. Dion2 [1] orthogonalizes selected rows with er-
+ror feedback, while Magma [14] uses stochastic masking based on momentum-gradient
+alignment. Turbo-Muon [2] reduces the number of Newton–Schulz steps; PRISM [33]
+adapts the polynomial coefficients to the observed spectrum; and IFNSO [13] replaces
+the iteration by a learned polynomial operator. MUD [28] uses triangular whitening
+instead of Newton–Schulz, and PolarGrad [19] studies orthogonalized updates from
+a broader matrix-optimization perspective. This line of work modifies the operator
+used to approximate or replace the polar-factor surrogate. HiMuon keeps the finite
+Newton–Schulz map itself unchanged, but changes the domain on which it is applied.
+3.4. Batched GPU execution.Tiled Newton–Schulz computation exposes
+many independent small dense matrix products. This connects HiMuon to batched
+small-matrix linear algebra, where grouping independent operations is important for
+GPU utilization [22]. Related implementation ideas include epilogue fusion, on-chip
+data reuse, and custom Triton kernels [30, 32]. HiMuon uses these ideas inside the
+optimizer step through tilewise Newton–Schulz calls, cross-layer batching, memory-
+bounded chunking, and runtime tile-size reconfiguration.
+3.5. Theory and diagnostic benchmarks.Recent theory has begun to clarify
+why Muon-type updates can differ from scalar adaptive methods. Kim and Oh [17]
+analyze finite-step Muon convergence; Su [29] studies singular-value homogenization
+under curvature models; Du and Su [8] derive an activation-aware Newton-Muon
+update; and Wen et al. [31] benchmark matrix-based optimizers across model scales.
+The associative-memory benchmark of Kim et al. [18] provides a controlled setting in
+which full-matrix Muon and SGD have sharply separated one-step capacity scalings.
+We use this benchmark in Section 5 as a diagnostic for whether tilewise Newton–Schulz
+updates retain the qualitative signal-amplification behavior of full-matrix Muon.
+Taken together, these lines of work motivate the design studied in this paper.
+6Z. TANG, T. XU, Y. SAAD, AND Y. XI
+Gradient Tiling Per-tile NS Untiling
+Fig. 1.The tiled Newton–Schulz mapΦ K,T. The lookahead momentum gradient bGis parti-
+tioned intoT×Ttiles. The finite Newton–Schulz mapΦ Kis applied independently to each tile, and
+the tile outputs are reassembled intoΦ K,T(bG). Because each tile is processed in isolation, spectral
+interactions are retained within tiles but removed across tile boundaries.
+HiMuon keeps the finite Newton–Schulz map used by Muon, but applies it to fixed-
+size two-dimensional intra-matrix tiles. This choice makes the tile size a numerical
+parameter, controlling the amount of retained spectral coupling, and an execution
+parameter, producing uniform small dense matrix problems for batched GPU ker-
+nels. The resulting optimizer combines local matrix-function updates, runtime tile-size
+scheduling, and cross-layer batched execution. The capacity diagnostic in Section 5
+is then used to assess how this local replacement affects the qualitative behavior of
+full-matrix Muon.
+4. The HiMuon Method.We now present HiMuon. Starting from the full-
+matrix Muon update in (2.7), HiMuon replaces the single application of Φ Kto a
+momentum-gradient matrix by independent applications of the same finite Newton–
+Schulz map on fixed-size tiles. The tiled update is then implemented as a batched
+small-matrix workload on the GPU.
+4.1. Tiled Newton–Schulz Map.Let bG∈RH×Wbe the lookahead momen-
+tum gradient defined in (2.6). In full-matrix Muon, the update direction is Φ K(bG),
+where Φ Kis the finite Newton–Schulz map defined in Subsection 2.2. For a finite tile
+sizeT, HiMuon applies this map locally. Using the tiling operatorB Tfrom Subsec-
+tion 2.1, we write
+(4.1)B T(bG) =bGrc
+r=1,...,R;c=1,...,C, R=⌈H/T⌉, C=⌈W/T⌉,
+where zero padding is used when needed and each tile bGrchas sizeT×T. HiMuon
+applies the same map Φ Kindependently to each tile and then reassembles the outputs:
+(4.2) Φ K,T(bG) :=B−1
+T
+ΦK(bGrc)
+r=1,...,R;c=1,...,C
+.
+The inverse operator removes any padding introduced during tiling. Figure 1 illus-
+trates the construction. The special caseT=∞denotes the full-matrix branch,
+(4.3) Φ K,∞(bG) := Φ K(bG).
+For finiteTbelow the matrix dimensions, the tiled map is generally different from
+the full-matrix Muon map:
+(4.4) Φ K,T(bG)̸= Φ K(bG).
+HIMUON7
+This difference is structural: tiling does not commute with either the exact polar
+factor or the finite Newton–Schulz surrogate. It is a local matrix-function map whose
+tile size controls the amount of retained spectral coupling. Larger tiles preserve more
+of the full-matrix interaction, while smaller tiles reduce the cost and expose more
+independent work.
+For square tiles, each tile requiresO(T3K) arithmetic, and there are approxi-
+matelyHW/T2tiles. Thus, up to lower-order padding effects, the leading Newton–
+Schulz work is
+(4.5)O(HWTK),
+compared with the full-matrix costO(HWmin{H, W}K). The same parameterT
+determines both the numerical locality of the update and the size of the dense matrix
+problems issued to the GPU.
+4.2. Update Scaling.As in Muon, we multiply the Newton–Schulz direction by
+a shape-dependent RMS-matching factor before applying the parameter update. For
+a fullH×Wmatrix, this factor iscp
+max{H, W}, since a semi-orthogonal reference
+direction has entrywise RMS 1/p
+max{H, W}. In the tiled case, the Newton–Schulz
+map acts onT×Tblocks, so the corresponding factor is the single tile-size-dependent
+scalar
+τ(T) =c√
+T.
+For the no-tiling branch, we setτ ℓ(∞) =cp
+max{H ℓ, Wℓ}forW(ℓ)∈RHℓ×W ℓ. The
+scaled update is therefore
+(4.6)W(ℓ)
+t= (1−ηλ)W(ℓ)
+t−1−η τ ℓ(Tt) ΦK,T t(bG(ℓ)
+t),
+where
+τℓ(Tt) =(
+cp
+max{H ℓ, Wℓ}, T t≥max{H ℓ, Wℓ},
+c√Tt, T t<max{H ℓ, Wℓ}.
+This scaling is a global scalar for each matrix update; it introduces no tilewise adap-
+tation and leaves the learning rate, momentum, and weight decay unchanged from
+the Muon baseline.
+4.3. Complete Algorithm.Algorithm 4.1 summarizes the HiMuon update.
+The indexℓ∈ Eenumerates the two-dimensional parameter matrices to which Muon-
+type updates are applied, withW(ℓ)∈RHℓ×W ℓ. The valueT tdenotes the tile size
+used at optimizer stept; the special valueT t=∞selects the full-matrix branch.
+The branchT t≥max{H ℓ, Wℓ}, for exampleT t=∞, denotes the full-matrix
+Muon update. Smaller tile sizes are interpreted through the padding-and-tiling op-
+eratorB Tt. For square finite tiles,τ(ℓ)
+t=c√Ttis a single scalar shared by all tiles
+in the matrix; it introduces no tilewise adaptation. Rectangular tiles useτ(ℓ)
+t=
+cp
+max{T h, Tw}in the tile-shape experiments.
+4.4. GPU Implementation.The mathematical definition of HiMuon creates
+many independent Newton–Schulz problems, one for each tile. This independence is
+useful only if the implementation can execute the tilewise computations without intro-
+ducing new overheads that offset the arithmetic reduction. A naive implementation
+would allocate a fresh tile tensor and launch many small Newton–Schulz computations
+every step, writing intermediate matrices to high-bandwidth memory (HBM) between
+theKNewton–Schulz steps. These costs can dominate when the tile size is small.
+8Z. TANG, T. XU, Y. SAAD, AND Y. XI
+Algorithm 4.1HiMuon
+Require:learning rateη, momentumβ, Nesterov flag, weight decayλ, NS stepsK,
+tile-size schedule{T t}, scaling constantc
+1:InitializeM(ℓ)
+0←0for allℓ∈ E
+2:fort= 1,2, . . .do
+3:Compute gradientsG(ℓ)
+t← ∇W(ℓ)L(θt−1) for allℓ∈ E
+4:foreachℓ∈ Edo
+5:M(ℓ)
+t←βM(ℓ)
+t−1+G(ℓ)
+t
+6:ifNesterovthen
+7: bG(ℓ)
+t←G(ℓ)
+t+βM(ℓ)
+t
+8:else
+9: bG(ℓ)
+t←M(ℓ)
+t
+10:end if
+11:ifT t≥max{H ℓ, Wℓ}then
+12:U(ℓ)
+t←Φ K(bG(ℓ)
+t)
+13:τ(ℓ)
+t←cp
+max{H ℓ, Wℓ}
+14:else
+15:{ bG(ℓ)
+t,rc}r,c← B Tt(bG(ℓ)
+t){tile}
+16:{U(ℓ)
+t,rc}r,c← {Φ K(bG(ℓ)
+t,rc)}r,c {tilewise NS}
+17:U(ℓ)
+t← B−1
+Tt 
+{U(ℓ)
+t,rc}r,c
+{untile}
+18:τ(ℓ)
+t←c√Tt
+19:end if
+20:W(ℓ)
+t←(1−ηλ)W(ℓ)
+t−1−η τ(ℓ)
+tU(ℓ)
+t
+21:end for
+22:end for
+The implementation contribution is therefore an optimizer-level execution plan
+for the tiled Newton–Schulz map. The plan has three goals: avoid unnecessary data
+movement, aggregate small independent tile computations into large GPU batches,
+and allow the tile size to change during training without resetting optimizer state.
+These choices do not change the mathematical update in Algorithm 4.1; they deter-
+mine how the independent evaluations of Φ Kare scheduled on the GPU.
+4.4.1. Tile-size-dependent Newton–Schulz kernels.The best kernel strat-
+egy depends on the tile size. For larger tiles, each Newton–Schulz step contains enough
+arithmetic to amortize kernel launches, and HiMuon uses a multi-kernel Triton [30]
+path. In this path, matrix products and the polynomial update in the Newton–Schulz
+recurrence are fused where possible before intermediate results are written back to
+HBM.
+For smaller tiles, the arithmetic per tile is lower and repeated memory traffic
+becomes the main bottleneck. In this regime, the tile working set fits in on-chip static
+random-access memory (SRAM). HiMuon therefore uses an SRAM-resident kernel
+that keeps allKNewton–Schulz iterations inside a single kernel, avoiding intermediate
+HBM round trips through the iteration loop. The threshold between the two paths
+is hardware dependent; in our implementation, the SRAM-resident path is used for
+tiles up toT= 128.
+Figure 2 summarizes this tile-size-dependent dispatch rule. These kernel choices
+do not change the arithmetic complexityO(HWTK); their purpose is to make the
+HIMUON9
+reduced arithmetic cost visible in wall-clock time by reducing memory traffic and
+kernel-launch overhead.
+Fig. 2.Tile-size-dependent kernel strategy. Larger tiles use a multi-kernel path with epilogue
+fusion. Smaller tiles use an SRAM-resident path in which allKNewton–Schulz iterations are kept
+on chip, avoiding intermediate HBM round trips.
+4.4.2. Cross-layer batching.Tilewise Newton–Schulz evaluations are inde-
+pendent not only within a single matrix, but also across different parameter ma-
+trices. This is important in transformer models, where each layer contains several
+Muon-eligible matrices and each matrix may contain only a moderate number of tiles.
+Launching one Newton–Schulz computation per matrix can underutilize the GPU
+because each launch may expose too little work.
+HiMuon thus groups compatible tiles across layers into larger batched Newton–
+Schulz calls. Tiles are compatible when they have the same tile shape, dtype, and
+kernel path. The batched call computes the same tilewise outputs as processing each
+matrix separately; only the execution order changes. Momentum buffers, parameter
+tensors, and weight decay remain indexed by the original parameterℓ, so cross-layer
+batching is an implementation strategy rather than a change to the optimizer update.
+For large models, a single global batch of all compatible tiles may exceed the
+available memory budget. HiMuon handles this with memory-bounded chunking: the
+batched tile set is split into the fewest chunks whose input, intermediate workspace,
+and output fit within a prescribed memory budget. Since the Newton–Schulz evalua-
+tions are independent across tiles, chunking is mathematically equivalent to processing
+the full batch at once. It only bounds temporary memory usage.
+In single-GPU and Distributed Data Parallel (DDP) runs, the batched tiles are
+assembled during each optimizer step into reusable batched buffers whose storage is
+cached across steps. Under the bank-sharded Fully Sharded Data Parallel (FSDP)
+layout used in our experiments, same-shape matrices are stored along a leading batch
+axis, so each rank owns a subset of complete matrices in its local shard. The tiled
+Newton–Schulz computation is therefore rank-local and does not require an optimizer-
+internal all-gather.
+4.4.3. Runtime tile-size reconfiguration.The tile size is exposed as a run-
+time parameter rather than being fixed at optimizer construction. Areconfigure()
+routine updates the tile-dependent execution plan whenT tchanges. This plan includes
+tile indexing metadata, batching buckets, chunking decisions, kernel-path selection,
+and graph-capture state when applicable. The optimizer state itself, including the
+10Z. TANG, T. XU, Y. SAAD, AND Y. XI
+momentum buffers, is independent of the tile size and is preserved across reconfigu-
+ration.
+We treatT t=∞as the full-matrix branch, in which Φ Kis applied to the
+original matrix. Finite tile sizes are interpreted through the padded tiling opera-
+torB Tt, where zero padding only aligns the matrix boundaries with the tile grid:
+padded rows and columns remain identically zero throughout the iteration (2.2) and
+do not affect the Frobenius normalization of the tile. Tiling is therefore meaningful
+only whenT t<max{H ℓ, Wℓ}. WhenT t≥max{H ℓ, Wℓ}, the partition reduces to
+a single tile (R=C= 1) and the tiled map coincides with the full-matrix map,
+ΦK,T t(bG(ℓ)
+t) = Φ K(bG(ℓ)
+t); this case is therefore identified with the full-matrix branch,
+including its scaling factorcp
+max{H ℓ, Wℓ}.
+In the end-to-end experiments of Subsection 6.2, we use a full-to-local schedule,
+Tt=
+
+∞, t < t 1,
+512, t 1≤t < t 2,
+128, t≥t 2.
+The initial full-matrix phase preserves global spectral coupling during the earliest
+optimization steps, when gradient statistics and dominant directions are least settled.
+The optimizer then switches to lower-cost tiled maps for the remainder of training.
+The DDP experiments use (t 1, t2) = (100,500), while the FSDP experiment uses
+(t1, t2) = (200,500). These breakpoints are fixed empirical choices in our experiments.
+The capacity diagnostic in Section 5 motivates the full-to-local form of the schedule
+qualitatively, but does not determine the switch times.
+5. Capacity Diagnostic.Many-step transformer training entangles the effect
+of the update map with learning-rate schedules, changing gradient statistics, stochas-
+ticity, and architecture-specific dynamics. To isolate the effect of replacing a full-
+matrix Newton–Schulz map by a tiled one, we use the one-step linear associative-
+memory benchmark of Kim et al. [18]. This benchmark is useful because full-matrix
+Muon and SGD have sharply separated capacity scalings, so the signal-amplification
+behavior of matrix-function updates can be observed directly. We use the benchmark
+as an empirical diagnostic for how the tiled map Φ K,Tchanges this behavior as the
+tile size varies.
+5.1. Linear Associative-Memory Benchmark.We first recall the bench-
+mark. The task consists ofNkey–value pairs (v i, ui), where
+vi, ui∼ N(0, d−1Id).
+The associations are stored in a matrixW∈Rd×d. Given an input keyv i, the model
+assigns logits
+u⊤
+jWvi, j= 1, . . . , N,
+and is trained with cross-entropy loss to predict the matching value indexi. Theith
+training example is sampled with probabilityp i∝i−α. Starting fromW 0= 0, one
+optimizer update using a minibatch of sizeBproducesW 1. An itemkis counted as
+recovered if
+arg max
+ju⊤
+jW1vk=k.
+The one-step storage capacity is the number of recovered items.
+HIMUON11
+The benchmark separates scalar gradient updates from spectral matrix-function
+updates through their capacity scalings. Under the assumptions of Kim et al. [18],
+withα >1 and appropriate scaling of the stabilized polar map, the full-matrix Muon
+update has one-step capacity
+(5.1) eΘ
+min{d1+1/(2α), B1/α}
+,
+whereBis the minibatch size. Under the same data model, SGD has capacity
+(5.2) eΘ
+min{d1/(2α), B1/α}
+.
+Thus, in the dimension-limited regime, the Muon capacity term is larger than the
+SGD term by a factor ofd. The shared termB1/αis a finite-sample ceiling: items
+absent from the minibatch provide no direct training signal in the one-step gradient.
+A useful interpretation of (5.1) is bulk singular-value amplification. At initializa-
+tion, the one-step gradient contains strong directions associated with high-frequency
+sampled items and a bulk of weaker directions associated with lower-frequency items.
+A stabilized polar-type update amplifies this bulk more uniformly than a scalar gradi-
+ent update, enabling recovery of weaker associations. Since HiMuon applies the finite
+Newton–Schulz map only within tiles, the experiments below test how much of this
+full-matrix amplification behavior remains after tilewise processing and reassembly.
+5.2. Tile-Size Capacity Diagnostic.The capacity scalings in (5.1) and (5.2)
+are stated for global update maps. HiMuon replaces the full map Φ K(·) by the
+tiled map Φ K,T(·). Each tile can amplify only the singular directions present in
+its own submatrix, while singular directions whose support spans several tiles are
+not treated coherently by a single Newton–Schulz map. This suggests a tile-size
+heuristic: larger tiles should better preserve full-matrix behavior because each tile
+contains a richer local spectrum, whereas smaller tiles reduce cost but may weaken
+the reassembled signal amplification. We therefore evaluate two one-step diagnostics:
+aggregate capacity scaling with dimension and top-krecovery over the sampled item
+support.
+Figure 3 reports one-step capacity for SGD, full-matrix Muon, and HiMuon with
+T∈ {128,256,512}acrossα∈ {1.25,1.5,1.75}, all within theα >1 regime of (5.1).
+We used∈ {256,512,1024},B/d= 10,N= 105, and three random seeds. Across
+the tested values of (d, α), the same qualitative ordering is observed:
+Muon≈HiMuon-512>HiMuon-256>HiMuon-128≫SGD.
+Atd= 1024, HiMuon-512 is within 3% of full-matrix Muon across all three values of
+α, and HiMuon-256 is within 6%. HiMuon-128 trails full-matrix Muon by 11%–39%,
+but remains well above SGD in every panel. The Muon/SGD gap also grows withd,
+consistent with the dimension-dependent separation predicted by (5.1) and (5.2).
+Figure 4 examines which sampled items are recovered atd= 1024,α= 1.5,
+andB/d= 10. We restrict this evaluation to the unique sampled supportSin the
+minibatch. This avoids mixing update-map quality with finite-sample coverage, since
+items outsideSdo not contribute directly to the one-step gradient. Across seeds,|S|
+averages 639. We sort sampled items by decreasing population frequency and report
+top-krecovery up to the common cutoffk max= 632.
+The head of the sampled distribution is insensitive to tile size. Throughk≈128,
+full-matrix Muon and all HiMuon variants recover nearly all sampled top-kitems,
+12Z. TANG, T. XU, Y. SAAD, AND Y. XI
+Fig. 3.One-step capacity on the associative-memory benchmark atα∈ {1.25,1.5,1.75},B/d=
+10,N= 105, one update fromW 0= 0, and three random seeds. Bars are grouped by dimensiond,
+and error bars show seed standard deviation. HiMuon approaches full-matrix Muon asTgrows; all
+Newton–Schulz-based updates remain well above SGD, and the Muon/SGD gap widens withd.
+whereas SGD drops much earlier. Tile size matters more deeper in the sampled
+support, where recovery depends on amplifying weaker directions. Atk=k max,
+HiMuon-128 trails full-matrix Muon by about 20 percentage points, HiMuon-256 by
+about 5 percentage points, and HiMuon-512 by about 1 percentage point. This rank-
+dependent pattern supports the interpretation that high-frequency sampled items are
+robust to tiling, while recovery of weaker sampled items depends more strongly on
+the amount of retained spectral coupling.
+Fig. 4.One-step top-krecovery atd= 1024,α= 1.5, andB/d= 10. All methods use the same
+embeddings, minibatch, and initial gradient; only the update map differs. Recovery is computed over
+the unique sampled supportS, sorted by decreasing item frequency.Left: top-krecovery rate.Right:
+gap to full-matrix Muon in percentage points. Tile-size differences are small for high-frequency items
+and increase deeper in the sampled support.
+These diagnostics suggest that the importance of tile size depends on which ca-
+pacity limit is active. If the finite-sample termB1/αis the bottleneck, recovery is
+limited mainly by minibatch coverage, and smaller tiles may be sufficient. If the
+dimension-dependent Muon term in (5.1) is the bottleneck, the update map matters
+more, and larger tiles are needed to better preserve full-matrix spectral behavior. In
+our experiments,T= 512 is closest to full-matrix Muon,T= 256 retains much of the
+gain at lower cost, andT= 128 shows visible capacity loss.
+The diagnostic also gives a qualitative rationale for the runtime tile-size schedule
+in Subsection 4.4.3. Because the benchmark isolates a one-step update fromW 0= 0,
+it is most analogous to the earliest stage of training, where global spectral coupling is
+HIMUON13
+most directly exposed. This motivates using a full-matrix warm start before switching
+to finite tiles, and using larger tiles before smaller ones in a full-to-local schedule. The
+benchmark does not determine the switch times or the final tile size; those choices are
+fixed empirical hyperparameters in the end-to-end experiments.
+6. Numerical Experiments.We evaluate HiMuon along four axes: end-to-end
+training behavior, matrix-function runtime on transformer layer shapes, optimizer-
+step speed under cross-layer batching, and robustness to low-precision Newton–Schulz
+computation. Unless otherwise stated, the baseline is full-matrix Muon [21], and
+HiMuon uses the same learning rate as the corresponding Muon run. This isolates
+the effect of replacing the full-matrix Newton–Schulz map by the tiled map.
+6.1. Experimental Setup. Models and data.End-to-end training exper-
+iments use Qwen3-0.6B, Qwen3-1.7B, and Qwen3-4B transformer language mod-
+els [25]. The two smaller models are trained with Distributed Data Parallel (DDP),
+while the 4B model is trained with Fully Sharded Data Parallel (FSDP). Layer-level
+performance studies use the same model family to probe the larger-matrix regime.
+Training uses the FineWeb dataset [24] in streaming mode with sequence length
+1024, drawing from its officialsample-10BTsubset (∼10B tokens). Held-out eval-
+uation uses FineWeb’sCC-MAIN-2024-51configuration, a Common Crawl snapshot
+disjoint from the training sample.
+Optimizer settings.Unless otherwise stated, HiMuon uses momentumβ= 0.95
+andK= 5 Newton–Schulz steps, following the default setting of Muon [21], with the
+update scaling of Subsection 4.2 andc= 0.2. The end-to-end runs use the runtime
+tile-size schedule described in Subsection 4.4.3: an initial full-matrix phase, followed
+byT= 512, thenT= 128. The DDP runs switch at steps 100 and 500, while
+the FSDP run switches at steps 200 and 500. Isolated matrix-function, kernel, and
+optimizer-step studies use a fixed tile size, stated with each experiment.
+The learning rate is selected by grid search for full-matrix Muon, and HiMuon
+reuses the same value. The DDP runs use a cosine learning-rate schedule with a 100-
+step linear warmup, decaying to zero. The FSDP run uses a warmup-stable-decay
+(WSD) schedule with the same 100-step warmup and a final 400-step decay to 0.1×
+the peak learning rate.
+Hardware and timing protocol.End-to-end training runs use 4×NVIDIA A40
+GPUs: Qwen3-0.6B and Qwen3-1.7B in DDP, and Qwen3-4B in FSDP. Matrix-
+function, kernel, and optimizer-step performance studies run on a single NVIDIA
+A40 GPU unless otherwise stated. Latencies are measured with CUDA events after
+a warmup phase, and we report medians with interquartile ranges over 30–50 timed
+repetitions. Layer-level speedups are measured in paired trials: the baseline and test
+configuration are run back-to-back, and the per-trial ratio is taken. Aggregate step-
+time and kernel speedups are reported as ratios of the corresponding medians. Peak
+memory is the maximum allocated memory (torch.cuda.max memory allocated)
+recorded over a short run of optimizer steps after warmup. All experiments use Py-
+Torch 2.6.0 with CUDA 12.4; for details, please refer to our code repository.
+Numerical precision.All training and performance experiments use bf16 mixed-
+precision computation, matching the default Muon implementation. The precision
+studies in Subsections 6.5 and 6.6 vary the precision used inside the Newton–Schulz
+inner GEMMs as described there.
+Code availability.The implementation and the scripts for all experiments in this
+section are available at https://github.com/tang0389/himuon.
+14Z. TANG, T. XU, Y. SAAD, AND Y. XI
+6.2. Training Quality.We first evaluate the effect of the tiled update on end-
+to-end pretraining. HiMuon replaces one global Newton–Schulz map by many local
+maps, so the goal is to test whether the wall-clock reduction is accompanied by a
+visible loss penalty in short training runs. We report next-token cross-entropy on
+both the training stream and a held-out validation split disjoint from the training
+data.
+Each model is trained for 1000 steps on the FineWeb sample-10BT, comparing
+HiMuon against full-matrix Muon at the same learning rate and a single fixed seed.
+Qwen3-0.6B and Qwen3-1.7B run in 4×A40 DDP with an effective batch of 64 length-
+1024 sequences (31.3M non-padding tokens), usingη= 0.02 andη= 0.01, respectively.
+Qwen3-4B runs in 4×A40 FSDP with an effective batch of 32 length-512 sequences
+andη= 0.005. The HiMuon schedule starts with the full-matrix branch, so HiMuon
+and Muon share the same update early in training and differ only after the tile-size
+switches.
+Table 1 reports the training loss at selected steps, smoothed by a trailing mean
+over the preceding 50 steps to reduce minibatch noise. Across checkpoints, the
+HiMuon–Muon differences are small relative to the loss scale; the tiled run is some-
+times lower and sometimes higher.
+Table 1
+Training loss, reported as a trailing mean over the preceding50steps, for Muon and HiMuon.
+Values are comparable within each model but not across models. The0.6B and1.7B models use
+DDP; the4B model uses FSDP.
+Step
+Model Optimizer 100 200 300 500 700 1000
+0.6BMuon 3.220 2.913 2.744 2.521 2.338 2.236
+HiMuon 3.183 2.901 2.723 2.493 2.281 2.162
+1.7BMuon 3.169 2.909 2.746 2.507 2.305 2.189
+HiMuon 3.162 2.914 2.736 2.495 2.277 2.142
+4BMuon 4.838 4.590 4.082 3.701 3.698 3.719
+HiMuon 4.836 4.583 4.103 3.721 3.717 3.733
+DDP.Figure 5 plots validation loss against tokens processed and per-step wall time
+for the two DDP models. HiMuon tracks full-matrix Muon through the initial full-
+matrix phase and then settles to a lower step time after the tile-size switches. In these
+single-seed runs, the validation losses remain close to, and in these cases below, the
+corresponding Muon curves.
+For Qwen3-0.6B, the step time decreases from 3.80 s in the full-matrix phase
+to 3.70 s after the first switch and 3.62 s after the second switch, a 4.7% per-step
+reduction. Total wall time changes from 3959 s to 3822 s, a 3.5% reduction. The final
+training loss is lower for HiMuon by ∆ =−0.074 at step 1000, and the final validation
+loss is 2.391 versus 2.496 for Muon.
+For Qwen3-1.7B, the larger matrices make the tiled Newton–Schulz computation
+more beneficial. Step time decreases from 6.72 s to 6.36 s and then 6.16 s, an 8.3%
+per-step reduction. Total wall time changes from 7157 s to 6610 s, a 7.6% reduction.
+The final training-loss difference is ∆ =−0.047, and the final validation loss is 2.152
+for HiMuon versus 2.226 for Muon. The brief upward spikes in step time coincide
+with tile-size switches, where the kernels and cross-layer batching plan are rebuilt;
+this overhead is amortized over subsequent steps.
+HIMUON15
+Fig. 5.End-to-end DDP training of Qwen3-0.6B and Qwen3-1.7B with HiMuon and full-matrix
+Muon on4×A40 (1000steps,31.3M non-padding tokens;η= 0.02andη= 0.01).(a)Held-out
+validation loss against tokens processed.(b)Per-step wall time, with the tile-size switches marked
+at step100(T= 512) and step500(T= 128). HiMuon settles to a lower steady-state step time
+after each switch; upward spikes at the switches reflect rebuilding kernels and batching metadata.
+FSDP.The Qwen3-4B model is too large for the DDP setup on 4×A40 and is therefore
+run under FSDP. Because the Muon baseline in this setting is an FSDP adaptation
+rather than the implementation used in the DDP runs, we treat the 4B experiment as
+a quality and scaling check rather than a direct timed comparison. HiMuon’s training
+loss stays within a few hundredths of full-matrix Muon in Table 1; the final validation
+losses are 3.629 for HiMuon and 3.613 for Muon. HiMuon’s step time decreases as the
+schedule shrinks the tiles, from 17.55 s to 17.32 s and then 17.18 s after the switches at
+steps 200 and 500. End-to-end throughput tuning under FSDP is left to future work.
+Overall, the tiled update gives lower wall-clock time in the DDP runs while keeping
+training and validation losses close to full-matrix Muon in these single-seed experi-
+ments. The reported wall-clock reductions should be interpreted as short-run mea-
+surements: in these 1000-step runs, the initial full-matrix phase and schedule-switch
+overheads form a larger fraction of total time than they would in longer pretraining
+runs.
+6.3. Matrix-Function Performance.We next study the tiled Newton–Schulz
+map in isolation, separated from the full training loop. This isolates the matrix-
+function computation from the forward pass, backward pass, communication, and data
+movement that also contribute to end-to-end training time. The experiments in this
+subsection measure speedup on real Qwen3 layer shapes, compare kernel strategies,
+and examine the speed–quality trade-off across tile shapes.
+Speedup on real transformer layer shapes.We first measure the isolated
+tiled/full-matrix Newton–Schulz speedup on actual Qwen3 weight matrices. For each
+Qwen3 model, we extract the seven Muon-eligible matrices from Block 0:q proj,
+kproj,v proj,o proj,gate proj,up proj, anddown proj; their shapes are listed
+in Table 2. For each shape, we apply the full-matrix map Φ Kand the tiled map Φ K,T
+withT= 512 andK= 5 to a single random bf16 Gaussian matrix of that shape. We
+report the paired speedupt full/ttileas the median over 30 timed repetitions after 3
+warmup iterations.
+16Z. TANG, T. XU, Y. SAAD, AND Y. XI
+Fig. 6.Per-layer tiled/full-matrix Newton–Schulz speedup on real Qwen3 weight shapes from
+Block 0 withT= 512. Speedups reach up to2.9×on large attention and MLP projection matrices
+in Qwen3-1.7B and Qwen3-4B. Thek projandv projmatrices have smaller output dimensions
+under grouped-query attention and therefore show smaller gains.
+Table 2
+Shapes (output×input) of the seven Muon-eligible weight matrices per transformer block of
+each Qwen3 model [25], as used in Figure6.
+Modelq proj k proj v proj o proj gate proj up proj down proj
+0.6B 2048×1024 1024×1024 1024×1024 1024×2048 3072×1024 3072×1024 1024×3072
+1.7B 2048×2048 1024×2048 1024×2048 2048×2048 6144×2048 6144×2048 2048×6144
+4B 4096×2560 1024×2560 1024×2560 2560×4096 9728×2560 9728×2560 2560×9728
+Figure 6 shows that the measured per-layer speedups atT= 512 range from
+1.4–1.6×for Qwen3-0.6B, 1.4–2.9×for Qwen3-1.7B, and 1.3–2.9×for Qwen3-4B.
+The largest gains occur on the attention projectionsq projando projand on the
+wide MLP projectionsgate proj,up proj, anddown proj. In contrast,k projand
+vprojshow smaller gains. Qwen3 uses grouped-query attention, which reduces the
+output dimension of these two projections relative to the hidden size; the full-matrix
+Newton–Schulz work on these narrower matrices is already smaller, so tiling has less
+work to reduce. Across the remaining projections, the measurements show that the
+O(HWTK) cost model translates into practical speedups on real transformer weight
+matrices, with larger gains whenHandWare large relative toT.
+Kernel strategy.The tiled map changes the performance regime of Newton–Schulz.
+At small tile sizes, the arithmetic work per tile is low, and repeated memory traffic
+can dominate. Without fusion, each Newton–Schulz iteration writes intermediate
+matrices to HBM and reads them back. Small tiles are also the regime in which the
+fullK-step computation can fit in on-chip SRAM, enabling a single SRAM-resident
+kernel.
+We study this regime atT= 128, comparing four implementations: a PyTorch
+eager loop,torch.compile, a three-kernel Triton implementation with epilogue fu-
+sion, and an SRAM-resident kernel that keeps allK= 5 Newton–Schulz iterations on
+chip. Each implementation processes a batch of random bf16 GaussianT×Ttiles.
+We sweep the tile batch sizeB tileand report the median over 50 timed repetitions
+after 10 warmup iterations, with speedup measured relative to the eager loop.
+Figure 7 shows that the SRAM-resident path gives the largest improvement for
+T= 128, achieving roughly 4–8×speedup over eager execution, with the largest
+gain atB tile= 2048. The three-kernel epilogue-fusion path is useful only at larger
+batch sizes, where its launch overhead is amortized.torch.compilegives a smaller
+but consistent improvement, reflecting partial reduction of launch overhead without
+fusing the full Newton–Schulz iteration loop.
+HIMUON17
+Fig. 7.Kernel strategy comparison atT= 128on the NVIDIA A40 GPU, sweeping tile batch
+sizeB tile∈ {32,128,512,2048}.(a)Absolute wall-clock time, shown on a log scale.(b)Speedup
+relative to the PyTorch eager implementation. The SRAM-resident kernel removes intermediate
+HBM traffic within the fused NS inner loop and obtains roughly4–8×speedup over eager execution
+across the swept batch sizes.
+Tile shape.The tile shape affects both execution and optimization behavior because
+it defines the local matrix to which Φ Kis applied. We compare rectangular tile shapes
+using two measurements: isolated kernel speed and final training loss for Llama-220M,
+a small non-Qwen model for inexpensive tile-shape sweeping, trained with HiMuon
+for 300 steps.
+For the kernel-speed panel of Figure 8, we sweep tile shapes (T h, Tw) drawn from
+{16,32,64,128,256,512,1024,2048}, keeping only shapes that fit the A40 SRAM bud-
+get. The tile batch size is chosen so that the working setB tileThTwis constant across
+shapes. The reported speedup is the fused NS5 kernel over the three-kernel path.
+For the training-quality panel, we train Llama-220M on FineWeb sample-10BT for
+300 steps at batch size 8, sequence length 1024, andη= 0.02, using a 20-step linear
+warmup followed by a 60-step cosine decay to a 0.1 learning-rate floor. The experi-
+ment uses a single fixed seed and replays the same preloaded batch sequence for every
+tile shape; the reported loss is the mean over the final 100 steps.
+Figure 8 shows that kernel speed alone is not sufficient to select a tile shape.
+Smaller or more rectangular tiles can improve isolated kernel speed, but may worsen
+training loss in this diagnostic. In the tested setting, square tiles give a more favorable
+quality–speed trade-off than highly rectangular tiles. We therefore use squareT= 512
+tiles as the default on A40.
+6.4. Cross-Layer Batching.We next evaluate the cross-layer batching strat-
+egy described in Subsection 4.4.2. This experiment separates the gain from tiling itself
+from the additional gain obtained by aggregating many independent tile computations
+into larger GPU launches.
+In Qwen3-1.7B, there are 28 transformer blocks and 7 Muon-eligible matrices per
+block, giving 196 independent per-layer Newton–Schulz calls in an unbatched imple-
+mentation. WithT= 512, each individual matrix contains only a modest number
+of tiles, so launching one Newton–Schulz call per matrix can underutilize the GPU.
+Cross-layer batching groups compatible tiles across layers and processes them in a
+small number of larger batched calls.
+Tiles of the same shape and dtype are grouped across layers and concatenated
+into a batched buffer. When the buffer exceeds the memory budget, it is split into the
+18Z. TANG, T. XU, Y. SAAD, AND Y. XI
+Fig. 8.Speed and quality across tile shapes.(a)Single-call speedup of the fused NS5 kernel
+over the three-kernel path across shapes admissible under the A40 SRAM budget; the black outline
+marks the fused-dispatch region(T hTw≤16 384).(b)Final training loss, averaged over the last100
+of300steps, for Llama-220M trained with HiMuon across tile shapes and kernel strategies. The
+dotted line marks the(512,512)reference. Shapes that are fastest in the isolated kernel are not
+necessarily best for training quality.
+fewest chunks that fit, with intermediate workspace reused across steps. AtT= 512,
+the 1680 tiles of Qwen3-0.6B fit in a single call, whereas the 5376 tiles of Qwen3-1.7B
+are processed in two chunks of 2688. In this benchmark, every optimizer is run on the
+same synthetic workload: 8 stacked bias-freeLinear(H,H)layers in bf16, fed fresh
+random Gaussian gradients at each step. HiMuon usesT= 512 andK= 5. Per-step
+time is the median over 50 steps after 20 warmup steps, and peak memory is the
+maximum allocated over a short run. The cross-layer variant additionally captures
+the batched Newton–Schulz workspace in a CUDA graph, which pools and reuses that
+workspace across steps.
+Fig. 9.Optimizer-step performance on the NVIDIA A40 GPU. The workload consists of8
+stackedLinear(H,H)layers in bfloat16, withH∈ {1024,2048,4096}.(a)Per-step speedup relative
+to full-matrix Muon. Tiled HiMuon reaches1.4×/3.2×/5.2×atH= 1024/2048/4096; cross-layer
+batching raises the total speedup to2.3×/3.7×/5.4×.(b)Peak GPU memory. Tiled HiMuon adds
+about+3%over Muon at allH; cross-layer batching adds about+22%to+25%due to the batched
+buffer, with the overhead bounded by chunking and workspace reuse.
+Figure 9 shows that the tiled map provides the dominant optimizer-step speedup.
+Cross-layer batching gives an additional wall-clock reduction by replacing many small
+Newton–Schulz calls with fewer larger batched calls. The incremental benefit is largest
+HIMUON19
+atH= 1024, where the plain tiled calls are small; it shrinks atH= 4096, where each
+call is already large enough to better utilize the GPU. The batching buffer increases
+peak memory, but the overhead is controlled by chunking and workspace reuse and
+does not grow with the number of training steps.
+6.5. Capacity Robustness to Low Precision.Low-precision arithmetic in
+the Newton–Schulz inner GEMM is attractive on modern accelerators, but it per-
+turbs the matrix-function update through rounding error [12]. We assess whether
+this perturbation changes the optimizer’s behavior on a controlled downstream met-
+ric. Using the one-step associative-memory benchmark of Section 5, we hold the
+problem instance and gradient fixed within each seed and vary only the GEMM pre-
+cision used inside the Newton–Schulz iteration. Thus differences in recovered items
+reflect finite-precision arithmetic in the map rather than a different problem instance
+or tuned learning rate.
+The setup usesd= 1024,N= 4096 keys, Zipf exponentα= 1.5, batch-to-
+dimension ratioB/d= 10,K= 5 Newton–Schulz iterations, and five random seeds,
+executed on a single NVIDIA L40S. For each seed, the key–value pairs (v i, ui)∼
+N(0, d−1Id) and the resulting minibatch gradientG 0are constructed in fp64 and
+held fixed across precision variants. The four precision settings are an fp64 reference,
+fp32, bf16, and fp8e4m3 with per-tensor scaling. The learning rateη= 1.0 is chosen
+once from the fp64 reference run and reused for every precision. We compare full-
+matrix Muon and HiMuon withT∈ {128,256,512}.
+Table 3
+One-step recovered items on the associative-memory benchmark of Section5atd= 1024,
+N= 4096,α= 1.5,B/d= 10,K= 5, five random seeds, NVIDIA L40S. Recovered-
+item entries are mean±seed standard deviation. The last two columns give the operator gap
+δF=∥W(·)
+1−Wfp64
+1∥F/∥Wfp64
+1∥F, averaged over seeds, between the produced one-step update and
+the fp64 reference of the same update rule. Problem embeddings, minibatch indices, and gradientG 0
+are shared across precision columns within each seed; only the GEMM precision inside the Newton–
+Schulz iteration differs.
+Recovered items Op. gapδ Fto fp64
+Method fp64 fp32 bf16 fp8e4m3 bf16 fp8e4m3
+Muon 517.8±11.3 517.8±11.3 517.4±11.7 517.2±11.4 0.062 0.019
+HiMuon-512 508.8±12.1 508.8±12.1 508.2±11.8 509.0±11.9 0.061 0.027
+HiMuon-256 486.4±12.6 486.4±12.6 486.4±11.2 485.8±12.6 0.058 0.039
+HiMuon-128 408.0±15.3 408.0±15.3 406.6±15.6 406.8±14.6 0.052 0.059
+Table 3 shows that, for every update rule, the recovered item counts agree across
+precision settings to well within the seed-to-seed standard deviation. fp32 reproduces
+the fp64 means exactly under this setup. bf16 and fp8e4m3 produce operator-level
+gaps of roughly 2%–6% relative to the per-method fp64 reference, yet change the mean
+recovered count by at most about one item out of roughly 400–520 recovered items.
+This is much smaller than the seed-to-seed standard deviation of roughly 11–16 items.
+Thus, in this diagnostic, using bf16 or fp8e4m3 for the Newton–Schulz inner GEMMs
+does not measurably change the downstream recovery metric.
+6.6. Alignment and Descent Potential under Low Precision.The recov-
+ery test in Subsection 6.5 examines one downstream metric. We also evaluate two local
+quantities associated with per-step progress of Muon-type updates: the alignmentγ
+of the update with the true gradient and the descent potentialϕalong the update
+direction, as studied by Shumaylov et al. [27]. This experiment asks whether tile size
+20Z. TANG, T. XU, Y. SAAD, AND Y. XI
+and low-precision Newton–Schulz arithmetic change these quantities on a controlled
+quadratic proxy.
+We write⟨A,B⟩ F= tr(A⊤B) for the Frobenius inner product. Given a full-batch
+gradientG, a minibatch gradient eG, an update directionD, and Hessian actionH[D],
+define
+γ=⟨G,D⟩ F
+⟨eG,D⟩ F, ϕ=⟨eG,D⟩2
+F
+⟨D,H[D]⟩ F.
+Larger values correspond to faster local progress under an appropriately tuned step
+size. We evaluate these quantities on a teacher–student quadratic least-squares proxy
+after Davis and Drusvyatskiy [6]:
+f(W) =1
+2Ex∼N(0,Σ) ∥(W−W⋆)x∥2.
+The anisotropic covarianceΣand teacherW⋆yield the full gradient, minibatch gra-
+dient, and Hessian action in closed form.
+Protocol.We used= 1024, spectrumλ i∝i−αwithα= 1 and unit mean, a random
+orthogonal eigenbasis, minibatch sizeB= 256, and one seed. The teacherW⋆and
+initial iterate are random unit-Frobenius matrices. A single fp32 full-matrix Muon
+trajectory of 40 steps (η= 0.03, unit-Frobenius-normalized update) generates the
+iterates. At each step, every tile-size and precision variant sees the same minibatch
+gradient eG. The evaluated update isD= Φ K,T(eG) forT∈ {128,256,512}, or the
+full map Φ K(eG) on the full 1024×1024 matrix, withK= 5. The map is evaluated
+in fp32, bf16, and fp8e4m3 with per-tile dynamic scaling on an NVIDIA L40S.
+Fig. 10.Update alignmentγ(left)and descent potentialϕ(right)along a40-step fp32 full-
+matrix Muon trajectory on a teacher–student quadratic proxy after Davis and Drusvyatskiy [6]. The
+setup usesd= 1024,α= 1,B= 256,K= 5, one seed, and an NVIDIA L40S. Line color encodes
+the Newton–Schulz operator, fromT= 128toT= 512and the full1024×1024map. Precision is
+overlaid as bf16 circles and fp8 crosses on the fp32 line, sampled every fourth step.
+Figure 10 shows that bothγandϕdecline along the trajectory as the iterate
+approaches the teacher. The precision variants are visually indistinguishable at the
+plotted resolution: bf16 and fp8 markers lie on the corresponding fp32 curves for
+each tile size. Tile size has a more visible effect. The alignment curves remain close
+across tile sizes, while the descent-potential curves follow the ordering full>512>
+256>128, with the largest gap early in the trajectory. This matches the qualitative
+ordering seen in the capacity diagnostic of Subsection 5.2. These results suggest that,
+HIMUON21
+in this controlled proxy, tile size changes the local update geometry more than the
+tested Newton–Schulz GEMM precisions.
+7. Conclusion.In this paper, we introduced HiMuon, a tiled Newton–Schulz
+update for Muon-type optimization. HiMuon replaces one full-matrix Newton–Schulz
+map by independent applications of the same finite map on fixed-size intra-matrix
+tiles. This defines a local matrix-function update whose tile size controls the trade-off
+between retained spectral coupling and computational cost. For fixedT, the leading
+Newton–Schulz work scales asO(HWTK) rather thanO(HWmin{H, W}K).
+The experiments characterize this trade-off at several levels. Capacity diagnostics
+show that larger tiles more closely preserve the behavior of full-matrix Muon, while
+smaller tiles reduce cost. GPU experiments show that the tiled formulation can be
+implemented efficiently through tile-size-dependent kernels, cross-layer batching, and
+memory-bounded chunking. End-to-end Qwen3 training experiments indicate that
+HiMuon reduces optimizer-step and wall-clock time while maintaining training and
+validation losses close to full-matrix Muon in the tested single-seed runs.
+Future work includes a theory of the tiled map, adaptive schedules that choose
+Tfrom training state or layer shape, and broader evaluation across model families,
+hardware platforms, and distributed training layouts.
+Acknowledgments.The authors acknowledge the Minnesota Supercomputing
+Institute (MSI) at the University of Minnesota for providing the computational re-
+sources on which the majority of the experiments in this paper were run. The authors
+thank the developers of the Muon optimizer for making their implementation publicly
+available.
+REFERENCES
+[1]K. Ahn, N. Amsel, and J. Langford,Dion2: A simple method to shrink matrix in Muon,
+2025, https://arxiv.org/abs/2512.16928, https://arxiv.org/abs/2512.16928.
+[2]T. Boissin, T. Massena, F. Mamalet, and M. Serrurier,Turbo-muon: Accelerating
+orthogonality-based optimization with pre-conditioning, 2025, https://doi.org/10.48550/
+arxiv.2512.04632, https://arxiv.org/abs/2512.04632, https://arxiv.org/abs/2512.04632.
+[3]V. Boreiko, Z. Bu, and S. Zha,Towards understanding of orthogonalization in Muon,
+in High-dimensional Learning Dynamics 2025, 2025, https://openreview.net/forum?id=
+ppmyFtr9EW.
+[4]D. Chang, Q. Shi, L. Zhang, Y. Li, R. Zhang, Y. Lu, Y. Liu, and G. Yuan,MuonEq:
+Balancing before orthogonalization with lightweight equilibration, 2026, https://arxiv.org/
+abs/2603.28254, https://arxiv.org/abs/2603.28254.
+[5]P. Cheng, J. Zang, Q. Li, L. Ma, Y. Cui, Y. Zhang, B. Chen, M. Jian, and W. Tong,
+TrasMuon: Trust-region adaptive scaling for orthogonalized momentum optimizers, 2026,
+https://arxiv.org/abs/2602.13498, https://arxiv.org/abs/2602.13498.
+[6]D. Davis and D. Drusvyatskiy,When do spectral gradient updates help in deep learn-
+ing?, 2025, https://doi.org/10.48550/arXiv.2512.04299, https://arxiv.org/abs/2512.04299,
+https://arxiv.org/abs/2512.04299.
+[7]S. Deng, Z. Ouyang, T. Pang, Z. Liu, R. Jin, S. Yu, and Y. Yang,RMNP: Row-momentum
+normalized preconditioning for scalable matrix-based optimization, 2026, https://arxiv.org/
+abs/2603.20527, https://arxiv.org/abs/2603.20527.
+[8]Z. Du and W. Su,The Newton-Muon optimizer, 2026, https://arxiv.org/abs/2604.01472.
+[9]GLM-5 Team,GLM-5: from vibe coding to agentic engineering, 2026, https://arxiv.org/abs/
+2602.15763, https://arxiv.org/abs/2602.15763.
+[10]N. J. Higham,Computing the polar decomposition with applications, SIAM Journal on Scien-
+tific and Statistical Computing, (1986), https://doi.org/10.1137/0907079.
+[11]N. J. Higham,The matrix sign decomposition and its relation to the polar decomposition, 1994,
+https://doi.org/10.1016/0024-3795(94)90393-x.
+[12]N. J. Higham and T. Mary,A new approach to probabilistic rounding error analysis, SIAM
+Journal on Scientific Computing, 41 (2019), pp. A2815–A2835, https://doi.org/10.1137/
+22Z. TANG, T. XU, Y. SAAD, AND Y. XI
+18M1226312.
+[13]C. Hu, Q. Zhao, X. Yuan, H. Zhang, D. Yuan, Y. Wu, and X. Li,IFNSO: Iteration-free
+Newton-Schulz orthogonalization, 2026, https://arxiv.org/abs/2602.02500, https://arxiv.
+org/abs/2602.02500.
+[14]T. Joo, W. Xia, C. Kim, M. Zhang, and E. Ie,On surprising effectiveness of masking
+updates in adaptive optimizers, 2026, https://arxiv.org/abs/2602.15322, https://arxiv.org/
+abs/2602.15322.
+[15]K. Jordan, Y. Jin, V. Boza, J. You, F. Cesista, L. Newhouse, and J. Bernstein,Muon:
+An optimizer for hidden layers in neural networks. https://kellerjordan.github.io/posts/
+muon/, 2024.
+[16]A. Khaled, K. Ozkara, T. Yu, M. Hong, and Y. Park,Muonbp: Faster muon via
+block-periodic orthogonalization, 2025, https://doi.org/10.48550/arxiv.2510.16981, https:
+//arxiv.org/abs/2510.16981, https://arxiv.org/abs/2510.16981.
+[17]G. Y. Kim and M. hwan Oh,Convergence of Muon with Newton-Schulz, in The Fourteenth In-
+ternational Conference on Learning Representations, 2026, https://openreview.net/forum?
+id=lJSfxtLpLm.
+[18]J. Kim, E. Nichani, D. Wu, A. Bietti, and J. D. Lee,Sharp capacity scaling of spectral
+optimizers in learning associative memory, 2026, https://arxiv.org/abs/2603.26554, https:
+//arxiv.org/abs/2603.26554.
+[19]T. T.-K. Lau, Q. Long, and W. Su,PolarGrad: A class of matrix-gradient optimizers from
+a unifying preconditioning perspective, 2026, https://arxiv.org/abs/2505.21799, https://
+arxiv.org/abs/2505.21799.
+[20]Z. Li, L. Liu, C. Liang, W. Chen, and T. Zhao,NorMuon: Making Muon more ef-
+ficient and scalable, 2025, https://doi.org/10.48550/arxiv.2510.05491, https://arxiv.org/
+abs/arxiv.2510.05491.
+[21]J. Liu, J. Su, X. Yao, et al.,Muon is scalable for LLM training, 2025, https://doi.org/10.
+48550/arxiv.2502.16982, https://arxiv.org/abs/arxiv.2502.16982.
+[22]I. Masliah, A. Abdelfattah, A. Haidar, S. Tomov, M. Baboulin, J. Falcou, and J. Don-
+garra,Algorithms and optimization techniques for high-performance matrix-matrix mul-
+tiplications of very small matrices, Parallel Computing, (2019), https://doi.org/10.1016/j.
+parco.2018.10.003.
+[23]I.-V. Modoranu, P. Zmushko, E. Schultheis, M. Safaryan, and D. Alistarh,DASH:
+Faster shampoo via batched block preconditioning and efficient inverse-root solvers, 2026,
+https://arxiv.org/abs/2602.02016, https://arxiv.org/abs/2602.02016.
+[24]G. Penedo, H. Kydlicek, L. B. allal, A. Lozhkov, M. Mitchell, C. Raffel, L. V. Werra,
+and T. Wolf,The fineweb datasets: Decanting the web for the finest text data at scale,
+2024, https://doi.org/10.48550/arxiv.2406.17557, https://arxiv.org/abs/arxiv.2406.17557.
+[25]Qwen Team,Qwen3 technical report, 2025, https://arxiv.org/abs/2505.09388, https://arxiv.
+org/abs/2505.09388.
+[26]A. Semenov, M. Pagliardini, and M. Jaggi,Benchmarking optimizers for large language
+model pretraining, 2025, https://doi.org/10.48550/arxiv.2509.01440, https://arxiv.org/
+abs/arxiv.2509.01440.
+[27]Z. Shumaylov, N. D. Costa, P. Zaika, B. Mucs ´anyi, A. Massucco, Y. Gelberg, C.-
+B. Sch ¨onlieb, Y. Gal, and P. Hennig,Muon is not that special: Random or inverted
+spectra work just as well, 2026, https://arxiv.org/abs/2605.11181, https://arxiv.org/abs/
+2605.11181.
+[28]B. S. Southworth and S. Thomas,Beyond Muon: MUD (MomentUm decorrelation) for
+faster transformer training, 2026, https://arxiv.org/abs/2603.17970, https://arxiv.org/
+abs/2603.17970.
+[29]W. Su,Isotropic curvature model for understanding deep learning optimization: Is gradient or-
+thogonalization optimal?, 2025, https://arxiv.org/abs/2511.00674, https://arxiv.org/abs/
+2511.00674.
+[30]P. Tillet, H.-T. Kung, and D. D. Cox,Triton: an intermediate language and compiler for
+tiled neural network computations, Proceedings of the 3rd ACM SIGPLAN International
+Workshop on Machine Learning and Programming Languages, (2019), https://doi.org/10.
+1145/3315508.3329973.
+[31]K. Wen, D. Hall, T. Ma, and P. Liang,Fantastic pretraining optimizers and where to find
+them, 2025, https://doi.org/10.48550/arxiv.2509.02046, https://arxiv.org/abs/arxiv.2509.
+02046.
+[32]C. Yang, Y. Wang, T. Kurth, S. Farrell, and S. Williams,Hierarchical roofline
+performance analysis for deep learning applications, 2021, https://doi.org/10.1007/
+978-3-030-80126-7 35.
+HIMUON23
+[33]S. Yang, Z. Wang, O. Balabanov, N. B. Erickson, and M. W. Mahoney,PRISM:
+Distribution-free adaptive computation of matrix functions for accelerating neural network
+training, 2026, https://arxiv.org/abs/2601.22137, https://arxiv.org/abs/2601.22137.
+[34]H. Zhang, W. Zhou, W. Chen, and X. Cheng,When and why grouping attention heads ac-
+celerates Muon optimization, 2026, https://arxiv.org/abs/2605.08933, https://arxiv.org/
+abs/2605.08933.
+[35]R. Zhang, Y. Zhao, Z. Liu, Z. Wang, D. Li, Y. Su, S. Liu, and Z. Zhang,TEON: Tensorized
+orthonormalization beyond layer-wise Muon for large language model pre-training, 2026,
+https://arxiv.org/abs/2601.23261, https://arxiv.org/abs/2601.23261.
+[36]R. Zhang, Y. Zhao, Z. Liu, Z. Wang, Y. Su, L. Tan, and Z. Zhang,Muon+: Towards more
+effective muon via one additional normalization step for llm pre-training, 2026, https:
+//arxiv.org/abs/2602.21545, https://arxiv.org/abs/2602.21545.

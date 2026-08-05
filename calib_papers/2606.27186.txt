@@ -1,0 +1,1752 @@
+An integrable approach to macroscopic fluctuation theory for the
+multispecies SSEP
+Luigi Cantini∗1
+1Laboratoire de Physique Th´ eorique et Mod´ elisation, CNRS UMR 8089, CY Cergy
+Paris Universit´ e, 95302 Cergy-Pontoise Cedex, France
+Abstract
+We study the macroscopic fluctuation theory (MFT) of a multispecies generalization of the sym-
+metric simple exclusion process (mSSEP) on the infinite line, in which particles ofN+ 1 species
+– including, possibly, a vacancy species – exchange positions at unit rate. Working with the full,
+redundant set of coarse-grained densitiesρ={ρ 0, . . . , ρN }keeps the relabelling symmetry of the
+model manifest throughout. We first extend the argument of Derrida and Gerschenfeld to the mul-
+tispecies setting, showing that the cumulant generating function of the multispecies current between
+two regions of an arbitrary graph depends on the boundary densitiesρ L,ρ R and on the fugacities
+λonly through a single scalar variableω. We then formulate the MFT saddle- point equations for
+the mSSEP on the infinite line and show that they define an integrable system: they are of Landau–
+Lifshitz type, and a Zakharov–Takhtajan gauge transformation recasts them in AKNS form. Solving
+the resulting linear scattering problem by the inverse scattering method, we recover the cumulant
+generating functionF(ω) for the multispecies current, as well as the initial and final density profiles
+conditioned on a prescribed current fluctuation. In particular, we show thatF(ω) coincides with
+the function obtained by Derrida and Gerschenfeld for the single- species SSEP, now derived for an
+arbitrary number of species directly from the integrable structure of the multispecies MFT equations.
+1 Introduction
+Interacting particle systems in one dimension provide an ideal testing ground for methods in non-
+equilibrium statistical mechanics [1–4]. At the macroscopic scale such systems typically display hydro-
+dynamic behavior [5], but characterizing theirfluctuationsaway from equilibrium requires considerably
+more refined tools.
+Two complementary strategies have proven especially fruitful. The first exploits exact solvability of
+the underlying microscopic dynamics — through the Bethe ansatz, matrix-product representations, or
+integrable probability — and has produced a detailed picture of current and density fluctuations in the
+non-equilibrium steady state, both for finite systems on periodic geometries and for finite strips coupled
+to boundary reservoirs [4]. Exact results are also available away from the steady state, for genuinely
+non-stationary initial conditions [6, 7]. The second strategy abandons microscopic exact solvability in
+favor of generality: macroscopic fluctuation theory (MFT) [8–10] provides a mesoscopic, large-deviation
+description that applies, in principle, to entire universality classes of diffusive systems, expressed purely
+in terms of a diffusion matrix and a mobility matrix. In recent years MFT has been used to obtain exact
+results for diffusive systems well beyond what direct microscopic computations allow [11, 12].
+Current and density fluctuations in non-equilibrium steady states have been studied extensively
+for systems on a finite interval coupled to two reservoirs, as well as on a ring, often building on exact
+solutions of microscopic models such as the weakly asymmetric and asymmetric simple exclusion processes
+(W ASEP and ASEP).
+Another setting is that of aninfinitesystem, with either stationary or non-stationary initial data.
+There the natural observables are the time-integrated current — the total particle flux through a fixed
+point (say, the origin) up to timet— and the position of a tagged (tracer) particle at timet. The goal is
+to characterize the fluctuations of these quantities through their cumulants, or more completely through
+the cumulant generating function (CGF) and the associated large deviation rate function [4, 14, 15, 28].
+∗luigi.cantini@cyu.fr
+1
+arXiv:2606.27186v1  [cond-mat.stat-mech]  25 Jun 2026
+Solving the MFT saddle-point equations that determine these quantities is generally difficult; quite
+surprisingly, the saddle-point equations of MFT for several one component systems like SSEP or KMP
+model turn out to be classically integrable, and integrability techniques — most notably the inverse
+scattering method — have been successfully employed to solve them exactly [13, 16–22].
+While MFT in principle accommodates diffusivemulticomponentsystems on the same footing as
+single-species ones, this generalization remains comparatively little explored. To our knowledge the
+cases studied in this framework are limited to the ABC model [23, 24], together with related applications
+to active matter [25, 26].
+In the present paper we study a multispecies generalization of the symmetric simple exclusion process
+(SSEP), which we refer to as the mSSEP. The model is defined on an arbitrary graph: each vertex is
+occupied by a particle of one ofN+ 1 species (including, possibly, a vacancy species), and particles of
+different species sitting on neighboring vertices exchange positions in continuous time with rate 1. On a
+finite strip coupled to reservoirs, this model was considered at the microscopic level by Vanicat [27], who
+obtained the exact matrix-product steady state and, from it, the current, the density correlations, and the
+large deviation functional of the density profile, matching the MFT predictions. Our approach extends
+to the multispecies setting the integrability-based analysis of [20], developed there for the single-species
+SSEP on the infinite line, and we believe that it sheds light on the origin of the integrable structure
+underlying the single-species MFT saddle-point equations themselves.
+The dynamics of the mSSEP is invariant under relabelling of the species, and a central feature of our
+analysis is to preserve this invariance manifestly by working throughout with the full, redundant set of
+coarse-grained densitiesρ={ρ 0, ρ1, . . . , ρN }, subject only to the exclusion constraint P
+α ρα = 1. In
+this way the integrability of the MFT saddle point equations emerges quite naturally.
+Denoting byC α(t) the total charge of speciesαtransferred from left to right up to timet, the
+long-time behavior of the moment generating function is expected to take the form
+*
+exp
+" NX
+α=0
+λαCα(t)
+#+
+∼e
+√
+t F(ρL,ρR,λ).(1)
+One of our main results is that the large deviation functionF(ρ L,ρ R,λ) depends on the initial densities
+ρL,ρ R and on the fugacitiesλonly through the single combination
+ω=
+ NX
+k=0
+ρL,keλk
+!  NX
+k=0
+ρR,ke−λk
+!
+−1,(2)
+so that
+F(ρ L,ρ R,λ) =F(ω),(3)
+thereby extending to the multispecies setting the result obtained for the single-species SSEP by Derrida
+and Gerschenfeld [28].
+The paper is organized as follows. In Section 2 we extend the Derrida–Gerschenfeld argument [28],
+originally devised for the single-species SSEP, to the multispecies case, showing that the generating
+function of the total fluxC(T) between two regions of an arbitrary graph depends on the densitiesρ L,
+ρR and the fugacitiesλonly through the parameterωdefined in (2). In Section 3 we formulate the MFT
+for the multispecies SSEP on the infinite line and derive the corresponding saddle-point equations. In
+Section 3.1 we show that these equations are integrable by exhibiting an associated Lax pair of Landau–
+Lifshitz type, and we recast the problem, via a Zakharov–Takhtajan gauge transformation, in AKNS form
+so as to incorporate the relevant boundary conditions. In Section 3.2 we solve the resulting equations
+using the inverse scattering method; this not only reproduces the current cumulant generating function
+but also yields the initial and final density profiles conditioned on a prescribed current fluctuation.
+Section 4 contains our conclusions and an outlook on possible extensions. The appendices collect, in
+Appendix A, a fully worked out example illustrating the general result of Section 2, and, in the remaining
+appendices, technical material that complements the derivations of the main text.
+2ωdependence of the current moment generating function
+Let us consider the multispecies symmetric simple exclusion process (SSEP) on a general graphG. We
+partition the vertex set ofGinto two disjoint subsetsLandR, withR=L c. Assume that at time
+t= 0 the system is initialized in a completely factorized (product) measure. More precisely, for each
+2
+sitex∈L, the site is independently occupied by a particle of speciesαwith probabilityρ L,α, while for
+each sitex∈R, the site is independently occupied by a particle of speciesαwith probabilityρ R,α. We
+collect these parameters into the vectorsρ L ={ρ L,0, ρL,1, . . . , ρL,N }andρ R ={ρ R,0, ρR,1, . . . , ρR,N },
+which satisfy the normalization condition
+NX
+α=0
+ρL,α =
+NX
+α=0
+ρR,α = 1.(4)
+We define thenet inflowof particles of speciesαinto the regionRduring the time interval [0, t] as
+Cα(t) =
+X
+x∈R
+ 
+ηα(x, t)−ηα(x,0)
+
+,(5)
+whereη α(x, t) denotes the occupation variable of speciesαat sitexand timet, i.e.η α(x, t) = 1 if the site
+is occupied by a particle of speciesαat timet, andη α(x, t) = 0 otherwise. Since each site is occupied
+by exactly one particle, we have
+NX
+α=0
+ηα(x, t) = 1,
+which implies the conservation law
+NX
+α=0
+Cα(t) = 0.(6)
+Our goal in this section is to show, following and generalizing the argument of Derrida and Gerschenfeld
+[28], that the moment generating function of the currents,
+f(λ,ρ L,ρ R;t) =
+*
+exp
+ NX
+α=0
+λαCα(t)
+!+
+,λ={λ 0, λ1, . . . , λN },(7)
+depends on the initial densitiesρ L,ρ R and the fugacitiesλonly through a single scalar parameter,
+ω=
+ NX
+α=0
+ρL,αeλα
+!  NX
+α=0
+ρR,αe−λα
+!
+−1.(8)
+In particular, this implies that computingfin the single-species case (N= 1) suffices to recover the
+result for arbitraryN.
+We write
+f(λ,ρ L,ρ R;t) =f(λ 0, λ1, . . . , λN ; ρ0, ρ1, . . . ,ρN ;t),
+where we introduce the shorthand ρα = (ρL,α, ρR,α).
+Permutation symmetry .Since the dynamics treats all species symmetrically, the generating function
+is invariant under permutations of the species labels. For any permutationσ∈ S N+1 ,
+f(λ 0, . . . , λN ; ρ0, . . . ,ρN ;t) =f(λ σ(0), . . . , λσ(N) ; ρσ(0), . . . ,ρσ(N) ;t).(9)
+Because of the normalization condition (4), the variables ρ1, . . . ,ρN can be taken as independent. More-
+over, the constraint (6) implies thatfis invariant under a uniform shift of all counting fields,
+λα − →λα +ε.
+Hencefdepends only onNindependent combinations of theλ α. A convenient choice is
+νi =λ i −λ 0, i= 1, . . . , N.
+We may therefore rewrite
+f(λ 0, . . . , λN ; ρ0, . . . ,ρN ;t) =g(ν 1, . . . , νN ; ρ1, . . . ,ρN ;t).(10)
+3
+The permutation symmetry (9) induces a corresponding symmetry forg, together with an additional
+relation obtained by exchanging species 0 andN:
+g(ν1, . . . , νN ; ρ1, . . . ,ρN ;t) =g(ν 1 −ν N , . . . ,−νN ; ρ1, . . . ,1−
+NX
+α=1
+ρα;t).(11)
+Derrida–Gerschenfeld expansion.Following [28], we expand the generating function as
+f(λ; ρ;t) =
+X
+|pL|=NL
+|pR|=NR
+NY
+α=0
+ρpL,α
+L,α ρpR,α
+R,α MpL,pR (eλ0 , . . . , eλN ;t),(12)
+whereN L andN R denote the number of sites inLandR, and
+pL = (pL,0, . . . , pL,N ), p R = (pR,0, . . . , pR,N ),
+with|p L|= P
+α pL,α and|p R|= P
+α pR,α.The functionM pL,pR (x0, . . . , xN ;t) is a homogeneous Laurent
+polynomial of total degree zero in the variablesx α, with degree inx α lying in the interval [−pR,α, pL,α].
+This reflects the constraint that at mostp L,α particles of speciesαcan enterR, and at mostp R,α can
+leave it.
+Eliminating species 0, we obtain
+g(ν ;ρ ;t) =
+X
+|pL|≤NL
+|pR|≤NR
+NY
+α=1
+ρpL,α
+L,α ρpR,α
+R,α SpL,pR (eν1 , . . . , eνN ;t),(13)
+whereS pL,pR is a Laurent polynomial with degree bounds [−p R,α, pL,α] in each variable. Using the
+same reasoning as in [28], one finds that⟨ QN
+α=1 C nα
+α (t)⟩is a polynomial of degreen α inρ L,α andρ R,α.
+Consistency then requires
+SpL,pR (eν1 , . . . , eνN ;t) =O
+ NY
+α=1
+νpL,α+pR,α
+α
+!
+,(14)
+which implies the factorized form
+SpL,pR =s pL,pR (t)
+NY
+α=1
+(eνα −1) pL,α
+ 
+e−να −1
+pR,α
+.(15)
+Thus,
+g(ν ;ρ ;t) =
+X
+spL,pR (t)
+NY
+α=1
+(ρL,α(eνα −1)) pL,α
+ 
+ρR,α(e−να −1)
+pR,α
+.(16)
+Thereforegdepends on the parameters only through the combinations
+xα =ρ L,α(eνα −1), y α =ρ R,α(e−να −1),(17)
+so that
+g(ν ;ρ ;t) =G(x 1, . . . , xN ;y 1, . . . , yN ;t).(18)
+Using the symmetry (11), one shows thatGsatisfies
+G(x1, . . . , xN ;y 1, . . . , yN ;t) =G(˜x1, . . . ,˜xN ; ˜y1, . . . ,˜yN ;t),(19)
+for
+˜xn = (eνn −1)
+
+1−
+nX
+i=1
+xi
+e−νi −1
+!
+,˜x k = eνn−νk −1
+e−νk −1 xk 1≤k≤n−1,
+4
+˜yn = (e−νn −1)
+
+1−
+nX
+i=1
+yi
+eνi −1
+!
+,˜y k = eνk−νn −1
+eνk −1 yk 1≤k≤n−1.
+Since this holds for arbitraryν i, we may setν i =ν, leading to a drastic simplification. Choosing
+e−ν = 1 + PN
+k=1 yk, we finally obtain
+G(x1, . . . , xN ;y 1, . . . , yN ) =G
+
+0,
+
+1 +
+NX
+k=1
+xk
+!
+1 +
+NX
+k=1
+yk
+!
+−1; 0,0
+!
+.(20)
+The generating function therefore depends only on the single scalar
+ω=
+ NX
+k=1
+ρL,keνk + 1−
+NX
+k=1
+ρL,k
+!  NX
+k=1
+ρR,ke−νk + 1−
+NX
+k=1
+ρR,k
+!
+−1,(21)
+or equivalently,
+ω=
+ NX
+k=0
+ρL,keλk
+!  NX
+k=0
+ρR,ke−λk
+!
+−1.(22)
+As a further consistency check, let us consider the caseN= 1. Settingλ 1 =λ,λ 0 = 0, and writing
+ρ1 =ρ,ρ 0 = 1−ρ, we recover the standard SSEP expression
+ω= (e λ −1)ρ L(1−ρ R) + (e−λ −1)ρ R(1−ρ L).(23)
+Combining our result with the long-time asymptotics, we obtain
+*
+exp
+" NX
+α=0
+λαCα(t)
+#+
+∼e
+√
+t F(ω).(24)
+Given the series expansion ofF(ω) for smallω,
+F(ω) =
+∞X
+n=1
+fn
+ωn
+n! ,(25)
+one can systematically compute the cumulants of the transferred particles. In particular, the first two
+cumulants read
+lim
+t→∞
+t− 1
+2 ⟨Cα(t)⟩c =f 1 ∆ρα,(26)
+lim
+t→∞
+t− 1
+2 ⟨Cα(t)Cβ(t)⟩c =f 2 ∆ρα∆ρβ +f 1 (δα,β(ρL,α +ρ R,α)−ρ L,αρR,β −ρ L,βρR,α),(27)
+where ∆ρα =ρ L,α −ρ R,α.
+As discussed above, the functionF(ω) can be determined by restricting to the single-species case. An
+important example is the SSEP on the infinite line, with step initial condition: each site to the left of
+the origin (x≤0) is occupied with probabilityρ L, while each site to the right (x >0) is occupied with
+probabilityρ R. In this setting,F(ω) was computed in [28] using the Bethe Ansatz for the single-species
+SSEP, yielding
+F(ω) = 1√π
+X
+n≥1
+(−1)n+1
+n3/2 ωn = 1
+π
+Z +∞
+−∞
+dklog
+ 
+1 +ωe −k2 
+.(28)
+This result was later recovered within the macroscopic fluctuation theory (MFT) framework for the
+single-species SSEP in [20]. As we will show below, it can also be derived by applying MFT to the
+multispecies SSEP.
+3 MFT for multispecies SSEP
+We now turn to the study of the multispecies SSEP on a one-dimensional infinite lattice within the
+framework of macroscopic fluctuation theory (MFT). This theory applies to diffusive multicomponent
+5
+systems and predicts that the probability of observing a given macroscopic evolution of the coarse-
+grained density profileρ(x, t) ={ρ 0(x, t), . . . , ρN (x, t)}and currentJ(x, t) ={J 0(x, t), . . . , JN (x, t)}is
+given by [8–10]
+P[ρ,J]∝exp
+"
+−
+Z T
+0
+dt
+Z +∞
+−∞
+dx(J−D∂ xρ)⊤σ(ρ)−1(J−D∂ xρ)
+#
+,(29)
+subject to the continuity equation
+∂tρ(x, t) +∂xJ(x, t) = 0.(30)
+The only quantities that depend on the specific model are the diffusion matrixDand the mobility matrix
+σ(ρ).
+For the multispecies SSEP, it is convenient to adopt a redundant description involving the full set of
+densitiesρ={ρ 0, ρ1, . . . , ρN }and currentsJ={J 0, J1, . . . , JN }. These fields satisfy the constraints
+that the total density is identically equal to 1 and that the total current vanishes [27]:
+NX
+α=0
+ρα(x, t) = 1,
+NX
+α=0
+Jα(x, t) = 0.(31)
+For this model, the diffusion matrix reduces to the identity,D=I. Moreover, by the fluctuation–
+dissipation relation, the inverse mobility matrix takes the form
+σ(ρ)−1
+α,β = 1
+4
+∂2f(ρ)
+∂ρα∂ρβ
+,(32)
+where the free-energy functional is purely entropic:
+f(ρ) =
+NX
+α=0
+ρα logρ α.(33)
+Introducing the shorthand J α =J α +∂ xρα,the integrand in (29) can be rewritten as
+L[ρ,J] = 1
+4
+NX
+α,β=1
+J α
+
+∂2f
+∂ρα∂ρβ
++ ∂2f
+∂ρ0∂ρβ
+∂ρ0
+∂ρα
++ ∂2f
+∂ρα∂ρ0
+∂ρ0
+∂ρβ
++ ∂2f
+∂ρ2
+0
+∂ρ0
+∂ρα
+∂ρ0
+∂ρβ
+!
+J β. (34)
+Using the constraintρ 0 = 1− PN
+α=1 ρα, ∂ρ0
+∂ρα
+=−1,together with the identity PN
+α=0 J α = 0,this
+expression simplifies to
+L[ρ,J] = 1
+4
+NX
+α,β=0
+J α
+∂2f
+∂ρα∂ρβ
+J β =
+NX
+α=0
+[Jα(x, t) +∂xρα(x, t)]2
+4ρα(x, t) .(35)
+In summary, the probability of observing a given space–time evolution of the density and current fields
+is given by [27]
+P[ρ,J]∝exp
+"
+−
+Z T
+0
+dt
+Z +∞
+−∞
+dxL[ρ(x, t),J(x, t)]
+#
+,(36)
+subject to the continuity equation (30) and the occupation constraint (31).
+In the following, we formulate the analysis entirely within this redundant description, retaining all species
+densities and currents. Besides preserving the full permutation symmetry between species, this represen-
+tation also makes the connection with the standard single-species SSEP formulation more transparent.
+The probability of observing a given density profile must be complemented by the probability of the
+initial configuration, determined by the underlying microscopic measure. If the measure on an interval
+ofℓsites is a product Bernoulli measure with probability ρα of finding a particle of speciesαat each
+site, then
+P(ρ, ℓ|ρ) = ℓ!
+(ρ0ℓ)!(ρ1ℓ)!· · ·(ρN ℓ)!
+NY
+α=0
+ρℓρα
+α ≈exp
+"
+−ℓ
+NX
+α=0
+ρα log
+ ρα
+ρα
+#
+,(37)
+6
+where we used Stirling’s approximation.
+If the initial measure is still Bernoulli but with site-dependent probabilities ρ(x), we coarse-grain the
+system into boxes of sizeℓsuch that 1≪ℓ≪L, whereLis the macroscopic scale. The probability of
+observing a coarse-grained profileρ(x) is then
+P(ρ(x)| ρ(x)) = exp [−F0(ρ|ρ)],(38)
+with
+F0(ρ|ρ) =
+Z +∞
+−∞
+dx
+NX
+α=0
+ρα(x) log
+ ρα(x)
+ρα(x)
+
+.(39)
+Below we shall focus on step-like initial conditions: forx <0, ρ(x,0) =ρ L = (ρL,0, . . . , ρL,N ), while for
+x >0, ρ(x,0) =ρ R = (ρR,0, . . . , ρR,N ). We are interested in the integrated current
+C(T) =
+Z +∞
+0
+dx[ρ(x, T)−ρ(x,0)].(40)
+Putting everything together, we consider the path integral representation of the cumulant generating
+function of the integrated current
+D
+eλ·C(T)
+E
+∝
+Z
+DρDJδ
+ NX
+α=0
+ρα −1
+!
+δ
+ NX
+α=0
+Jα
+!
+δ(∂tρ+∂ xJ) exp (Ibulk[ρ,J] +I bdr[ρ]),(41)
+with action consisting of a bulk term
+Ibulk[ρ,J] =−
+Z T
+0
+dt
+Z +∞
+−∞
+dxL[ρ,J].(42)
+and a boundary term
+Ibdr[ρ] =λ·C−F 0[ρ(x,0)].(43)
+Exponentiating the delta constraints by introducing the auxiliary fieldsH,k ρ, andk J renders the action
+quadratic inJ, thereby allowing us to perform the Gaussian integration overJ. The trade-off is the
+introduction of spurious degrees of freedom, which manifest as a gauge invariance in the resulting path
+integral. Indeed, the continuity equation (30), together with the constraint P
+α ρα = 1, implies that
+∂x
+ NX
+α=0
+Jα
+!
+= 0,
+so that the total current is spatially uniform. Consequently, enforcing the vanishing of the total current
+via a local Lagrange multiplier introduces redundant local modes that do not correspond to physical
+fluctuations. Proceeding with the Gaussian integration overJ, we obtain
+D
+eλ·C(T)
+E
+∝
+Z
+DρDHDk ρ DkJ exp
+
+Ibdr[ρ] + I bulk[ρ,H, kρ, kJ ]
+
+,(44)
+with
+I bulk[ρ,H, kρ, kJ ]∝ −
+Z T
+0
+dt
+Z +∞
+−∞
+dx
+h
+H·∂ tρ+
+X
+α
+(∂xHα−kJ )
+ 
+∂xρα−ρα(∂xHα−kJ )
+
++kρ
+  X
+α
+ρα−1
+i
+.
+(45)
+The dominant contribution is obtained from the stationary point of I bulk, which yields the equations of
+motion
+∂tρα =∂ x
+
+∂xρα −2ρ α(∂xHα −k J )
+
+,(46a)
+∂tHα =−∂ x(∂xHα −k J )−(∂ xHα −k J )2 +k ρ,(46b)
+NX
+α=0
+ρα = 1, k J =
+NX
+α=0
+ρα∂xHα.(46c)
+7
+with boundary conditions
+Hα(x,0) =θ(x)λ α + logρ α(x,0)−log ρα(x),(47a)
+Hα(x, T) =θ(x)λα.(47b)
+As anticipated, the resulting equations of motion are invariant under the local gauge transformation
+Hα →H α + Λ, ρ α →ρ α, k J →k J +∂ xΛ, k ρ →k ρ +∂ tΛ,(48)
+where Λ is an arbitrary scalar field. The fieldsk J andk ρ therefore play the role of gauge potentials.
+The structure of the action obtained above is that of a gauged nonlinear sigma model written in a non-
+standard set of variables. To make this structure more transparent, it is convenient to introduce new
+canonical fieldsQandPdefined by
+Pα =e Hα , Q α =ρ αe−Hα .
+This change of variables trades the original density–response field pair (ρ α, Hα) for a pair (Q α, Pα) that
+plays the role of conjugate variables, and in which the gauge structure becomes explicit. In terms of
+these variables, the bulk part of the action takes the compact form
+I bulk[Q,P, kJ , kρ] =−
+Z T
+0
+dt
+Z +∞
+−∞
+dx
+
+−Q· ∇−
+t P+∇ +
+x Q· ∇−
+x P−k ρ
+
+,(49)
+where we have introduced the covariant derivatives
+∇±
+t =∂ t ±k ρ,∇ ±
+x =∂ x ±k J .
+These derivatives make the gauge structure manifest: the auxiliary fieldsk ρ andk J act as temporal and
+spatial gauge connections, respectively. The corresponding Euler–Lagrange equations read
+∇+
+t Q= (∇ +
+x )2Q,(50a)
+∇−
+t P=−(∇ −
+x )2P,(50b)
+Q·P= 1,Q· ∇ −
+x P−P· ∇+
+x Q= 0.(50c)
+The first two equations describe covariant diffusion-like evolution forQandP, while the last line encodes
+the constraints inherited from the original occupation and current conservation laws. Importantly, the
+system is invariant under the local gauge transformation
+Q→e −ΛQ,P→e ΛP, k J →k J +∂ xΛ, k ρ →k ρ +∂ tΛ,
+confirming thatk J andk ρ indeed play the role of gauge potentials. Differentiating the constraintP·Q= 1
+with respect toxyields
+0 =∂ x(P·Q) =P·∂ xQ+Q·∂ xP=P· ∇+
+x Q+Q· ∇−
+x P,(51)
+which, combined with (50c), implies the orthogonality relations
+P· ∇+
+x Q= 0,Q· ∇ −
+x P= 0.(52)
+In terms of the variablesQandP, the boundary conditions take a particularly simple form:
+Qα(x,0) = ρα(x)e −θ(x)λα ,(53a)
+Pα(x, T) =eθ(x)λα .(53b)
+In the case of step initial data,
+ρ(x) =ρ R θ(x) +ρ L θ(−x),
+these boundary conditions simplify further to
+Q(x,0) =Q R θ(x) +Q L θ(−x),(54a)
+P(x, T) =PR θ(x) +P L θ(−x),(54b)
+8
+with
+QL = (ρL,0, . . . , ρL,N ),Q R = (ρR,0e−λ0 , . . . , ρR,N e−λN ),
+PL = (1, . . . ,1),P R = (eλ0 , . . . , eλN ).
+(55)
+These boundary conditions yield asymptotic conditions valid for allt∈[0, T]:
+lim
+x→−∞
+Q(x, t) =QL,lim
+x→+∞
+Q(x, t) =QR,
+lim
+x→−∞
+P(x, t) =PL,lim
+x→+∞
+P(x, t) =PR. (56)
+3.1 Lax pair formulation and the Zakharov–Takhtajan gauge mapping
+The MFT equations (50a)–(50c) can be recast in the form of the equations of motion of the Landau–
+Lifshitz model. To make this connection explicit, we introduce the gauge-invariant matrix field
+S=QP ⊤,i.e.S αβ =Q αPβ.(57)
+By construction, the diagonal entries reproduce the physical densities,
+Sαα(x, t) =ρα(x, t).
+Moreover, using the constraint (50c), the matrixSis a rank-one projector:
+S2 =S,tr(S) = 1.(58)
+We now show thatSsatisfies a closed evolution equation. A direct computation using (50a)–(50b),
+together with the relationsP ⊤Q= 1 andP ⊤∇+
+x Q= (∇ −
+x P⊤)Q= 0, yields
+∂tS= [∂ 2
+xS,S].(59)
+Indeed,
+[∂2
+xS,S] =∂ x[∂xS,S]
+=∂ x
+h
+(∇+
+x Q)P⊤ +Q(∇ −
+x P⊤),QP ⊤
+i
+=∂ x
+ 
+(∇+
+x Q)P⊤ −Q(∇ −
+x P⊤)
+
+=
+ 
+(∇+
+x )2Q
+
+P⊤ −Q
+ 
+(∇−
+x )2P⊤
+=∂ tS,
+(60)
+where each step follows from straightforward algebra combined with the orthogonality relations (52) and
+the equations of motion forQandP. Let us now define
+σ= 2S−I.(61)
+UsingS 2 =S, one immediately finds
+σ2 = 4S2 −4S+I=I.
+In terms ofσ, the evolution equation (59) becomes the matrix Landau–Lifshitz (or classical Heisenberg
+ferromagnet) equation
+∂tσ= 1
+2 [∂2
+xσ, σ].(62)
+This identifies the multispecies MFT dynamics with a well-known integrable system. The integrability
+of (62) is made explicit by its Lax representation. The associated Lax pairU(x, t, η) andV(x, t, η),
+depending on the spectral parameterη, is given by [29–31]
+U=iησ, V= 2η 2σ−iησ∂ xσ.
+The zero-curvature condition
+∂tU−∂ xV+ [U, V] = 0
+9
+then reproduces the equation of motion (62): theη 2 terms cancel identically, while the terms linear inη
+yield the Landau–Lifshitz dynamics.
+The main difficulty with eq. (62) lies in the mixed boundary conditions (54a)–(54b), which are cum-
+bersome to implement within the Landau–Lifshitz formulation. A more convenient representation is
+obtained by reformulating the problem in AKNS form. This is achieved via the Zakharov–Takhtajan
+gauge transformation [32], which maps the state-dependent Lax operatorU=iησ(x, t) into the stan-
+dard AKNS structure: a constant diagonal part carrying the spectral parameter, supplemented by an
+off-diagonal potential encoding the dynamical fields. To implement this construction, we introduce a
+local gauge matrixG(x, t) that diagonalizesσinto a constant matrix Σ:
+G−1σG= Σ :=
+1 0
+0−I N
+
+.(63)
+The matrixGis built from a complete set of eigenvectors ofσ. Sinceσ= 2QP ⊤ −I N+1 ,its spectral
+structure is particularly simple:
+•the eigenvector associated with eigenvalue +1 isQ, usingP ⊤Q= 1;
+•theNeigenvectors associated with eigenvalue−1 are vectorsE k orthogonal toP, i.e.
+P⊤Ek = 0.
+We assemble these vectors into the (N+ 1)×(N+ 1) matrix
+G=
+ Q E 
+,
+whereEdenotes the (N+ 1)×Nblock of negative-eigenvalue eigenvectors. The inverse matrix can be
+written as
+G−1 =
+P⊤
+˜E⊤
+
+,
+where ˜Eis the dual basis defined by
+˜E⊤Q= 0, ˜E⊤E=I N .
+Under the gauge transformation Ψ7→ ˜Ψ :=G −1Ψ, the Lax pair transforms as a standard gauge connec-
+tion:
+˜U=G −1U G−G−1∂xG,
+˜V=G −1V G−G−1∂tG.
+(64)
+We first analyze the spatial operator. UsingG −1σG= Σ, one obtains
+˜U=iηΣ−A, A:=G −1∂xG,(65)
+so thatAplays the role of the AKNS potential. A block decomposition gives
+A=
+P⊤∂xQ P ⊤∂xE
+˜E⊤∂xQ ˜E⊤∂xE
+
+.(66)
+At this stage, two simplifications are available. First, the freedom in the choice of the basisEcan be
+used to set theN×Nblock ˜E⊤∂xEto zero, fixing a convenient gauge within the−1 eigenspace. Second,
+relation (52) impliesP ⊤∂xQ=k J , which can itself be eliminated by a residual gauge transformation
+Q→e −ΛQ,P→e ΛP, settingk J = 0. After these gauge choices, the matrixAbecomes purely
+off-diagonal:
+A=
+
+0q ⊤
+r0
+
+,(67)
+where the AKNS fields are defined by
+q⊤ =−E ⊤∂xP,r= ˜E⊤∂xQ.(68)
+10
+This is the standard AKNS structure, in which the dynamics is fully encoded in off-diagonal potentials.
+It remains to understand the effect of this gauge fixing on the boundary conditions. BecauseQ(x,0)
+is piecewise constant with a discontinuity at the origin, the associated gauge fieldk J (t= 0, x) con-
+tains a delta-function contribution. Eliminating this singularity requires a gauge transformation with a
+discontinuous parameter of the form
+Λ(t= 0, x) =Λθ(x).
+A similar argument at timet=T, together with the assumption∂ tΛ(x→ ±∞) = 0 (which can be
+justified a posteriori by consistency of the saddle-point equations), leads to the same functional form
+Λ(t=T, x) = Λθ(x).
+As a consequence, the boundary conditions are modified into
+Q(x,0) =Q Re−Λ θ(x) +Q L θ(−x),(69a)
+P(x, T) =PReΛ θ(x) +P L θ(−x),(69b)
+where the remaining constant parameter Λ encodes the residual global gauge freedom and will be fixed
+by the saddle-point conditions.
+SubstitutingAback into the transformed spatial Lax matrix, we recover the characteristic AKNS rep-
+resentation of the multicomponent NLS hierarchy:
+˜U=
+
+iη−q ⊤
+−r−iηI N
+
+.(70)
+The corresponding transformed temporal matrix ˜Vcan be computed following the standard AKNS
+procedure [32] (see Appendix B). One obtains
+˜V(x, t;η) =
+2η2 +q ⊤r2iηq ⊤ +∂ xq⊤
+2iηr−∂ xr−2η 2IN −rq ⊤
+
+.(71)
+Imposing the zero-curvature condition
+∂t ˜U−∂ x ˜V+ [ ˜U ,˜V] = 0
+yields the imaginary-time multicomponent nonlinear Schr¨ odinger (NLS) equations for the AKNS fields:
+∂tq=−∂ 2
+xq+ 2(q ⊤r)q,(72a)
+∂tr=∂ 2
+xr−2(q ⊤r)r.(72b)
+These equations describe a coupled focusing NLS dynamics in imaginary time, with the nonlinear inter-
+action governed entirely by the scalar densityq ⊤r. The boundary conditions inherited fromQandP,
+eqs. (54b)–(54a), together with the definitions (68), imply following boundary conditions for the AKNS
+fields
+r(x,0) = rδ(x),q(x, T) = qδ(x).(73)
+At this stage, it is important to emphasize that the individual vectors rand qare not gauge-invariant
+quantities and therefore carry no physical significance on their own. The relevant invariant information
+is instead contained in the scalar combination
+ω= q⊤r,
+which, as we will show below, coincides with the single scalar variableωalready introduced in eq. (22).
+3.2 Linearization of the dynamics
+The starting point of the inverse scattering construction is the auxiliary linear problem associated with
+the Lax pair ( ˜U ,˜V). It consists of the system
+∂xΨ(x, t;η) = ˜U(x, t;η) Ψ(x, t;η),(74a)
+∂tΨ(x, t;η) = ˜V(x, t;η) Ψ(x, t;η),(74b)
+11
+whose compatibility condition is precisely the zero-curvature equation. In this formulation, the nonlinear
+dynamics of the fieldsqandris encoded into the linear evolution of the auxiliary wavefunction Ψ.
+We assume that the fieldsq(x, t) andr(x, t) decay sufficiently rapidly as|x| → ∞. Under this assumption,
+the Lax matrices asymptotically approach constant diagonal matrices:
+˜U(x, t;η)− − − − − →
+x→±∞
+˜U∞ :=
+iη0
+0−iηI N
+
+,(75a)
+˜V(x, t;η)− − − − − →
+x→±∞
+˜V∞ :=
+2η2 0
+0−2η 2IN
+
+.(75b)
+This asymptotic structure is essential: far away from the interaction region, the system behaves as
+a free linear problem, making it possible to define scattering data in complete analogy with ordinary
+quantum-mechanical scattering theory.
+We now introduce the propagator Φ(x, y, t;η), defined as the fundamental matrix solution of the spatial
+problem:
+∂xΦ(x, y, t;η) =˜U(x, t;η) Φ(x, y, t;η),Φ(x, x, t;η) =I N+1 .(76)
+The propagator transports a solution of the auxiliary problem from the pointyto the pointx. A first
+important property is that the derivative of Φ with respect to its second argument also satisfies the same
+differential equation inx. By uniqueness of solutions, it must therefore be proportional to Φ itself, so
+that
+∂yΦ(x, y, t;η) = Φ(x, y, t;η)˜U ′(y, t;η),(77)
+for some matrix ˜U ′(y, t;η). To determine this matrix, we evaluate the above expression atx=y. Using
+the normalization condition Φ(y, y, t;η) =I, we obtain
+˜U ′(y, t;η) =− ˜U(y, t;η),
+which finally gives
+∂yΦ(x, y, t;η) =−Φ(x, y, t;η)˜U(y, t;η).(78)
+Thus the propagator evolves with opposite generators in its two spatial arguments, exactly as expected
+for a parallel transport operator.
+We now turn to the time evolution of the propagator. Using the zero-curvature condition, one verifies
+that the quantity
+∂tΦ(x, y, t;η)−˜V(x, t;η)Φ(x, y, t;η)
+also satisfies the same spatial equation as Φ. By the same uniqueness argument, it must therefore be
+proportional to Φ:
+∂tΦ(x, y, t;η)−˜V(x, t;η)Φ(x, y, t;η) = Φ(x, y, t;η)M(y, t;η),(79)
+for some matrixM(y, t;η) depending only on the second argument. To determineM, we again setx=y
+and use Φ(y, y, t;η) =I. This immediately yields
+M(y, t;η) =− ˜V(y, t;η).
+Substituting back, we arrive at the evolution equation for the propagator:
+∂tΦ(x, y, t;η) =˜V(x, t;η)Φ(x, y, t;η)−Φ(x, y, t;η)˜V(y, t;η).(80)
+Equation (80) expresses the fact that the propagator evolves covariantly under the time flow generated
+by the Lax pair. This relation plays a central role in deriving the evolution of the scattering data and,
+ultimately, in linearizing the nonlinear dynamics of the original MFT problem.
+We now define the scattering matrix by comparing the asymptotic behavior of the propagator atx→+∞
+andy→ −∞:
+S(t, η) = lim
+x→+∞
+y→−∞
+e− ˜U∞x Φ(x, y, t;η)e
+˜U∞y.(81)
+This matrix encodes how incoming modes fromx=−∞are transformed into outgoing modes atx= +∞.
+Using (80) and the fact that ˜U∞ is time-independent, one finds
+∂tS(t, η) =˜V∞ S(t, η)−S(t, η)˜V∞.(82)
+12
+For our (N+ 1)-component system, it is natural to decomposeSas
+S(t, η) =
+a(t, η)b ⊤(t, η)
+b(t, η)T(t, η)
+
+,(83)
+whereais a scalar transmission coefficient,TanN×Ntransmission matrix, andb, bare reflection
+coefficients. The time evolution then reads
+∂tS= 4η 2
+ 0b ⊤
+−b0
+
+,(84)
+which implies
+a(t, η) =a(0, η),(85a)
+T(t, η) =T(0, η),(85b)
+b(t, η) =b(0, η)e4η2t,(85c)
+b(t, η) =b(0, η)e−4η2t.(85d)
+Thus, the transmission data are conserved, while the reflection data evolve exponentially. The scattering
+matrix att= 0 andt=Tare computed in appendix C with the following results. At timet= 0 we get
+S(t= 0, η) =
+1 + ˆq⊤
+Rr− ˆq⊤
+L − ˆq⊤
+R −( ˆq⊤
+Rr)ˆq⊤
+L
+−rI N + r ˆq⊤
+L
+
+.(86)
+where we recall ris the vector coefficient appearing in eq.(73) and we have introduced the Fourier-type
+transforms
+ˆqL(η) =
+Z 0
+−∞
+e−2iηy q0(y)dy, ˆqR(η) =
+Z ∞
+0
+e−2iηy q0(y)dy,(87)
+withq 0(y) =q(y, t= 0). Similarly the scattering matrix at timet=Treads
+S(t=T, η) =
+ 1 + q⊤ˆrL −q⊤
+−ˆrL − ˆrR −( q⊤ˆrL)ˆrR IN + ˆrRq⊤
+
+.(88)
+where we recall qis the coefficient appearing in eq.(73) and we have introduced
+ˆrL(η) =
+Z 0
+−∞
+e2iηy rT (y)dy, ˆrR(η) =
+Z ∞
+0
+e2iηy rT (y)dy,(89)
+withr T (y) =r(y, t=T). Now we use the evolution equation of the scattering matrix eqs.(85a)–(85d).
+From eq.(85b) we get
+ˆqL(η) = ˆv+(η) q, ˆrR(η) = ˆv+(η) r.(90)
+Eqs.(85c)–(85d) read
+qe−4η2T = ˆqL(η) + ˆqR(η) + (r⊤ ˆqR)ˆqL(η)
+re−4η2T = ˆrL(η) + ˆrR(η) + (q⊤ˆrL)ˆrR(η)
+(91)
+Given eq. (90), we know that ˆqL(η) is proportional to qand that ˆrR(η) is proportional to r. The previous
+relations then imply that ˆqR(η) and ˆrL(η) are proportional to the same vectors, respectively. Moreover,
+using eq. (85a), one finds that the corresponding proportionality coefficients coincide. We may therefore
+write
+ˆqR(η) = ˆv−(η) q, ˆrL(η) = ˆv−(η) r.(92)
+Collecting the different contributions, we conclude that the boundary fields factorize as
+rT (x) = rv(x),q 0(x) = qv(−x),(93)
+where the scalar functionv(x) is characterized through its half-space Fourier transforms
+ˆv+(η) =
+Z ∞
+0
+dx e2iηxv(x),ˆv −(η) =
+Z 0
+−∞
+dx e2iηxv(x).(94)
+13
+The matrix relations (91) then reduce to the single scalar equation
+e−4η2T = ˆv+(η) + ˆv−(η) +ωˆv+(η)ˆv−(η),(95)
+where
+ω= q⊤r.
+Up to a minor difference in normalization, this is precisely the scalar equation obtained in [20], and which
+had previously appeared in a disguised form in [15]. Similar equations also arise in the inverse-scattering
+solution of the MFT equations for the KMP model [18].
+Equation (95) is a scalar Riemann–Hilbert problem: one seeks a factorization of a given analytic
+function into components analytic in the upper and lower half-planes. Its solution is known explicitly [20]:
+ˆv±(η) = eΦ±(η) −1
+ω ,(96)
+with
+Φ±(η) = lim
+ϵ→0+
+± 1
+2πi
+Z +∞
+−∞
+log
+
+1 +ωe −4(q+η) 2T
+
+q∓iϵ dq.(97)
+3.3 Initial and final density profile and particle transfer
+Once the Riemann–Hilbert problem has been solved, the optimal density profiles can be reconstructed
+explicitly. To do so, we construct the matrixGassociated with the Zakharov–Takhtajan gauge trans-
+formation, together with its inverseG −1. This construction provides direct access to the vectorsQand
+P, and therefore to the densityρ.
+We parametrizeGand its inverse as
+G=
+ Q E 
+, G −1 =
+P⊤
+˜E⊤
+
+.(98)
+By construction, these matrices satisfy the first-order differential equations (see Eq. (137))
+∂xG(x, t) =G(x, t)A(x, t),
+∂xG−1(x, t) =−A(x, t)G−1(x, t).
+(99)
+Hence, once appropriate boundary conditions are specified, these equations uniquely determineGand
+G−1.
+•Initial timet= 0.
+Att= 0, the vectorQ(x,0) is known (see eq. (69a)). Our task is therefore to determineP(x,0) from
+the equation forG −1. At this time, the matrixAtakes the form
+A(x,0) =
+
+0q ⊤
+0 (x)
+rδ(x) 0
+
+.(100)
+Substituting into the evolution equation forG −1 gives
+∂xP⊤
+∂x ˜E⊤
+
+=−
+
+0q ⊤
+0 (x)
+rδ(x) 0
+ P⊤
+˜E⊤
+
+.(101)
+Carrying out the matrix multiplication, we obtain the coupled system
+∂xP⊤ =−q ⊤
+0 (x) ˜E⊤,
+∂x ˜E⊤ =− r P⊤ δ(x).
+(102)
+We now integrate these equations separately on the two half-lines (−∞,0) and (0,∞), taking into account
+the discontinuity atx= 0. DenotingP 0 =P(0), we obtain
+PReΛ −P 0 =− ˜ER
+Z ∞
+0
+dxq 0(x),
+P0 −P L =− ˜EL
+Z 0
+−∞
+dxq 0(x),
+(103)
+14
+together with the jump condition
+˜EL = ˜ER +P 0 r⊤,(104)
+which follows from integrating theδ-term across the origin.
+Using the definitions of ˆv±(0), this system becomes
+PReΛ −P 0 =− ˜ERqˆv−(0),(105a)
+P0 −P L =−
+
+˜ERq+ωP 0
+
+ˆv+(0).(105b)
+This is a linear system for the two unknownsP 0 and ˜ERq, which can be solved explicitly. The solution
+reads
+˜ERq=P L −
+√
+1 +ωP ReΛ,(106a)
+P0 = 1
+ω (PL +P ReΛ)(
+√
+1 +ω−1).(106b)
+Next, we use the normalization conditionP·Q= 1. Evaluating it on both sides of the origin gives
+P0 ·Q R e−Λ =P 0 ·Q L = 1.(107)
+These relations allow Λ as
+e2Λ = PL ·Q R
+PR ·Q L
+=
+PN
+α=0 ρR,αe−λα
+PN
+α=0 ρL,αeλα
+,(108)
+as well as the variableω
+ω= (P R ·Q L)(PL ·Q R)−1 =
+ NX
+α=0
+ρL,αeλα
+!  NX
+α=0
+ρR,αe−λα
+!
+−1.(109)
+Finally, integrating the differential equation forPgives
+P(x,0) =
+
+
+
+PR eΛ + (PL − √1 +ωP R eΛ)
+Z ∞
+x
+dy v(−y), x >0,
+PL + (PR eΛ − √1 +ωP L)
+Z x
+−∞
+dy v(−y), x <0.
+(110)
+This immediately yields the initial density profile
+ρα(x,0) =
+
+
+
+ρR,α
+
+1 +
+
+e−λα e−Λ − √1 +ω
+ Z ∞
+x
+dy v(−y)
+
+, x >0,
+ρL,α
+
+1 +
+
+eλα eΛ − √1 +ω
+ Z x
+−∞
+dy v(−y)
+
+, x <0.
+(111)
+•Final timet=T.
+The derivation at final time follows the same steps. NowP(x, T) is known, and we determineQ(x, T)
+from the equation forG. The matrixAis
+A(x, T) =
+
+0 q⊤ δ(x)
+rT (x) 0
+
+.(112)
+Repeating the previous analysis, we obtain
+ERr=−Q L +
+√
+1 +ωQ R e−Λ,(113a)
+Q0 = 1
+ω (QL +Q R e−Λ)(
+√
+1 +ω−1).(113b)
+15
+Imposing the conditions 1 =P R ·Q 0 =P L ·Q 0, returns not only as expected the same expression ofω
+found above, but also the same expression for Λ, which confirms the assumption that the asymptotic in
+space value of Λ can be taken independent of time. Thus,
+Q(x, T) =
+
+
+
+QR e−Λ + (QL − √1 +ωQ R e−Λ)
+Z ∞
+x
+dy v(y), x >0,
+QL + (QR e−Λ − √1 +ωQ L)
+Z x
+−∞
+dy v(y), x <0,
+(114)
+and the final density profile
+ρα(x, T) =
+
+
+
+ρR,α +
+h
+ρL,αeλα eΛ − √1 +ω ρR,α
+i Z ∞
+x
+dy v(y), x >0,
+ρL,α +
+h
+ρR,αe−λα e−Λ − √1 +ω ρL,α
+i Z x
+−∞
+dy v(y), x <0.
+(115)
+3.3.1 T otal transferred particles
+We can now compute the total transferred particles
+Cα(T) =
+Z ∞
+0
+dx(ρ α(x, T)−ρ α(x,0)). (116)
+Using symmetry properties ofv, one finds
+Z ∞
+0
+dy yv(y) =
+Z ∞
+0
+dy yv(−y) = 1
+2i ˆv′
++(0),
+which leads to
+Cα(T) =
+ 
+ρL,αeλα e∆Λ0 −ρ R,αe−λα e−∆Λ0
+ 1
+2i ˆv′
++(0).(117)
+The prefactor can be rewritten as
+ρL,αeλα e∆Λ0 −ρ R,αe−λα e−∆Λ0 = ∂ω
+∂λα
+1√1 +ω ,
+so that
+Cα(T) = ∂ω
+∂λα
+ˆv′
++(0)
+2i√1 +ω .(118)
+Using the Riemann–Hilbert solution, one obtains
+ˆv′
++(0)
+2i√1 +ω =
+√
+T
+π
+Z +∞
+−∞
+e−q2
+1 +ωe −q2 dq,(119)
+and therefore
+Cα(T) =
+√
+T ∂µ(λ)
+∂λα
+withµ(λ) = 1
+π
+Z +∞
+−∞
+dklog
+h
+1 +ωe −k2 i
+.(120)
+This result is fully consistent with the general framework developed in Section 2: the cumulant generating
+function depends on the initial densities and counting fields only through the single scalar combination
+ω. Moreover, it naturally recovers the known expression for the single-species SSEP [20, 28], confirming
+the consistency of the multicomponent construction.
+4 Conclusion
+We have studied the macroscopic fluctuation theory of the multispecies symmetric simple exclusion
+process on the infinite line, working throughout with the redundant set of densitiesρ={ρ 0, . . . , ρN }
+in order to keep the relabelling symmetry of the model manifest. We showed that the saddle-point
+equations of MFT are of Landau–Lifshitz type and, after a Zakharov–Takhtajan gauge transformation,
+can be cast in AKNS form; this identifies the underlying integrable structure and allows the inverse
+scattering method to be used to solve them explicitly. As a consequence, we obtained the cumulant
+16
+generating function of the multispecies current, recovering its dependence on a single scaling variableω,
+together with the density profiles conditioned on a prescribed current fluctuation. These results extend
+to the multispecies setting the integrability-based approach previously developed for the single-species
+SSEP [20, 28].
+Several extensions of this work suggest themselves. A natural one is the weakly asymmetric exclusion
+process (W ASEP), for which it is plausible that the multispecies W ASEP saddle-point equations retain
+an analogous Lax structure, allowing the inverse scattering approach developed here to be adapted to
+the weakly asymmetric, multispecies setting. Establishing this would in particular clarify how species-
+dependent drifts affect the current statistics, and whether the resulting large deviation function still
+depends on the boundary data through a single scaling variable as in (2).
+A more speculative, but potentially far-reaching, direction concerns systems with boundaries, in
+the spirit of recent work on boundary-driven models [33]. There, MFT must be supplemented with
+boundary conditions coupling the system to reservoirs, and it is at present unclear whether the resulting
+saddle-point problem retains an integrable structure analogous to the one uncovered here, or whether
+the Lax pair and inverse scattering method need to be substantially reformulated to accommodate the
+boundary terms. Settling this question — in particular, identifying the correct boundary conditions on
+the scattering data and determining whether they preserve solvability by inverse scattering — would be
+an important step towards a unified, integrability-based treatment of multispecies diffusive fluctuations
+beyond the infinite-line geometry considered here.
+Acknowledgments
+We thank Kirone Mallick for suggesting the references [23, 24].
+Use of AI tools.During the preparation of this manuscript, the author used the large language
+model Claude (Claude Sonnet 4.6, Anthropic) as an assistive tool for three purposes: (i) editing and
+polishing the text, including improving clarity, grammar, and consistency of notation across sections; (ii)
+helping to identify and locate relevant literature on macroscopic fluctuation theory, multispecies exclusion
+processes, and integrable systems; and (iii) cross-checking some of the intermediate calculations. All such
+LLM-assisted checks were independently verified by the author through his own derivations, and every
+calculation and result presented in the paper rests on this independent verification rather than on the
+LLM output alone. All scientific content, derivations, and conclusions are the author’s own, and all
+AI-assisted text and suggested references were likewise carefully checked by the author before inclusion.
+The author take full responsibility for the content of the manuscript.
+A A simple example
+We present a very simple pedagogical example which illustrates the general structure of the cumulant
+generating function of the integrated currents. Consider a graph consisting of only two vertices, denoted
+byLandR. Initially each vertexi∈ {L, R}is occupied by a particle of speciesαwith probabilityρ i,α.
+We assume that the initial measure is factorized, so that the joint probability of the configuration (α, β)
+(speciesαat siteaand speciesβat siteb) is
+P0(α, β) =ρL,αρR,β.(121)
+Particles of different species exchange their positions with rate 1. Therefore the only possible transition
+is
+(α, β)← →(β, α).
+Given that the system starts in configuration (α, β), it is straightforward to compute the probability of
+being in configuration (α, β) or (β, α) at timet. Ifα̸=βwe obtain the two–state Markov evolution
+P[(α, β), t|(α, β),0] =1 +e −2t
+2 ,(122)
+P[(β, α), t|(α, β),0] =1−e −2t
+2 .(123)
+If the two particles are identical (α=β), no exchange is observable and the configuration remains
+unchanged:
+P[(α, α), t|(α, α),0] = 1.(124)
+17
+Multiplying by the probability of the initial configuration gives the joint probabilities
+P[(α, β), t; (α, β),0] =1 +e −2t
+2 ρL,αρR,β,(125)
+P[(β, α), t; (α, β),0] =1−e −2t
+2 ρL,αρR,β,(126)
+forα̸=β, while forα=βwe have
+P[(α, α), t; (α, α),0] =ρL,αρR,α.(127)
+The only evolutions producing a non–zero charge transfer on siteaare those in which the two particles
+exchange their positions:
+(α, β)← →(β, α), α̸=β.
+In such an event the charge transfers to the vertexRare
+Cα = +1, C β =−1,
+since a particle of speciesαenters siteRwhile a particle of speciesβleaves it. The moment generating
+function therefore reads
+f(λ ;ρ ;t) =
+X
+α̸=β
+1 +e −2t
+2 ρL,αρR,β +
+X
+α̸=β
+1−e −2t
+2 ρL,αeλα ρR,βe−λβ +
+X
+α
+ρL,αρR,α.(128)
+Using the normalization conditions
+NX
+α=0
+ρL,α =
+NX
+α=0
+ρR,α = 1,
+a straightforward algebraic simplification gives
+f(λ ;ρ ;t) = 1 +
+" NX
+α=0
+ρL,αeλα
+!  NX
+α=0
+ρR,αe−λα
+!
+−1
+#  1−e −2t
+2
+
+,(129)
+The generating function depends on the fugacities and the densities only through the combination
+ω=
+ X
+α
+ρL,αeλα
+!  X
+α
+ρR,αe−λα
+!
+−1.
+in agreement with the general structure obtained in Section 2.
+B Zakharov–Takhtajan gauge transformation
+We start from the Lax pair associated with the matrix Landau–Lifshitz equation,
+U=iη σ, V= 2η 2σ−iη σ ∂xσ,(130)
+which satisfies the zero-curvature condition
+∂tU−∂ xV+ [U, V] = 0.(131)
+Hereηis the spectral parameter and the fieldσis given by
+σ= 2QP ⊤ −I N+1 .(132)
+In order to bring this Lax pair into the standard AKNS form, we perform a gauge transformation based
+on the eigenstructure ofσ. We introduce the matrix
+G=
+ Q E 
+, G −1 =
+P⊤
+˜E⊤
+
+,(133)
+18
+where the vectors satisfy the orthogonality and normalization conditions
+P⊤Q= 1,P ⊤E= 0, ˜E⊤Q= 0, ˜E⊤E=I N .(134)
+Under the gauge transformation Ψ→ ˜Ψ :=G −1Ψ, the Lax pair transforms as
+˜U=G −1U G−G−1∂xG, ˜V=G −1V G−G−1∂tG.(135)
+Let us first analyze the spatial part. Using the fact thatG −1σG= Σ, where
+Σ =
+1 0
+0−I N
+
+,(136)
+we obtain
+˜U=iηΣ−A, A:=G −1∂xG.(137)
+The matrixAcan be computed explicitly:
+A=
+P⊤
+˜E⊤
+  ∂xQ∂ xE
+=
+P⊤∂xQ P ⊤∂xE
+˜E⊤∂xQ ˜E⊤∂xE
+
+.(138)
+At this stage we exploit the gauge freedom. Choosing the gauge
+P⊤∂xQ= 0, ˜E⊤∂xE= 0,(139)
+the matrixAbecomes purely off-diagonal. Introducing the fields
+q⊤ =P ⊤∂xE,r= ˜E⊤∂xQ,(140)
+we obtain
+A=
+
+0q ⊤
+r0
+
+.(141)
+We now turn to the temporal part ˜V. Since the original matrixVis quadratic inη, it is natural to
+expand
+˜V= ˜V0 +η ˜V1 +η 2 ˜V2.(142)
+The highest-order term is immediately obtained:
+˜V2 =G −1(2σ)G= 2Σ.(143)
+The linear term involves the derivative ofσ. Usingσ= 2QP ⊤ −I, one finds after straightforward algebra
+˜V1 = 2iA.(144)
+Altogether, the transformed Lax pair takes the form
+˜U=iηΣ−A,
+˜V= 2η 2Σ + 2iηA+ ˜V0.
+(145)
+To determine ˜V0, we impose the zero-curvature condition
+∂t ˜U−∂ x ˜V+ [ ˜U ,˜V] = 0,(146)
+and expand it order by order inη. This yields
+η2 : [−A,2Σ] + [iΣ,2iA] = 0,
+η1 :−2i ∂ xA+ [iΣ, ˜V0] = 0,
+η0 :−∂ tA−∂ x ˜V0 −[A, ˜V0] = 0.
+(147)
+19
+Theη 2 equation is identically satisfied. To solve the remaining equations, we parametrize
+˜V0 =
+
+b ˜m⊤
+m B
+
+.(148)
+From theη 1 order, one obtains
+m=−∂ xr, ˜m=∂ xq.(149)
+From the diagonal part of theη 0 equation, we find
+∂xb=∂ x(q⊤r), ∂ xB=−∂ x(rq⊤),(150)
+which, using appropriate boundary conditions at infinity, yields
+b=q ⊤r,B=−rq ⊤.(151)
+Finally, the off-diagonal part of theη 0 equation gives the evolution equations for the fields:
+∂tq=−∂ 2
+xq+ 2(q ⊤r)q,(152)
+∂tr=∂ 2
+xr−2(q ⊤r)r.(153)
+These are precisely the (imaginary-time) multicomponent nonlinear Schr¨ odinger (NLS) equations ob-
+tained from the AKNS hierarchy.
+C Scattering matrices
+To compute the scattering matrixS, we introduce the Jost solutions Φ L and Φ R, defined by their
+asymptotics:
+lim
+x→−∞
+e− ˜U∞xΦL(x) =I,lim
+x→+∞
+e− ˜U∞xΦR(x) =I.(154)
+They represent solutions normalized at the left and right infinities, respectively. The propagator factorizes
+as
+Φ(x, y) = ΦR(x)Φ−1
+R (z)ΦL(z)Φ−1
+L (y),(155)
+which implies the standard relation
+S= Φ −1
+R (z)ΦL(z),(156)
+independent of the intermediate pointz.
+Let us now compute explicitly the scattering data at the initial and final times. We begin with the case
+t= 0, where the structure of the potential is particularly simple.
+Att= 0, the spatial Lax matrix takes the form
+˜U(x,0;η) =
+
+iη−q ⊤(x, t= 0)
+−rδ(x)−iηI N
+
+.(157)
+Away from the origin, the delta contribution vanishes, so the system is effectively triangular. This allows
+us to construct the Jost solutions explicitly on each half-line.
+On the left half-line (x <0), the solution Φ L(x) is defined by its asymptotic normalization atx→ −∞.
+Solving the linear problem in this region yields
+ΦL(x) =e iΣx
+
+1−
+Z x
+−∞
+e−2iηy q⊤(y, t= 0)dy
+0I N
+
+ .(158)
+Similarly, on the right half-line (x >0), the Jost solution Φ R(x), normalized atx→+∞, is given by
+ΦR(x) =e iΣx
+
+1
+Z ∞
+x
+e−2iηy q⊤(y, t= 0)dy
+0I N
+
+ .(159)
+20
+The scattering matrix is obtained by matching these two solutions at the origin. In principle, one would
+write
+S(t= 0, η) = Φ−1
+R (0+)ΦL(0+).(160)
+However, because of the delta function in ˜U, the solution Φ L is discontinuous atx= 0. The discontinuity
+is encoded in a jump condition
+ΦL(0+) =JΦ L(0−),(161)
+where the jump matrix is
+J=
+
+1 0
+−rI N
+
+.(162)
+Therefore the scattering matrix becomes
+S(t= 0, η) = Φ−1
+R (0+)JΦ L(0−).(163)
+To make this expression explicit, it is convenient to introduce the Fourier-type transforms
+ˆqL(η) =
+Z 0
+−∞
+e−2iηy q(y, t= 0)dy, ˆqR(η) =
+Z ∞
+0
+e−2iηy q(y, t= 0)dy,(164)
+and
+ˆq(η) = ˆqL(η) + ˆqR(η).(165)
+Evaluating the Jost solutions at the origin gives
+ΦL(0−) =
+
+1− ˆq⊤
+L (η)
+0I N
+
+,Φ R(0+) =
+
+1 ˆq⊤
+R(η)
+0I N
+
+,(166)
+and hence
+Φ−1
+R (0+) =
+
+1− ˆq⊤
+R(η)
+0I N
+
+.(167)
+Putting everything together, one finds
+S(t= 0, η) =
+1 + ˆq⊤
+Rr− ˆq⊤
+L − ˆq⊤
+R −( ˆq⊤
+Rr)ˆq⊤
+L
+−rI N + r ˆq⊤
+L
+
+.(168)
+We now turn to the caset=T. The roles ofqandrare exchanged, and the spatial Lax matrix becomes
+˜U(x, T;η) =
+
+iη− q⊤δ(x)
+−r(x, t=T)−iηI N
+
+.(169)
+Proceeding exactly as before, we construct the Jost solutions. Forx <0,
+ΦL(x) =e iΣx
+
+
+1 0
+−
+Z x
+−∞
+e2iηy r(y, t=T)dyI N
+
+ ,(170)
+while forx >0,
+ΦR(x) =e iΣx
+
+
+1 0Z ∞
+x
+e2iηy r(y, t=T)dyI N
+
+ .(171)
+The discontinuity at the origin is now encoded in the jump matrix
+J=
+
+1− q⊤
+0I N
+
+.(172)
+Introducing
+ˆrL(η) =
+Z 0
+−∞
+e2iηy r(y, t=T)dy, ˆrR(η) =
+Z ∞
+0
+e2iηy r(y, t=T)dy,(173)
+and ˆr= ˆrL + ˆrR, one obtains after the same matching procedure
+S(t=T, η) =
+ 1 + q⊤ˆrL −q⊤
+−ˆrL − ˆrR −( q⊤ˆrL)ˆrR IN + ˆrRq⊤
+
+.(174)
+21
+D Alternative determination ofω
+We provide here an alternative computation of the parameterω. Forη= 0 the potential matrix ˜Uis
+pure gauge ˜U(x, t;η= 0) =−A(x, t) =−G −1∂xG, so the proapagator is given by
+Φ(x, y, t) =G−1(x, t)G(y, t).(175)
+Moreover since limx→±∞ ˜U(x, t;η= 0) = 0 we have a scattering matrix given by
+S(η= 0) =G −1
+R GL (176)
+whereG R = limx→+∞ G(x, t), GL = limx→−∞ G(x, t). Now notice that we have
+σR = lim
+x→+∞
+σ(x) =G RΣG−1
+R , σ L = lim
+x→−∞
+σ(x) =G LΣG−1
+L (177)
+which are completely determined by the boundary conditions
+σR = 2QRP⊤
+R −I N+1 , σ L = 2QLP⊤
+L −I N+1 .(178)
+So we have a trick to relateωto the boundary conditions
+tr[σRσL] = tr[GRΣG−1
+R GLΣG−1
+L ] = tr[ΣS(0)ΣS −1(0)] (179)
+Now
+tr[σRσL] = 4(P⊤
+RQL)(P⊤
+L QR)−3 +N
+tr[ΣS(0)ΣS −1(0)] = 4ω+N+ 1
+(180)
+from which we conclude
+ω= (P ⊤
+RQL)(P⊤
+L QR)−1 =
+ NX
+α=0
+ρL,αeλα
+!  NX
+α=0
+ρR,αe−λα
+!
+−1.(181)
+References
+[1] S. Katz, J. L. Lebowitz, and H. Spohn. Nonequilibrium steady states of stochastic lattice gas models
+of fast ionic conductors.Journal of statistical physics, 34(3):497–537, 1984.
+[2] H. Spohn.Large scale dynamics of interacting particles. Springer Science & Business Media, 2012.
+[3] G. M. Sch¨ utz. Exactly solvable models for many-body systems far from equilibrium. InPhase
+transitions and critical phenomena, volume 19, pages 1–251. Elsevier, 2001.
+[4] B. Derrida. Non-equilibrium steady states: fluctuations and large deviations of the density and of
+the current.Journal of Statistical Mechanics: Theory and Experiment, 2007(07):P07023–P07023,
+2007.
+[5] C. Kipnis and C. Landim.Scaling limits of interacting particle systems. Springer Science & Business
+Media, 2013.
+[6] Z. Chen, J. de Gier, I. Hiki, and T. Sasamoto. Exact confirmation of 1d nonlinear fluctuating
+hydrodynamics for a two-species exclusion process.Physical review letters, 120(24):240601, 2018.
+[7] Z. Chen, J. de Gier, I. Hiki, T. Sasamoto, and M. Usui. Limiting current distribution for a two
+species asymmetric exclusion process.Communications in Mathematical Physics, 395(1):59–142,
+2022.
+[8] L. Bertini, A. De Sole, D. Gabrielli, G. Jona-Lasinio, and C. Landim. Fluctuations in stationary
+nonequilibrium states of irreversible processes.Physical Review Letters, 87(4):040601, 2001.
+[9] L. Bertini, A. De Sole, D. Gabrielli, G. Jona-Lasinio, and C. Landim. Macroscopic fluctuation
+theory for stationary non-equilibrium states.Journal of Statistical Physics, 107(3):635–675, 2002.
+22
+[10] L. Bertini, A. De Sole, D. Gabrielli, G. Jona-Lasinio, and C. Landim. Macroscopic fluctuation
+theory.Reviews of Modern Physics, 87(2):593–636, 2015.
+[11] P. L. Krapivsky and B. Meerson. Fluctuations of current in nonstationary diffusive lattice gases.
+Physical Review E—Statistical, Nonlinear, and Soft Matter Physics, 86(3):031106, 2012.
+[12] P. L. Krapivsky, K. Mallick, and T. Sadhu. Large deviations in single file diffusion.arXiv preprint
+arXiv:1405.1014, 2014.
+[13] A. Krajenbrink and P. Le Doussal. Integrability and exact large deviations of the weakly asymmetric
+exclusion process.Physical Review E, 113(1):014114, 2026.
+[14] A. Poncet, A. Grabsch, P. Illien, and O. B´ enichou. Generalised density profiles in single-file systems.
+arXiv preprint arXiv:2103.13083, 2021.
+[15] A. Grabsch, A. Poncet, P. Rizkallah, P. Illien, and O. B´ enichou. Exact closure and solution for
+spatial correlations in single-file diffusion.Science Advances, 8(12):eabm5043, 2022.
+[16] A. Krajenbrink and P. Le Doussal. Inverse scattering of the zakharov-shabat system solves the weak
+noise theory of the kardar-parisi-zhang equation.Physical Review Letters, 127(6):064101, 2021.
+[17] A. Krajenbrink and P. Le Doussal. Inverse scattering solution of the weak noise theory of the kardar-
+parisi-zhang equation with flat and brownian initial conditions.Physical Review E, 105(5):054142,
+2022.
+[18] E. Bettelheim, N. R Smith, and B. Meerson. Inverse scattering method solves the problem of full
+statistics of nonstationary heat transfer in the kipnis-marchioro-presutti model.Physical Review
+Letters, 128(13):130602, 2022.
+[19] E. Bettelheim, N. R Smith, and B. Meerson. Full statistics of nonstationary heat transfer in
+the kipnis–marchioro–presutti model.Journal of Statistical Mechanics: Theory and Experiment,
+2022(9):093103, 2022.
+[20] K. Mallick, H. Moriya, and T. Sasamoto. Exact solution of the macroscopic fluctuation theory for
+the symmetric exclusion process.Physical Review Letters, 129(4):040601, 2022.
+[21] K. Mallick, H. Moriya, and T. Sasamoto. Exact solutions to macroscopic fluctuation theory
+through classical integrable systems.Journal of Statistical Mechanics: Theory and Experiment,
+2024(7):074001, 2024.
+[22] E. Bettelheim and B. Meerson. Complete integrability of the problem of full statistics of nonsta-
+tionary mass transfer in the simple inclusion process.Physical Review E, 110(1):014101, 2024.
+[23] T. Bodineau and B. Derrida. Phase fluctuations in the abc model.Journal of Statistical Physics,
+145(3):745–762, 2011.
+[24] T. Bodineau, B. Derrida, V. Lecomte, and F. Van Wijland. Long range correlations and phase
+transitions in non-equilibrium diffusive systems.Journal of Statistical Physics, 133(6):1013–1031,
+2008.
+[25] T. Agranov, S. Ro, Y. Kafri, and V. Lecomte. Exact fluctuating hydrodynamics of active
+lattice gases—typical fluctuations.Journal of Statistical Mechanics: Theory and Experiment,
+2021(8):083208, 2021.
+[26] T. Agranov, S. Ro, Y. Kafri, and V. Lecomte. Macroscopic fluctuation theory and current fluctua-
+tions in active lattice gases.SciPost Physics, 14(3):045, 2023.
+[27] M. Vanicat. Exact solution to integrable open multi-species ssep and macroscopic fluctuation theory.
+Journal of Statistical Physics, 166(5):1129–1150, 2017.
+[28] B. Derrida and A. Gerschenfeld. Current fluctuations of the one dimensional symmetric simple
+exclusion process with step initial condition.Journal of Statistical Physics, 136(1):1–15, 2009.
+[29] L. A. Takhtajan. Integration of the continuous heisenberg spin chain through the inverse scattering
+method.Physics Letters A, 64(2):235–237, 1977.
+23
+[30] A. P. Fordy and P. P. Kulish. Nonlinear schr¨ odinger equations and simple lie algebras.Communi-
+cations in Mathematical Physics, 89(3):427–443, 1983.
+[31] L. D. Faddeev and L. A. Takhtajan.Hamiltonian methods in the theory of solitons, volume 23.
+Springer, 1987.
+[32] V. E. Zakharov and L. A Takhtadzhyan. Equivalence of the nonlinear schr¨ odinger equation and the
+equation of a heisenberg ferromagnet.Theoretical and Mathematical Physics, 38(1):17–23, 1979.
+[33] D. Suzuki and T. Sasamoto. Non-stationary current fluctuations in 1d boundary-driven diffusive
+systems via macroscopic fluctuation theory.arXiv preprint arXiv:2605.27275, 2026.
+24

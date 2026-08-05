@@ -1,0 +1,21 @@
+{
+  "arxiv_id": "2607.20416",
+  "title": "Pinned nonempty interior and volumes of simplices",
+  "depth": {
+    "novelty": 0.65,
+    "rigor": 0.85,
+    "influence": 0.55,
+    "reproducibility": 0.4,
+    "verdict": "major_revision",
+    "calibrated_score": 0.5575
+  },
+  "local": {
+    "novelty": 0.85,
+    "rigor": 0.92,
+    "influence": 0.65,
+    "reproducibility": 0.75,
+    "verdict": "accept",
+    "reasoning": "The paper presents a significant theoretical advance in harmonic analysis by extending pinned nonempty interior results to general scalar configuration maps and simplex volumes with rigorous proofs."
+  },
+  "local_raw": "{\"novelty\": 0.85, \"rigor\": 0.92, \"influence\": 0.65, \"reproducibility\": 0.75, \"verdict\": \"accept\", \"reasoning\": \"The paper presents a significant theoretical advance in harmonic analysis by extending pinned nonempty interior results to general scalar configuration maps and simplex volumes with rigorous proofs.\"}"
+}

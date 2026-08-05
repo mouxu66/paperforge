@@ -1,0 +1,182 @@
+[
+ {
+  "idx": 391,
+  "pid": "report_82e663c7b7ac_reflection",
+  "score": 0.25,
+  "verdict": "reject",
+  "qf": 0.5,
+  "title": "reflection",
+  "band": "A[0,0.3)"
+ },
+ {
+  "idx": 393,
+  "pid": "report_8f871462e026_report_8f871462e026",
+  "score": 0.25,
+  "verdict": "reject",
+  "qf": 0.5,
+  "title": "只有中文内容，没有论文题目。",
+  "band": "A[0,0.3)"
+ },
+ {
+  "idx": 381,
+  "pid": "report_22ff370f250c_report_c",
+  "score": 0.19,
+  "verdict": "reject",
+  "qf": 0.5,
+  "title": "report_c",
+  "band": "A[0,0.3)"
+ },
+ {
+  "idx": 390,
+  "pid": "report_7b48260fbf7c_Test_Reflection_Qwen",
+  "score": 0.27,
+  "verdict": "reject",
+  "qf": 0.5,
+  "title": "Test Reflection Qwen",
+  "band": "A[0,0.3)"
+ },
+ {
+  "idx": 272,
+  "pid": "2606.27156",
+  "score": 0.405,
+  "verdict": "reject",
+  "qf": 0.95,
+  "title": "Rapidity-even directed flow splitting of protons and antiprotons as a probe of baryon stopping in relativistic heavy-ion",
+  "band": "B[0.3,0.5)"
+ },
+ {
+  "idx": 110,
+  "pid": "2606.24099",
+  "score": 0.385,
+  "verdict": "reject",
+  "qf": 0.5,
+  "title": "Exploring Academic Influence of Algorithms by Co-occurrence Network Based on Full-text of Academic Papers",
+  "band": "B[0.3,0.5)"
+ },
+ {
+  "idx": 276,
+  "pid": "2606.27186",
+  "score": 0.388,
+  "verdict": "reject",
+  "qf": 0.5,
+  "title": "An integrable approach to macroscopic fluctuation theory for the multispecies SSEP",
+  "band": "B[0.3,0.5)"
+ },
+ {
+  "idx": 119,
+  "pid": "2606.24359",
+  "score": 0.362,
+  "verdict": "reject",
+  "qf": 0.5,
+  "title": "Automatic Part-of-Speech Tagging of Arabic-English Dictionary Senses through WordNet",
+  "band": "B[0.3,0.5)"
+ },
+ {
+  "idx": 246,
+  "pid": "2606.27060",
+  "score": 0.69,
+  "verdict": "reject",
+  "qf": 0.812,
+  "title": "The Line Emission Terahertz Observatory (LETO): Exploring the lifecycle of the ISM and the origins of water",
+  "band": "C[0.5,0.7)"
+ },
+ {
+  "idx": 30,
+  "pid": "2606.18205",
+  "score": 0.63,
+  "verdict": "major_revision",
+  "qf": 0.95,
+  "title": "Analyzing and Encoding the Al-Mawrid Arabic-English Dictionary with the ISO Language Markup Framework and TEI Lex-0",
+  "band": "C[0.5,0.7)"
+ },
+ {
+  "idx": 185,
+  "pid": "2606.26811",
+  "score": 0.682,
+  "verdict": "major_revision",
+  "qf": 0.95,
+  "title": "Emergence of Gamma-Type Upward-Phase Statistics in the Collatz Map: An Effective Poisson Process Mechanism",
+  "band": "C[0.5,0.7)"
+ },
+ {
+  "idx": 284,
+  "pid": "2606.27216",
+  "score": 0.585,
+  "verdict": "major_revision",
+  "qf": 0.923,
+  "title": "Hierarchical Muon: Tiled Newton-Schulz Updates for Efficient Muon Optimization",
+  "band": "C[0.5,0.7)"
+ },
+ {
+  "idx": 148,
+  "pid": "2606.26157",
+  "score": 0.715,
+  "verdict": "minor_revision",
+  "qf": 0.73,
+  "title": "Reducing Redundancy in Whole-Slide Image Patching for Scalable Indexing and Retrieval",
+  "band": "D[0.7,0.85)"
+ },
+ {
+  "idx": 82,
+  "pid": "2606.22429",
+  "score": 0.75,
+  "verdict": "minor_revision",
+  "qf": 0.95,
+  "title": "Enhancing LLMs for Graph Tasks via Graph-aware LoRA Generation",
+  "band": "D[0.7,0.85)"
+ },
+ {
+  "idx": 318,
+  "pid": "2606.27294",
+  "score": 0.725,
+  "verdict": "reject",
+  "qf": 0.95,
+  "title": "Generative Models on Analog Hardware with Dynamics",
+  "band": "D[0.7,0.85)"
+ },
+ {
+  "idx": 304,
+  "pid": "2606.27263",
+  "score": 0.782,
+  "verdict": "minor_revision",
+  "qf": 0.932,
+  "title": "Field theories for Laplacian Growth",
+  "band": "D[0.7,0.85)"
+ },
+ {
+  "idx": 150,
+  "pid": "2606.26341",
+  "score": 0.892,
+  "verdict": "accept",
+  "qf": 0.95,
+  "title": "Scaling Nonlinear Optimization: Many Problems One GPU",
+  "band": "E[0.85,1]"
+ },
+ {
+  "idx": 234,
+  "pid": "2606.27023",
+  "score": 0.863,
+  "verdict": "accept",
+  "qf": 0.925,
+  "title": "Just how sure are you? Improving Verbalized Uncertainty Calibration in Medical VQA",
+  "band": "E[0.85,1]"
+ },
+ {
+  "idx": 21,
+  "pid": "2402.09353",
+  "score": 0.882,
+  "verdict": "major_revision",
+  "qf": 0.95,
+  "title": "MADoRA: A Fine-tuning Method for Multi-Aspect Data",
+  "band": "E[0.85,1]"
+ },
+ {
+  "idx": 67,
+  "pid": "2606.21847",
+  "score": 0.85,
+  "verdict": "accept",
+  "qf": 0.95,
+  "title": "UniRank: Unified Rank Allocation for Low-Rank LLM Compression",
+  "band": "E[0.85,1]"
+ }
+]
