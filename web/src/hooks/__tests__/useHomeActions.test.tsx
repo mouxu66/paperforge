@@ -25,7 +25,12 @@ vi.mock("react-router-dom", async () => {
   return { ...actual, useNavigate: () => mockNavigate };
 });
 
-vi.mock("antd", () => ({ message: messageSpy }));
+vi.mock("antd", () => ({
+  message: messageSpy,
+  App: {
+    useApp: () => ({ message: messageSpy, notification: {}, modal: {} }),
+  },
+}));
 
 vi.mock("@/api/papers", () => ({ batchDeletePapers: vi.fn() }));
 vi.mock("@/api/depth", () => ({

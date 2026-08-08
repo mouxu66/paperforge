@@ -1,7 +1,7 @@
 import { Pencil, FileText, Tag, Zap } from "lucide-react";
 import { useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { message } from "antd";
+import { App } from "antd";
 
 import {
   enrichPaperMetadata,
@@ -33,6 +33,7 @@ export function useMetadataActions({
   onAnnotationsExtracted,
 }: UseMetadataActionsOptions) {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const [loading, setLoading] = useState<Record<string, boolean>>({});
 
   const withLoading = useCallback(async (key: string, fn: () => Promise<void>) => {
@@ -55,7 +56,7 @@ export function useMetadataActions({
       message.success(t("paper.enrichSuccess", "元数据补全成功"));
       onUpdate?.(updated);
     });
-  }, [paper, onEnrichOpen, onUpdate, t, withLoading]);
+  }, [paper, onEnrichOpen, onUpdate, t, withLoading, message]);
 
   const handleExtractDoi = useCallback(() => {
     if (!paper) return;
@@ -64,7 +65,7 @@ export function useMetadataActions({
       message.success(t("paper.extractDoiSuccess", "DOI 提取成功"));
       onUpdate?.(updated);
     });
-  }, [paper, onUpdate, t, withLoading]);
+  }, [paper, onUpdate, t, withLoading, message]);
 
   const handleRenamePdf = useCallback(() => {
     if (!paper) return;
@@ -73,7 +74,7 @@ export function useMetadataActions({
       message.success(t("paper.renamePdfSuccess", "PDF 重命名成功"));
       onUpdate?.(updated);
     });
-  }, [paper, onUpdate, t, withLoading]);
+  }, [paper, onUpdate, t, withLoading, message]);
 
   const handleExtractAnnotations = useCallback(() => {
     if (!paper) return;
@@ -82,7 +83,7 @@ export function useMetadataActions({
       message.success(t("paper.extractAnnotationsSuccess", "提取到 {{count}} 条批注", { count }));
       onAnnotationsExtracted?.();
     });
-  }, [paper, t, withLoading, onAnnotationsExtracted]);
+  }, [paper, t, withLoading, onAnnotationsExtracted, message]);
 
   const items: MetadataActionItem[] = paper
     ? [

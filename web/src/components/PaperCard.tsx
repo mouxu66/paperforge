@@ -97,7 +97,7 @@ export default function PaperCard({ paper, selected, onToggleSelect, onEnrich, d
           <Tag
             className="pf-report-tag"
             style={{ marginInlineEnd: 0, fontSize: 11, lineHeight: "18px", borderRadius: 10 }}
-            bordered={false}            >
+            variant="filled"            >
               {t("paper.report", "感悟报告")}
             </Tag>
         ) : (
@@ -113,7 +113,7 @@ export default function PaperCard({ paper, selected, onToggleSelect, onEnrich, d
               <Tag
                 color={sl.color}
                 style={{ marginInlineEnd: 0, fontSize: 11, lineHeight: "18px", borderRadius: 10 }}
-                bordered={false}
+                variant="filled"
               >
                 {sl.icon}
                 <span style={{ marginLeft: 4 }}>{sl.text}</span>
@@ -157,7 +157,7 @@ export default function PaperCard({ paper, selected, onToggleSelect, onEnrich, d
               <Tag
                 color="purple"
                 style={{ fontSize: 11, margin: 0, maxWidth: 200 }}
-                bordered={false}
+                variant="filled"
               >
                 <Trophy style={{ marginRight: 4 }} />
                 {paper.journal.length > 25 ? paper.journal.slice(0, 25) + "…" : paper.journal}
@@ -189,7 +189,7 @@ export default function PaperCard({ paper, selected, onToggleSelect, onEnrich, d
           {paper.fieldsOfStudy?.slice(0, 2).map((f) => (
             <Tag
               key={`fos-${f}`}
-              bordered={false}
+              variant="filled"
               color="blue"
               style={{ fontSize: 12, lineHeight: 1.6 }}
             >

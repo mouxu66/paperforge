@@ -22,7 +22,7 @@ export default function StatCards({ stats, loading, isReport }: Props) {
             title={<span style={{ color: "var(--pf-text-muted)" }}>{t("stats.reportCount")}</span>}
             value={stats?.reportCount ?? 0}
             prefix={<FileText style={{ color: "var(--pf-primary)" }} />}
-            valueStyle={{ color: "var(--pf-text-primary)", fontWeight: 600 }}
+            styles={{ content: { color: "var(--pf-text-primary)", fontWeight: 600 } }}
           />
         </Card>
         <Card loading={loading} className="pf-card-hover pf-glass-card pf-stat-card" variant="borderless">
@@ -33,7 +33,7 @@ export default function StatCards({ stats, loading, isReport }: Props) {
             value={stats?.reportAvgScore ?? 0}
             precision={2}
             prefix={<Radar style={{ color: "var(--pf-primary)" }} />}
-            valueStyle={{ color: "var(--pf-text-primary)", fontWeight: 600 }}
+            styles={{ content: { color: "var(--pf-text-primary)", fontWeight: 600 } }}
           />
         </Card>
         <Card loading={loading} className="pf-card-hover pf-glass-card pf-stat-card" variant="borderless">
@@ -45,7 +45,7 @@ export default function StatCards({ stats, loading, isReport }: Props) {
             precision={1}
             suffix="%"
             prefix={<BadgeCheck style={{ color: "var(--pf-primary)" }} />}
-            valueStyle={{ color: "var(--pf-text-primary)", fontWeight: 600 }}
+            styles={{ content: { color: "var(--pf-text-primary)", fontWeight: 600 } }}
           />
         </Card>
       </div>
@@ -59,7 +59,7 @@ export default function StatCards({ stats, loading, isReport }: Props) {
           title={<span style={{ color: "var(--pf-text-muted)" }}>{t("stats.totalPapers")}</span>}
           value={stats?.totalPapers ?? 0}
           prefix={<FileText style={{ color: "var(--pf-primary)" }} />}
-          valueStyle={{ color: "var(--pf-text-primary)", fontWeight: 600 }}
+          styles={{ content: { color: "var(--pf-text-primary)", fontWeight: 600 } }}
         />
       </Card>
       <Card loading={loading} className="pf-card-hover pf-glass-card pf-stat-card" variant="borderless">
@@ -67,7 +67,7 @@ export default function StatCards({ stats, loading, isReport }: Props) {
           title={<span style={{ color: "var(--pf-text-muted)" }}>{t("stats.textChunks")}</span>}
           value={stats?.totalChunks ?? 0}
           prefix={<Database style={{ color: "var(--pf-primary)" }} />}
-          valueStyle={{ color: "var(--pf-text-primary)", fontWeight: 600 }}
+          styles={{ content: { color: "var(--pf-text-primary)", fontWeight: 600 } }}
         />
       </Card>
       <Card loading={loading} className="pf-card-hover pf-glass-card pf-stat-card" variant="borderless">
@@ -75,7 +75,7 @@ export default function StatCards({ stats, loading, isReport }: Props) {
           title={<span style={{ color: "var(--pf-text-muted)" }}>{t("stats.indexSize")}</span>}
           value={stats ? formatSize(stats.totalSize) : "0 B"}
           prefix={<HardDrive style={{ color: "var(--pf-primary)" }} />}
-          valueStyle={{ color: "var(--pf-text-primary)", fontWeight: 600 }}
+          styles={{ content: { color: "var(--pf-text-primary)", fontWeight: 600 } }}
         />
       </Card>
     </div>

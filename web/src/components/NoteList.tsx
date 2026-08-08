@@ -1,6 +1,6 @@
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { Button, Card, Empty, Popconfirm, Space, Typography, message } from "antd";
+import { Button, Card, Empty, Popconfirm, Space, Typography, App } from "antd";
 
 import { useTranslation } from "react-i18next";
 import { deleteNote, fetchNotesByPaper } from "@/api/notes";
@@ -19,6 +19,7 @@ interface NoteListProps {
  */
 export default function NoteList({ paperId }: NoteListProps) {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
   // 编辑态：'new' 表示新建；具体 id 表示编辑某条；null 表示列表态

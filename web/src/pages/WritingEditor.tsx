@@ -18,7 +18,7 @@ import {
   Spin,
   Tag,
   Typography,
-  message,
+  App,
 } from "antd";
 
 import { useNavigate, useParams } from "react-router-dom";
@@ -241,6 +241,7 @@ export default function WritingEditor() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const pid = Number(projectId);
 
   const [project, setProject] = useState<WritingProject | null>(null);

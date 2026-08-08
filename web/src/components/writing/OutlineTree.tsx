@@ -1,7 +1,7 @@
 import { Plus, Trash2, FileText, FolderOpen, Expand, Shrink } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Input, Modal, Space, Tooltip, Tree, Typography, message } from "antd";
+import { Button, Input, Modal, Space, Tooltip, Tree, Typography, App } from "antd";
 
 import type { DataNode } from "antd/es/tree";
 import type { TreeProps } from "antd";
@@ -44,6 +44,7 @@ export default function OutlineTree({
   wordCountMap,
 }: OutlineTreeProps) {
   const { t } = useTranslation();
+  const { message, modal } = App.useApp();
   // 新增章节 Modal 状态：addParent 为 null 表示关闭，'root' 表示根章节，否则为父节点
   const [addParent, setAddParent] = useState<ChapterTreeNode | "root" | null>(null);
   const [newTitle, setNewTitle] = useState("");
@@ -155,7 +156,7 @@ export default function OutlineTree({
   };
 
   const handleDelete = async (chapter: Chapter) => {
-    Modal.confirm({
+    modal.confirm({
       title: t("outline.deleteChapterTitle"),
       content: t("outline.deleteChapterConfirm", { title: chapter.title }),
       okText: t("common.delete"),

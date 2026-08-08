@@ -20,7 +20,7 @@ export default function OcrBadge({ ocrStatus, isScanned, showLabel = true }: Ocr
         <Tag
           color="red"
           style={{ marginInlineEnd: 4, fontSize: 11, lineHeight: "18px", borderRadius: 10 }}
-          bordered={false}
+          variant="filled"
         >
           ⚠️ {showLabel && t("paper.ocrFailed", "OCR 失败")}
         </Tag>
@@ -35,7 +35,7 @@ export default function OcrBadge({ ocrStatus, isScanned, showLabel = true }: Ocr
         <Tag
           color="orange"
           style={{ marginInlineEnd: 4, fontSize: 11, lineHeight: "18px", borderRadius: 10 }}
-          bordered={false}
+          variant="filled"
         >
           🔍 {showLabel && t("paper.scanned", "扫描件")}
         </Tag>
@@ -50,7 +50,7 @@ export default function OcrBadge({ ocrStatus, isScanned, showLabel = true }: Ocr
         <Tag
           color="blue"
           style={{ marginInlineEnd: 4, fontSize: 11, lineHeight: "18px", borderRadius: 10 }}
-          bordered={false}
+          variant="filled"
         >
           ⏳ {showLabel && t("paper.ocrPending", "识别中")}
         </Tag>

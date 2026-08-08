@@ -1,7 +1,7 @@
 import { Inbox, CheckCircle, XCircle, Loader, Clock, FileArchive, AlertCircle } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
-import { Upload, message, Progress, Tag, Tooltip, Button } from "antd";
+import { Upload, Progress, Tag, Tooltip, Button, App } from "antd";
 import type { UploadFile } from "antd";
 
 import http from "@/api/client";
@@ -36,7 +36,7 @@ interface ZipResult {
   processing: boolean;
 }
 
-const STATUS_ICON: Record<FileStatus, JSX.Element> = {
+const STATUS_ICON: Record<FileStatus, ReactElement> = {
   pending: <Clock style={{ color: "var(--pf-text-placeholder)" }} />,
   uploading: <Loader style={{ color: "var(--pf-primary)" }} />,
   success: <CheckCircle style={{ color: "var(--pf-success)" }} />,
@@ -50,6 +50,7 @@ const genUid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
  */
 export default function UploadPaper() {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const [items, setItems] = useState<UploadItem[]>([]);
   const [uploading, setUploading] = useState(false);
   const [zipResult, setZipResult] = useState<ZipResult | null>(null);

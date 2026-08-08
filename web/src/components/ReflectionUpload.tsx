@@ -29,7 +29,7 @@ import {
   Form,
   Input,
   Button,
-  message,
+  App,
   Space,
   Typography,
   Alert,
@@ -154,6 +154,7 @@ export default function ReflectionUpload({
   sourcePaperTitle,
 }: ReflectionUploadProps) {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const [textForm] = Form.useForm<FormValues>();
   const [fileForm] = Form.useForm<FileFormValues>();
   const { subscribeSSE } = useTaskStore();
@@ -527,7 +528,7 @@ export default function ReflectionUpload({
       footer={null}
       width={680}
       destroyOnHidden
-      maskClosable={!submitting}
+      mask={{ closable: !submitting }}
       closable={!submitting}
     >
       {error && (

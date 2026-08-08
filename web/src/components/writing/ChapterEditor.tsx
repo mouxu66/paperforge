@@ -14,7 +14,7 @@ import {
   Tag,
   Tooltip,
   Typography,
-  message,
+  App,
 } from "antd";
 
 import ReactMarkdown from "react-markdown";
@@ -150,6 +150,7 @@ export default function ChapterEditor({
   onOutlineChanged,
 }: ChapterEditorProps) {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [mode, setMode] = useState<ViewMode>("split");
@@ -206,7 +207,7 @@ export default function ChapterEditor({
         // 校验失败不阻断写作流程
       }
     },
-    [t],
+    [t, message],
   );
   const [recommendPapers, setRecommendPapers] = useState<RecommendedPaper[]>([]);
 
@@ -278,7 +279,7 @@ export default function ChapterEditor({
       // 保存失败：保持红色直到下一次成功或手动重试
       setSaveStatus("error");
     }
-  }, [onSave, t]);
+  }, [onSave, t, message]);
 
   // 自动保存：防抖 2 秒
   useEffect(() => {
@@ -1007,7 +1008,7 @@ export default function ChapterEditor({
         okText={continuing ? t("chapter.continueOkGenerating") : t("chapter.continueOkText")}
         cancelText={t("common.cancel")}
         closable={!continuing}
-        maskClosable={!continuing}
+        mask={{ closable: !continuing }}
       >
         <Typography.Paragraph
           style={{ fontSize: 13, color: "var(--pf-text-muted)", marginBottom: 12 }}
@@ -1125,7 +1126,7 @@ export default function ChapterEditor({
           </Button>
         }
         width={640}
-        maskClosable={!recommendLoading}
+        mask={{ closable: !recommendLoading }}
         closable={!recommendLoading}
       >
         <Typography.Paragraph

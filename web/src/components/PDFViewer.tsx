@@ -6,7 +6,7 @@ import {
   Empty,
   Input,
   List,
-  message,
+  App,
   Popover,
   Select,
   Space,
@@ -363,6 +363,7 @@ function selectionToNormalizedRects(
 
 export default function PDFViewer({ paper, pdfUrl, initialPage, highlightText }: PDFViewerProps) {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const containerRef = useRef<HTMLDivElement>(null);
   // 页面渲染容器映射：pageNo -> { wrapper, canvas, textLayerDiv, width, height }
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -759,7 +760,7 @@ export default function PDFViewer({ paper, pdfUrl, initialPage, highlightText }:
         }
       }
     },
-    [paper.id, pending?.text, targetLanguage, t, persistTranslation],
+    [paper.id, pending?.text, targetLanguage, t, persistTranslation, message],
   );
 
   // WP-2.7: 切换目标语言时，若存在当前原文则自动重译

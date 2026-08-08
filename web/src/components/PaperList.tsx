@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Skeleton, Pagination } from "antd";
+import { Skeleton, Pagination, App } from "antd";
 import { useTranslation } from "react-i18next";
 import type { Paper } from "@/api/types";
 import { enrichPaperMetadata, previewEnrichPaperMetadata } from "@/api/papers";
@@ -8,7 +8,6 @@ import { Reveal } from "./motion";
 import EmptyState from "./EmptyState";
 import { buildFirstRunGuide, buildOcrGuide } from "./EmptyState.guide";
 import EnrichDiffModal from "./EnrichDiffModal";
-import { message } from "antd";
 import { PAGE_SIZE_OPTIONS } from "@/utils/constants";
 import { startMark } from "@/utils/perf";
 
@@ -59,6 +58,7 @@ export default function PaperList({
   depthScoreMap,
 }: Props) {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   // WP-2.4: 测量 PaperList 数据渲染耗时（loading 结束且 items 变化时）
   const prevLoadingRef = useRef(loading);
   useEffect(() => {
@@ -98,7 +98,7 @@ export default function PaperList({
     return () => {
       active = false;
     };
-  }, [enrichingPaper, t]);
+  }, [enrichingPaper, t, message]);
 
   // WP-2.4: 骨架屏数量与当前 pageSize 对齐，避免布局跳变
   const skeletonCount = Math.max(1, Math.min(pageSize, 20));

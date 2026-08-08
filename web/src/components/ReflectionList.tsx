@@ -31,7 +31,7 @@ import {
   Space,
   Tooltip,
   Typography,
-  message,
+  App,
   Empty,
   Progress,
   Spin,
@@ -110,6 +110,7 @@ export default function ReflectionList({
   const navigate = useNavigate();
   const { subscribeSSE } = useTaskStore();
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const [data, setData] = useState<ReflectionListItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -154,7 +155,7 @@ export default function ReflectionList({
         if (!silent) setLoading(false);
       }
     },
-    [pageSize],
+    [pageSize, message],
   );
 
   useEffect(() => {
@@ -179,7 +180,7 @@ export default function ReflectionList({
         message.error(e?.response?.data?.detail || "删除失败");
       }
     },
-    [fetchList, page],
+    [fetchList, page, message],
   );
 
   // 批量删除：调用 POST /api/depth/reviews/batch-delete，参数为 review_ids 列表
@@ -204,7 +205,7 @@ export default function ReflectionList({
     } finally {
       setBatchDeleting(false);
     }
-  }, [selectedIds, fetchList, page]);
+  }, [selectedIds, fetchList, page, message]);
 
   const handleRestart = useCallback(
     async (paperId: string) => {
@@ -255,7 +256,7 @@ export default function ReflectionList({
         });
       }
     },
-    [fetchList, page, subscribeSSE],
+    [fetchList, page, subscribeSSE, message],
   );
 
   // 全班诚信报告批量导出：启动任务 → 轮询（消息实时更新进度）→ 自动下载 zip
@@ -284,7 +285,7 @@ export default function ReflectionList({
     } finally {
       setBatchExporting(false);
     }
-  }, [batchExporting]);
+  }, [batchExporting, message]);
 
   const columns = [
     {

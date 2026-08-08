@@ -1,6 +1,6 @@
 import { Monitor, Webhook, CheckCircle } from "lucide-react";
 import { useState } from "react";
-import { Card, Button, Space, Tag, Tooltip, message } from "antd";
+import { Card, Button, Space, Tag, Tooltip, App } from "antd";
 
 import { useTranslation } from "react-i18next";
 import type { FormInstance } from "antd";
@@ -112,6 +112,7 @@ async function probeLocalService(url: string, timeoutMs = 1500): Promise<string 
 
 export default function ModelPresets({ form, onPicked }: Props) {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const [detecting, setDetecting] = useState(false);
 
   /** 应用一个预设到表单。 */

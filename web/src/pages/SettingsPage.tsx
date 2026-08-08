@@ -1,7 +1,7 @@
 import { Import, Link, Merge } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Button, Card, Input, List, Progress, Space, Tag, Typography, message } from "antd";
+import { Alert, Button, Card, Input, List, Progress, Space, Tag, Typography, App } from "antd";
 
 import { importFromZotero } from "@/api/zotero";
 import type { ZoteroImportResult } from "@/api/types";
@@ -24,6 +24,7 @@ const { Text, Link: AntLink } = Typography;
  */
 export default function SettingsPage() {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const navigate = useNavigate();
   const [userId, setUserId] = useState("");
   const [apiKey, setApiKey] = useState("");

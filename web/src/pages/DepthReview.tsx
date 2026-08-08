@@ -24,7 +24,7 @@ import {
   Empty,
   Tooltip,
   Tabs,
-  message,
+  App,
   Popconfirm,
   Select,
 } from "antd";
@@ -106,6 +106,7 @@ function getEvidenceSeverityRank(severity: string | undefined): number {
 // ---- 结果展示页 ----
 
 function DepthResultView({ paperId }: { paperId: string }) {
+  const { message } = App.useApp();
   const [searchParams] = useSearchParams();
   const highlighted = searchParams.get("highlight") === "1";
 
@@ -651,6 +652,7 @@ function DepthResultView({ paperId }: { paperId: string }) {
 // ---- 列表页 ----
 
 function DepthListPage() {
+  const { message } = App.useApp();
   const [data, setData] = useState<DepthReviewV4PaperItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -681,7 +683,7 @@ function DepthListPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [message]);
 
   useEffect(() => {
     fetchList(page);
@@ -723,7 +725,7 @@ function DepthListPage() {
         });
       }
     },
-    [page, fetchList],
+    [page, fetchList, message],
   );
 
   const handleDelete = useCallback(
@@ -737,7 +739,7 @@ function DepthListPage() {
         message.error(e?.response?.data?.detail || "删除失败");
       }
     },
-    [page, fetchList],
+    [page, fetchList, message],
   );
 
   // 批量删除：调用 POST /api/depth/reviews/batch-delete，传 paper_ids（后端解析）
@@ -762,7 +764,7 @@ function DepthListPage() {
     } finally {
       setBatchDeleting(false);
     }
-  }, [selectedPaperIds, page, fetchList]);
+  }, [selectedPaperIds, page, fetchList, message]);
 
   // 批量重新审稿：调用 POST /api/depth/v4/review-selected（复用现成的批量提交端点）
   const handleBatchReReview = useCallback(async () => {
@@ -802,7 +804,7 @@ function DepthListPage() {
     } finally {
       setBatchReReviewing(false);
     }
-  }, [selectedPaperIds, page, fetchList]);
+  }, [selectedPaperIds, page, fetchList, message]);
 
   // Row selection：勾选以 paper_id 为 key，与 Table rowKey='paper_id' 对齐。
   // 跨分页持久化：React state 在分页切换时保留 → 勾选一组后翻页、再勾选一批，

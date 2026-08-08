@@ -1,5 +1,5 @@
 import axios, { type AxiosInstance, type InternalAxiosRequestConfig } from "axios";
-import { message } from "antd";
+import { getMessage } from "@/utils/feedback";
 
 // 统一 baseURL：优先 VITE_API_BASE，兼容旧变量 VITE_ASK_API_BASE，默认走 vite 代理 /api
 export const API_BASE =
@@ -88,7 +88,7 @@ export function createHttpClient(options: HttpClientOptions = {}): AxiosInstance
         // 若请求标记了 skipErrorToast，跳过自动弹 toast（由调用方处理）
         if (!error.config?.skipErrorToast) {
           const msg = error?.response?.data?.detail || error?.message || defaultMessage;
-          message.error(msg);
+          getMessage().error(msg);
         }
         return Promise.reject(error);
       },

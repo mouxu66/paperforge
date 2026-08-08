@@ -9,7 +9,7 @@ import {
   Slider,
   Space,
   Typography,
-  message,
+  App,
 } from "antd";
 
 import { getDepthSettings, updateDepthSettings } from "@/api/depthSettings";
@@ -38,6 +38,7 @@ function toFormValues(settings: DepthSettings): FormValues {
 
 export default function DepthSettingsPanel() {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const [form] = Form.useForm<FormValues>();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -54,7 +55,7 @@ export default function DepthSettingsPanel() {
       .finally(() => {
         setLoading(false);
       });
-  }, [form, t]);
+  }, [form, t, message]);
 
   const handleSave = async (values: FormValues) => {
     let deltaBoundsOverrides: Record<string, { min: number; max: number }> = {};

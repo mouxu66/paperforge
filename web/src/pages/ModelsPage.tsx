@@ -1,6 +1,6 @@
 import { Plus, Zap } from "lucide-react";
 import { useEffect, useState, useCallback } from "react";
-import { Button, Card, Form, Space, Table, message } from "antd";
+import { Button, Card, Form, Space, Table, App } from "antd";
 
 import { useTranslation } from "react-i18next";
 import { fetchModels, createModel, updateModel, deleteModel } from "@/api/models";
@@ -13,6 +13,7 @@ import { getModelsColumns } from "@/components/modelsColumns";
 export default function ModelsPage() {
   const [form] = Form.useForm();
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const [models, setModels] = useState<LLMConfig[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);

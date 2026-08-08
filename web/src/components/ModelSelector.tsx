@@ -1,6 +1,6 @@
 import { Zap } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Select, Tooltip, message } from "antd";
+import { Select, Tooltip, App } from "antd";
 
 import { useTranslation } from "react-i18next";
 import { useModelStore } from "@/store/useModelStore";
@@ -15,6 +15,7 @@ import { useModelStore } from "@/store/useModelStore";
  */
 export default function ModelSelector() {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const { current, available, enabled, switching, load, switchModel } = useModelStore();
   const [justSwitched, setJustSwitched] = useState(false);
   const glowTimer = useRef<ReturnType<typeof setTimeout> | null>(null);

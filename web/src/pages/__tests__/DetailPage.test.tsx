@@ -38,6 +38,24 @@ const renamePaperPdf = vi.fn();
 const extractPaperAnnotations = vi.fn();
 const listPdfAnnotations = vi.fn();
 
+// antd 6：DetailPage 经 App.useApp() 获取 message 实例。无 <App> context 时
+// useApp 返回空对象（message.error 非函数），这里部分 mock 仅覆写 useApp。
+vi.mock("antd", async () => {
+  const actual = await vi.importActual<typeof import("antd")>("antd");
+  const message = {
+    ...actual.message,
+    success: vi.fn(),
+    error: vi.fn(),
+  };
+  return {
+    ...actual,
+    App: {
+      ...actual.App,
+      useApp: () => ({ message, notification: {}, modal: {} }),
+    },
+  };
+});
+
 vi.mock("@/api/papers", () => ({
   fetchPaperById: (...args: any[]) => fetchPaperById(...args),
   fetchPaperSentiment: (...args: any[]) => fetchPaperSentiment(...args),

@@ -170,7 +170,7 @@ export default function ResearchWorkbenchPanel({ stats, papers, isReport, onUplo
                       percent={percent}
                       showInfo={false}
                       strokeColor={index === 0 ? "var(--pf-primary)" : "var(--pf-accent)"}
-                      trailColor="var(--pf-border-light)"
+                      railColor="var(--pf-border-light)"
                       size="small"
                     />
                   </div>

@@ -1,7 +1,7 @@
 import { DownloadCloud } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Tooltip, message } from "antd";
+import { Button, Tooltip, App } from "antd";
 
 import http from "@/api/client";
 
@@ -14,6 +14,7 @@ import http from "@/api/client";
  */
 export default function DevTools() {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const [packaging, setPackaging] = useState(false);
 
   if (!import.meta.env.DEV) return null;

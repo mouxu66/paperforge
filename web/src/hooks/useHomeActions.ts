@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { message } from "antd";
+import { App } from "antd";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { invalidatePaperQueryCache } from "@/store/usePaperStore";
@@ -24,6 +24,7 @@ export function useHomeActions(
 ) {
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const { selectedIds, exitSelectMode } = selection;
 
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -55,7 +56,7 @@ export function useHomeActions(
     } finally {
       setDeleteLoading(false);
     }
-  }, [selectedIds, exitSelectMode, loadPapers, t]);
+  }, [selectedIds, exitSelectMode, loadPapers, t, message]);
 
   /** 提交选中论文到 DEPTH 多维评分 */
   const handleDepthSubmit = useCallback(async () => {
@@ -73,7 +74,7 @@ export function useHomeActions(
     } finally {
       setDepthLoading(false);
     }
-  }, [selectedIds, addTask, navigate, t]);
+  }, [selectedIds, addTask, navigate, t, message]);
 
   /** 提交选中论文进行 V4.1 深度审稿 */
   const handleV4Review = useCallback(async () => {
@@ -109,7 +110,7 @@ export function useHomeActions(
     } finally {
       setV4SelectedLoading(false);
     }
-  }, [selectedIds, exitSelectMode, t]);
+  }, [selectedIds, exitSelectMode, t, message]);
 
   return {
     handleBatchDelete,

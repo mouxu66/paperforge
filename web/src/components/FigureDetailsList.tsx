@@ -563,12 +563,12 @@ function FigureSummary({
           <Statistic
             title={t("figureDetails.totalFigures", "图表总数")}
             value={totalFigures}
-            valueStyle={{ color: "#1677ff" }}
+            styles={{ content: { color: "#1677ff" } }}
           />
           <Statistic
             title={t("figureDetails.figuresWithIssues", "存在不一致的图表")}
             value={figuresWithIssues}
-            valueStyle={{ color: figuresWithIssues > 0 ? "#ff4d4f" : "#52c41a" }}
+            styles={{ content: { color: figuresWithIssues > 0 ? "#ff4d4f" : "#52c41a" } }}
           />
           <Statistic
             title={t("figureDetails.totalClaims", "断言总数")}
@@ -577,14 +577,14 @@ function FigureSummary({
           <Statistic
             title={t("figureDetails.invalidClaims", "不一致断言")}
             value={invalidClaims}
-            valueStyle={{ color: invalidClaims > 0 ? "#ff4d4f" : "#52c41a" }}
+            styles={{ content: { color: invalidClaims > 0 ? "#ff4d4f" : "#52c41a" } }}
           />
           {totalClaims > 0 && (
             <Statistic
               title={t("figureDetails.validRate", "一致率")}
               value={Math.round((validClaims / totalClaims) * 100)}
               suffix="%"
-              valueStyle={{ color: invalidClaims > 0 ? "#fa8c16" : "#52c41a" }}
+              styles={{ content: { color: invalidClaims > 0 ? "#fa8c16" : "#52c41a" } }}
             />
           )}
         </Space>

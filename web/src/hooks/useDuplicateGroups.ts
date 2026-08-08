@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { message, Modal } from "antd";
+import { App } from "antd";
 import { fetchDuplicateGroups, mergePapers } from "@/api/papers";
 import type { DuplicateGroup } from "@/api/types";
 
@@ -54,6 +54,7 @@ export interface UseDuplicateGroupsReturn {
 
 export function useDuplicateGroups(): UseDuplicateGroupsReturn {
   const { t } = useTranslation();
+  const { message, modal } = App.useApp();
   const [groups, setGroups] = useState<DuplicateGroup[]>([]);
   const [loading, setLoading] = useState(false);
   const [mergingKey, setMergingKey] = useState<string | null>(null);
@@ -75,7 +76,7 @@ export function useDuplicateGroups(): UseDuplicateGroupsReturn {
     } finally {
       setLoading(false);
     }
-  }, [t]);
+  }, [t, message]);
 
   useEffect(() => {
     void loadGroups();
@@ -95,7 +96,7 @@ export function useDuplicateGroups(): UseDuplicateGroupsReturn {
 
       const targetPaper = group.papers.find((p) => p.id === sel.target);
 
-      Modal.confirm({
+      modal.confirm({
         title: t("duplicates.confirmMergeTitle"),
         content: t("duplicates.confirmMergeContent", {
           target: targetPaper?.title || sel.target,
@@ -127,7 +128,7 @@ export function useDuplicateGroups(): UseDuplicateGroupsReturn {
         },
       });
     },
-    [loadGroups, selections, t],
+    [loadGroups, selections, t, message, modal],
   );
 
   const setTarget = useCallback((key: string, paperId: string) => {

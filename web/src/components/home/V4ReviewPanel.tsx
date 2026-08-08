@@ -1,7 +1,7 @@
 import { Radar, RefreshCw, Zap } from "lucide-react";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button, Card, Spin, Table, Tag, Tooltip, message } from "antd";
+import { Button, Card, Spin, Table, Tag, Tooltip, App } from "antd";
 
 import { listDepthV4Reviews, startBatchV4Review, type DepthReviewV4ListItem } from "@/api/depth";
 import { useTaskStore } from "@/store/useTaskStore";
@@ -12,6 +12,7 @@ import type { TaskInfo } from "@/store/useTaskStore";
 
 export default function V4ReviewPanel() {
   const navigate = useNavigate();
+  const { message } = App.useApp();
 
   const [v4Reviews, setV4Reviews] = useState<DepthReviewV4ListItem[]>([]);
   const [v4ReviewTotal, setV4ReviewTotal] = useState(0);
@@ -91,7 +92,7 @@ export default function V4ReviewPanel() {
     } finally {
       setBatchReviewLoading(false);
     }
-  }, [subscribeSSE, fetchV4Reviews, startQwenPoll, stopQwenPoll]);
+  }, [subscribeSSE, fetchV4Reviews, startQwenPoll, stopQwenPoll, message]);
 
   const verdictColors: Record<string, string> = {
     accept: "green",

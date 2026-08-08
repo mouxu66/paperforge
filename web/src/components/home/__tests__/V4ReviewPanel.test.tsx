@@ -20,6 +20,24 @@ const mockReviews = [
   },
 ];
 
+const messageMock = vi.hoisted(() => ({
+  success: vi.fn(),
+  error: vi.fn(),
+  warning: vi.fn(),
+  info: vi.fn(),
+}));
+
+vi.mock("antd", async () => {
+  const actual = await vi.importActual<typeof import("antd")>("antd");
+  return {
+    ...actual,
+    App: {
+      ...actual.App,
+      useApp: () => ({ message: messageMock, notification: {}, modal: {} }),
+    },
+  };
+});
+
 vi.mock("@/api/depth", () => ({
   listDepthV4Reviews: vi.fn(),
   startBatchV4Review: vi.fn(),

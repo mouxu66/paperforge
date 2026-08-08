@@ -9,7 +9,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { Button, Card, Popconfirm, Progress, Space, Tag, Tooltip, Typography, message } from "antd";
+import { Button, Card, Popconfirm, Progress, Space, Tag, Tooltip, Typography, App } from "antd";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
@@ -38,6 +38,7 @@ function progressPercent(task: DepthTask): number {
 
 export default function ResearchPulseCard() {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const navigate = useNavigate();
   const tasks = useDepthStore((state) => state.tasks);
   const addTask = useDepthStore((state) => state.addTask);

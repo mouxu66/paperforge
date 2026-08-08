@@ -8,7 +8,7 @@ import { Tags, Trash2, Pencil } from "lucide-react";
  * 复用 useTagStore 缓存的标签列表作为输入建议。
  */
 import { useEffect, useState } from "react";
-import { Modal, Select, Button, Space, Tag, Popconfirm, message, Empty, Input } from "antd";
+import { Modal, Select, Button, Space, Tag, Popconfirm, Empty, Input, App } from "antd";
 
 import { useTranslation } from "react-i18next";
 import { useTagStore } from "@/store/useTagStore";
@@ -26,6 +26,7 @@ interface BatchTagModalProps {
 
 export function BatchTagModal({ open, selectedIds, onClose, onSuccess }: BatchTagModalProps) {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const { tags, load } = useTagStore();
   const [addTags, setAddTags] = useState<string[]>([]);
   const [removeTags, setRemoveTags] = useState<string[]>([]);
@@ -128,6 +129,7 @@ export function BatchTagModal({ open, selectedIds, onClose, onSuccess }: BatchTa
 // ---------------------------------------------------------------------------
 export function TagManagerModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const { tags, loading, load, rename, remove } = useTagStore();
   const [editing, setEditing] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");

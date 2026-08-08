@@ -179,7 +179,6 @@ export default function SearchBar({
         onSearch={handleSearch}
         onSelect={handleSelect}
         style={{ width: 420 }}
-        size="large"
         allowClear
         onChange={(v: string) => {
           latestValueRef.current = v;
@@ -199,6 +198,7 @@ export default function SearchBar({
         }}
       >
         <Input
+          size="large"
           allowClear
           prefix={<Search style={{ color: "var(--pf-text-placeholder)" }} />}
           placeholder={t("search.placeholder")}

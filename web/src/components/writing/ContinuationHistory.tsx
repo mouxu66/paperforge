@@ -1,7 +1,7 @@
 import { History, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Drawer, Empty, Spin, Tag, Typography, message } from "antd";
+import { Button, Drawer, Empty, Spin, Tag, Typography, App } from "antd";
 
 const KIND_LABEL: Record<"continue" | "rewrite", { text: string; color: string }> = {
   continue: { text: "续写", color: "blue" },
@@ -32,6 +32,7 @@ export default function ContinuationHistory({
   onRestore,
 }: ContinuationHistoryProps) {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const [records, setRecords] = useState<ContinuationRecord[]>([]);
   const [loading, setLoading] = useState(false);
 

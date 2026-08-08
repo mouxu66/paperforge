@@ -19,6 +19,16 @@ vi.mock("antd", () => {
       {children}
     </button>
   );
+  const modal = {
+    confirm: vi.fn((config) => {
+      lastModalConfig = config;
+    }),
+  };
+  const message = {
+    success: vi.fn(),
+    error: vi.fn(),
+    warning: vi.fn(),
+  };
   return {
     Alert: ({ message, description }: any) => (
       <div role="alert">
@@ -63,15 +73,12 @@ vi.mock("antd", () => {
       Title: ({ children }: any) => <h3>{children}</h3>,
       Text: ({ children }: any) => <span>{children}</span>,
     },
-    Modal: {
-      confirm: vi.fn((config) => {
-        lastModalConfig = config;
-      }),
-    },
-    message: {
-      success: vi.fn(),
-      error: vi.fn(),
-      warning: vi.fn(),
+    Modal: modal,
+    message,
+    App: {
+      // antd 6：组件内通过 App.useApp() 获取带上下文的实例，
+      // mock 返回与顶层导出同引用的对象，保证断言仍成立。
+      useApp: () => ({ message, modal }),
     },
   };
 });

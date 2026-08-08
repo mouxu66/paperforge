@@ -9,7 +9,7 @@
  */
 import { useEffect, useState } from "react";
 import {
-  message,
+  App,
   Alert,
   Button,
   Descriptions,
@@ -73,6 +73,7 @@ interface Props {
 }
 
 export default function IntegrityReportModal({ paperId, open, onClose }: Props) {
+  const { message } = App.useApp();
   const [report, setReport] = useState<IntegrityReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");

@@ -1,6 +1,6 @@
 import { Zap } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Modal, message, Button, Card } from "antd";
+import { Button, Card, App } from "antd";
 
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -17,6 +17,7 @@ import { useHistoryStore, type HistoryItem } from "@/store/useHistoryStore";
 export default function AskPage() {
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const { message, modal } = App.useApp();
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AskResponse | null>(null);
@@ -126,7 +127,7 @@ export default function AskPage() {
     if (!q || loading || streaming) return;
     // P1 守卫：未配置模型时给出明确提示，而不是静默发起一个注定 502 的流式请求。
     if (!hasModel) {
-      Modal.confirm({
+      modal.confirm({
         title: t("ask.noModelTitle"),
         content: t("ask.noModelDesc"),
         okText: t("ask.goToModels"),
@@ -151,7 +152,7 @@ export default function AskPage() {
   };
 
   const handleClearAll = () => {
-    Modal.confirm({
+    modal.confirm({
       title: t("ask.clearHistoryTitle"),
       content: t("ask.clearHistoryContent"),
       okText: t("ask.clearHistoryOk"),

@@ -68,7 +68,7 @@ export default function SentimentBadge({ size = "default", citationCounts }: Sen
           lineHeight: size === "small" ? "18px" : "20px",
           margin: 0,
         }}
-        bordered={false}
+        variant="filled"
       >
         {t(`paper.${dominant}Sentiment`, dominant)} {total}
       </Tag>

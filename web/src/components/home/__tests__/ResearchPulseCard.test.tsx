@@ -18,7 +18,14 @@ const { submitDepthBatchMock, messageMock } = vi.hoisted(() => ({
 vi.mock("@/api/depth", () => ({ submitDepthBatch: submitDepthBatchMock }));
 vi.mock("antd", async () => {
   const actual = await vi.importActual<typeof import("antd")>("antd");
-  return { ...actual, message: messageMock };
+  return {
+    ...actual,
+    message: messageMock,
+    App: {
+      ...actual.App,
+      useApp: () => ({ message: messageMock, notification: {}, modal: {} }),
+    },
+  };
 });
 import { useDepthStore, type DepthTask } from "@/store/useDepthStore";
 

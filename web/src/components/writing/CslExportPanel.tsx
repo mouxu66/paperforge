@@ -1,6 +1,6 @@
 import { Copy, Download, FileText, Link, RefreshCw, Search } from "lucide-react";
 import { useEffect, useMemo, useCallback, useState } from "react";
-import { Alert, Button, Card, Descriptions, Input, message, Select, Space, Spin, Tabs } from "antd";
+import { Alert, Button, Card, Descriptions, Input, Select, Space, Spin, Tabs, App } from "antd";
 
 import { useTranslation } from "react-i18next";
 import type { CslItem } from "@/api/types";
@@ -40,6 +40,7 @@ export default function CslExportPanel({
   onRefresh,
 }: CslExportPanelProps) {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const [selectedStyle, setSelectedStyle] = useState<string>(BUILT_IN_CSL_STYLES[0].id);
   const [customUrl, setCustomUrl] = useState<string>("");
   const [remoteName, setRemoteName] = useState<string>("");

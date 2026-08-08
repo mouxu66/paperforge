@@ -4,16 +4,25 @@ import { useDuplicateGroups, makeDefaultSelection, FIELD_KEYS } from "@/hooks/us
 import * as papersApi from "@/api/papers";
 import type { DuplicateGroup } from "@/api/types";
 
-vi.mock("antd", () => ({
-  message: {
+vi.mock("antd", () => {
+  const message = {
     success: vi.fn(),
     error: vi.fn(),
     warning: vi.fn(),
-  },
-  Modal: {
+  };
+  const modal = {
     confirm: vi.fn(),
-  },
-}));
+  };
+  return {
+    message,
+    Modal: modal,
+    App: {
+      // antd 6：组件/hook 内通过 App.useApp() 获取带上下文的实例，
+      // mock 返回与顶层导出同引用的对象，保证断言仍成立。
+      useApp: () => ({ message, modal }),
+    },
+  };
+});
 
 function makeGroup(overrides?: Partial<DuplicateGroup>): DuplicateGroup {
   return {

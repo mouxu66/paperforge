@@ -15,7 +15,7 @@ import {
   Statistic,
   Tag,
   Typography,
-  message,
+  App,
 } from "antd";
 
 import { useNavigate } from "react-router-dom";
@@ -81,6 +81,7 @@ function TrendChart({ data }: { data: { date: string; wordCount: number }[] }) {
 export default function WritingDashboard() {
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const [form] = Form.useForm();
   const [projects, setProjects] = useState<WritingProject[]>([]);
   const [loading, setLoading] = useState(false);
@@ -316,7 +317,7 @@ export default function WritingDashboard() {
               value={stats.totalWords}
               suffix={t("write.wordUnit")}
               prefix={<FileType style={{ color: "var(--pf-success)" }} />}
-              valueStyle={{ fontSize: 20 }}
+              styles={{ content: { fontSize: 20 } }}
             />
           </Card>
           <Card
@@ -329,8 +330,10 @@ export default function WritingDashboard() {
               value={stats.todayWords}
               suffix={t("write.wordUnit")}
               prefix={<TrendingUp style={{ color: "#d97706" }} />}
-              valueStyle={{
-                color: stats.todayWords > 0 ? "var(--pf-success)" : "var(--pf-text-placeholder)",
+              styles={{
+                content: {
+                  color: stats.todayWords > 0 ? "var(--pf-success)" : "var(--pf-text-placeholder)",
+                },
               }}
             />
           </Card>

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Button, Input, Space, Typography, message } from "antd";
+import { Button, Input, Space, Typography, App } from "antd";
 import { useTranslation } from "react-i18next";
 import { createNote, updateNote } from "@/api/notes";
 import type { Note } from "@/api/types";
@@ -16,6 +16,7 @@ interface NoteEditorProps {
 /** 笔记编辑器 —— 新建 / 编辑共用，不带外层卡片。支持 Markdown 输入与实时字数统计。 */
 export default function NoteEditor({ paperId, note, onSave, onCancel }: NoteEditorProps) {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const isEdit = !!note;
   const [content, setContent] = useState(note?.content ?? "");
   const [saving, setSaving] = useState(false);

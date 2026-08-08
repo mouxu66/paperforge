@@ -31,14 +31,19 @@ vi.mock("@/components/ResearchPageAccent", () => ({
 
 vi.mock("antd", async () => {
   const actual = await vi.importActual<typeof import("antd")>("antd");
+  const message = {
+    ...actual.message,
+    warning: messageWarning,
+    success: messageSuccess,
+    info: messageInfo,
+    error: vi.fn(),
+  };
   return {
     ...actual,
-    message: {
-      ...actual.message,
-      warning: messageWarning,
-      success: messageSuccess,
-      info: messageInfo,
-      error: vi.fn(),
+    message,
+    App: {
+      ...actual.App,
+      useApp: () => ({ message, notification: {}, modal: {} }),
     },
   };
 });

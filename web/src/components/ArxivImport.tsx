@@ -1,7 +1,7 @@
 import { DownloadCloud, Search } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Modal, Input, InputNumber, Table, Tag, message, Space } from "antd";
+import { Button, Modal, Input, InputNumber, Table, Tag, Space, App } from "antd";
 
 import { searchArxiv, importArxivPapers } from "@/api/arxiv";
 import type { ArxivPaperPreview } from "@/api/types";
@@ -16,6 +16,7 @@ import { invalidatePaperQueryCache, usePaperStore } from "@/store/usePaperStore"
  */
 export default function ArxivImport() {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const [open, setOpen] = useState(false);
   const [keyword, setKeyword] = useState("");
   const [maxResults, setMaxResults] = useState(10);

@@ -14,7 +14,7 @@ import {
   Table,
   Tag,
   Typography,
-  message,
+  App,
 } from "antd";
 import type { CheckboxProps } from "antd";
 
@@ -86,6 +86,7 @@ function isTerminalDepthStatus(status: string | undefined): boolean {
 
 export default function DepthAnalysis() {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const location = useLocation();
   const initialIds = useMemo(() => {
     const state = location.state as { selectedIds?: string[] } | null;
@@ -202,7 +203,7 @@ export default function DepthAnalysis() {
       abort.abort();
       if (evaluationAbortRef.current === abort) evaluationAbortRef.current = null;
     };
-  }, [activeTaskId, activeTask?.status, updateProgress, completeTask, failTask, t]);
+  }, [activeTaskId, activeTask?.status, updateProgress, completeTask, failTask, t, message]);
 
   // 加载论文列表（带分页）
   const loadPapers = useCallback(
@@ -218,7 +219,7 @@ export default function DepthAnalysis() {
         setLoading(false);
       }
     },
-    [t],
+    [t, message],
   );
 
   useEffect(() => {
@@ -271,7 +272,7 @@ export default function DepthAnalysis() {
       const e = err0 as Error & { response?: { status?: number; data?: { detail?: string } } };
       message.error(e?.message || t("depth.failed"));
     }
-  }, [selectedIds, t, addTask]);
+  }, [selectedIds, t, addTask, message]);
 
   // 过滤掉带 error 的结果（LLM 调用失败的论文），只展示成功的结果
   const validResults = useMemo(() => {

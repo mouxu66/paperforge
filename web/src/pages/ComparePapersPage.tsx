@@ -1,6 +1,6 @@
 import { ArrowLeft, Download, Table as TableIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useCallback, useState } from "react";
-import { Button, Card, Empty, Input, Select, Space, Spin, Table, Typography, message } from "antd";
+import { Button, Card, Empty, Input, Select, Space, Spin, Table, Typography, App } from "antd";
 
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -18,6 +18,7 @@ interface PaperOption {
 export default function ComparePapersPage() {
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
@@ -43,7 +44,7 @@ export default function ComparePapersPage() {
     } finally {
       setOptionsLoading(false);
     }
-  }, [t]);
+  }, [t, message]);
 
   useEffect(() => {
     loadOptions("");

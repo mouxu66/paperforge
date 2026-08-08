@@ -1,6 +1,6 @@
 import { Pencil, Download, FileText, Table, Zap } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Typography, Input, Button, Card, Space, Tag, Empty, Spin, message, Modal } from "antd";
+import { Typography, Input, Button, Card, Space, Tag, Empty, Spin, App } from "antd";
 
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -19,6 +19,7 @@ const { TextArea } = Input;
 export default function GeneratePage() {
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const { message, modal } = App.useApp();
   const [topic, setTopic] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<GenerateResponse | null>(null);
@@ -37,7 +38,7 @@ export default function GeneratePage() {
     if (!topicTrimmed || loading) return;
     // P1 守卫：未配置模型时引导用户去模型管理，而非静默发起注定 502 的请求。
     if (!hasModel) {
-      Modal.confirm({
+      modal.confirm({
         title: t("ask.noModelTitle"),
         content: t("ask.noModelDesc"),
         okText: t("ask.goToModels"),

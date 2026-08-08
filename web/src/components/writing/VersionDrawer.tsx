@@ -10,7 +10,7 @@ import {
   Spin,
   Timeline,
   Typography,
-  message,
+  App,
 } from "antd";
 
 import ReactMarkdown from "react-markdown";
@@ -37,6 +37,7 @@ interface VersionDrawerProps {
  */
 export default function VersionDrawer({ open, chapterId, onClose, onRestore }: VersionDrawerProps) {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const [versions, setVersions] = useState<ChapterVersion[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -117,7 +118,7 @@ export default function VersionDrawer({ open, chapterId, onClose, onRestore }: V
         setRestoringId(null);
       }
     },
-    [chapterId, onRestore, onClose, t],
+    [chapterId, onRestore, onClose, t, message],
   );
 
   return (

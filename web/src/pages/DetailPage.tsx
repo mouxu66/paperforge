@@ -15,8 +15,8 @@ import {
   Statistic,
   Empty,
   List,
-  message,
   Dropdown,
+  App,
 } from "antd";
 import PdfAnnotationsTab from "@/components/PdfAnnotationsTab";
 
@@ -84,7 +84,7 @@ function CitationRelationsTab({ paper }: { paper: Paper }) {
           <Statistic
             title={t("paper.influentialCitations")}
             value={influentialCitations}
-            valueStyle={{ color: "var(--pf-primary)" }}
+            styles={{ content: { color: "var(--pf-primary)" } }}
           />
         )}
       </div>
@@ -131,6 +131,7 @@ function CitationRelationsTab({ paper }: { paper: Paper }) {
 
 export default function DetailPage() {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -341,7 +342,7 @@ export default function DetailPage() {
               </Tag>
               <SentimentBadge citationCounts={citationStats?.counts} />
               {paper.tags.map((t) => (
-                <Tag key={t} bordered={false}>
+                <Tag key={t} variant="filled">
                   {t}
                 </Tag>
               ))}

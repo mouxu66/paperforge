@@ -1,5 +1,5 @@
 import { Copy } from "lucide-react";
-import { Tooltip, Button, message } from "antd";
+import { Tooltip, Button, App } from "antd";
 
 import { useTranslation } from "react-i18next";
 
@@ -10,6 +10,7 @@ interface CiteTabProps {
 /** 引用格式面板：展示 BibTeX 条目并提供一键复制 */
 export default function CiteTab({ bibtex }: CiteTabProps) {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const handleCopyBibtex = async () => {
     try {
       await navigator.clipboard.writeText(bibtex);

@@ -12,7 +12,7 @@ import {
   Spin,
   Tag,
   Typography,
-  message,
+  App,
 } from "antd";
 import { RefreshCw, Zap, FileSearch, TriangleAlert } from "lucide-react";
 
@@ -40,6 +40,7 @@ interface DepthReviewTabProps {
 
 export default function DepthReviewTab({ paperId }: DepthReviewTabProps) {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const [result, setResult] = useState<DepthReviewV4Result | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
