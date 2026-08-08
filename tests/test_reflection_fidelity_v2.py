@@ -189,6 +189,44 @@ class TestSnippetValidation:
         effective, _, _ = ReflectionReviewer._cross_validate_evidence(claims, pool)
         assert effective == 1
 
+    def test_effective_counts_distinct_evidences_not_claim_refs(self):
+        """ADR-014 fix: 5 个 claims 指向同 1 条真 evidence → effective=1（去重计数）。
+
+        旧版 max(forward, backward): forward=5(claims→E1), backward=1(E1→C1) → 5
+        → 绕过 R1.5 的 0.85 封顶。现改为去重：只有 1 条 distinct valid evidence。
+        """
+        claims = [
+            {"id": "C1", "text": "观点1", "evidence_id": "E1"},
+            {"id": "C2", "text": "观点2", "evidence_id": "E1"},
+            {"id": "C3", "text": "观点3", "evidence_id": "E1"},
+            {"id": "C4", "text": "观点4", "evidence_id": "E1"},
+            {"id": "C5", "text": "观点5", "evidence_id": "E1"},
+        ]
+        pool = [{"id": "E1", "snippet": "真实引文内容", "claim_ref": "C1"}]
+        effective, v_claims, v_pool = ReflectionReviewer._cross_validate_evidence(
+            claims, pool, full_text="报告里有真实引文内容"
+        )
+        assert effective == 1, f"5 claims 指 1 条真 evidence → effective 应为 1，实际 {effective}"
+        # 5 条 claims 中只有引用了 E1 的才有效（都是 E1 → 全部保留）
+        assert len(v_claims) == 5
+        assert len(v_pool) == 1
+
+    def test_effective_counts_distinct_evidences_multiple(self):
+        """不同的 claims 引用不同的 valid evidences → effective=去重条数。"""
+        claims = [
+            {"id": "C1", "text": "观点1", "evidence_id": "E1"},
+            {"id": "C2", "text": "观点2", "evidence_id": "E1"},  # 同条 evidence
+            {"id": "C3", "text": "观点3", "evidence_id": "E2"},
+        ]
+        pool = [
+            {"id": "E1", "snippet": "第一段真实引文", "claim_ref": "C1"},
+            {"id": "E2", "snippet": "第二段真实引文", "claim_ref": "C3"},
+        ]
+        effective, _, _ = ReflectionReviewer._cross_validate_evidence(
+            claims, pool, full_text="报告里有第一段真实引文和第二段真实引文"
+        )
+        assert effective == 2  # E1 + E2 = 2 条 distinct
+
     def test_snippet_exists_whitespace_insensitive(self):
         assert _snippet_exists(" 你好 世界 ", "开头你好世界结尾")
         assert not _snippet_exists("不存在", "你好世界")

@@ -39,7 +39,16 @@ def test_app_creatable():
 
     app = create_app()
     assert app is not None
-    route_count = len(app.routes)
+    # fastapi 0.141+ 把 include_router 改为惰性 _IncludedRouter 包装（app.routes 不再展开），
+    # 用 effective_candidates() 展开后再计数，兼容新旧两代 fastapi。
+    from fastapi.routing import _IncludedRouter
+
+    route_count = 0
+    for route in app.routes:
+        if isinstance(route, _IncludedRouter):
+            route_count += len(route.effective_candidates())
+        else:
+            route_count += 1
     # OCR-only /reocr route was intentionally retired; this is the current
     # route snapshot for the production app.
     # 2026-08-05: +2 条诚信报告端点（GET /api/reports/{paper_id}/integrity、

@@ -31,6 +31,9 @@ class ChatResult:
     model: str
     provider: str
     usage: dict = field(default_factory=dict)
+    # ADR-014 P0：可复现性快照。记录本次调用实际使用的 seed / 模型 / 提供商，
+    # 供评测结果存档，使分数可被他人精确复现。默认空 dict，向后兼容旧调用方。
+    meta: dict = field(default_factory=dict)
 
 
 class LocalLLMTimeout(TimeoutError):

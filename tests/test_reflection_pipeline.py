@@ -539,3 +539,218 @@ class TestAnalyzeReflectionFile:
         assert result["verdict"] == "needs_evidence"
         assert result["llm_failed"] is False
         assert "ai_likelihood" not in result["scores"]  # 不进入 scores
+
+
+class TestCitationIntegrityVerdict:
+    """ADR-014 P4：引用真值进硬校验层（fabricated → rewrite_required）。"""
+
+    def _run(self, tmp_path, monkeypatch, flag, llm_verdict="needs_evidence"):
+        """搭一条走通全管线的分析，注入指定 integrity_flag。"""
+        from mock_api.reflection_pipeline import analyze_reflection_file
+
+        test_file = tmp_path / "report.docx"
+        test_file.write_bytes(b"fake docx bytes")
+
+        monkeypatch.setattr(
+            "mock_api.reflection_pipeline.parse_docx_from_bytes",
+            lambda data, filename="": _fake_parse(),
+        )
+        monkeypatch.setattr(
+            "mock_api.reflection_pipeline.match_paper_by_title",
+            lambda title, db: "paper001",
+        )
+        monkeypatch.setattr(
+            "mock_api.reflection_pipeline.compute_fidelity",
+            lambda sections, full, emb: _fake_fidelity(0.65),
+        )
+        monkeypatch.setattr(
+            "mock_api.reflection_pipeline.compute_ai_likelihood",
+            lambda text: _fake_ai(),
+        )
+        monkeypatch.setattr(
+            "mock_api.depth_eval_reflection.ReflectionReviewer",
+            lambda: Mock(
+                review=lambda rid, title, raw, student_id="", paper_text="": _fake_review_result(
+                    0.78, llm_verdict
+                )
+            ),
+        )
+        monkeypatch.setattr(
+            "mock_api.reflection_pipeline._get_paper_text_emb",
+            lambda db, pid: ("full paper text", None),
+        )
+        # 引用真值校验：开关 + mock 结果
+        monkeypatch.setenv("PAPERFORGE_CITATION_VERIFY", "1")
+        monkeypatch.setattr(
+            "mock_api.integrity.citation_verifier.assess_citation_integrity",
+            lambda text, verify_online=True: {"integrity_flag": flag},
+        )
+        return analyze_reflection_file(str(test_file), Mock())
+
+    def test_fabricated_forces_rewrite_required(self, tmp_path, monkeypatch):
+        """Crossref 查无 DOI（疑似编造参考文献）→ verdict=rewrite_required。"""
+        from mock_api.reflection_pipeline import REWRITE_AVG_CAP
+
+        result = self._run(tmp_path, monkeypatch, "fabricated_suspected")
+        assert result["verdict"] == "rewrite_required"
+        assert result["citation_override_reason"]
+        # 编造引用 → 总分封顶（与照抄/编造同一防分叉机制）
+        assert result["average"] <= REWRITE_AVG_CAP + 1e-9
+
+    def test_inconsistent_forces_needs_evidence(self, tmp_path, monkeypatch):
+        """文中引用与参考文献列表不一致 → verdict 至少 needs_evidence。"""
+        result = self._run(tmp_path, monkeypatch, "inconsistent", llm_verdict="well_done")
+        assert result["verdict"] == "needs_evidence"
+        assert result["citation_override_reason"]
+
+    def test_flag_ok_no_override(self, tmp_path, monkeypatch):
+        """integrity_flag=ok（未发现明显问题）→ 不触发引用否决。"""
+        result = self._run(tmp_path, monkeypatch, "ok", llm_verdict="well_done")
+        assert result["verdict"] == "well_done"
+        assert result["citation_override_reason"] == ""
+
+    def test_unknown_flag_no_override(self, tmp_path, monkeypatch):
+        """integrity_flag=unknown（未核验/降级）→ 不误杀报告。"""
+        result = self._run(tmp_path, monkeypatch, "unknown", llm_verdict="well_done")
+        assert result["verdict"] == "well_done"
+
+    def test_verify_off_by_default_no_citation_field(self, tmp_path, monkeypatch):
+        """默认开关关闭：不调用校验器，citation_integrity 为空、不影响 verdict。"""
+        from mock_api.reflection_pipeline import analyze_reflection_file
+
+        test_file = tmp_path / "report.docx"
+        test_file.write_bytes(b"fake docx bytes")
+
+        monkeypatch.delenv("PAPERFORGE_CITATION_VERIFY", raising=False)
+        monkeypatch.setattr(
+            "mock_api.reflection_pipeline.parse_docx_from_bytes",
+            lambda data, filename="": _fake_parse(),
+        )
+        monkeypatch.setattr(
+            "mock_api.reflection_pipeline.match_paper_by_title",
+            lambda title, db: "paper001",
+        )
+        monkeypatch.setattr(
+            "mock_api.reflection_pipeline.compute_fidelity",
+            lambda sections, full, emb: _fake_fidelity(0.65),
+        )
+        monkeypatch.setattr(
+            "mock_api.reflection_pipeline.compute_ai_likelihood",
+            lambda text: _fake_ai(),
+        )
+        monkeypatch.setattr(
+            "mock_api.depth_eval_reflection.ReflectionReviewer",
+            lambda: Mock(
+                review=lambda rid, title, raw, student_id="", paper_text="": _fake_review_result(
+                    0.78, "well_done"
+                )
+            ),
+        )
+        monkeypatch.setattr(
+            "mock_api.reflection_pipeline._get_paper_text_emb",
+            lambda db, pid: ("full paper text", None),
+        )
+
+        result = analyze_reflection_file(str(test_file), Mock())
+        assert result["citation_integrity"] == {}
+        assert result["citation_override_reason"] == ""
+        assert result["verdict"] == "well_done"  # 完全向后兼容
+
+    def test_inconsistent_uses_reviewer_top_level_verdict(self, tmp_path, monkeypatch):
+        """生产形态：verdict 是结果对象顶层字段（不在 scores dict 里），
+        inconsistent 降级仍应生效（回归：reviewer_verdict 取值的修复）。"""
+        from mock_api.reflection_pipeline import analyze_reflection_file
+
+        test_file = tmp_path / "report.docx"
+        test_file.write_bytes(b"fake docx bytes")
+
+        monkeypatch.setenv("PAPERFORGE_CITATION_VERIFY", "1")
+        monkeypatch.setattr(
+            "mock_api.reflection_pipeline.parse_docx_from_bytes",
+            lambda data, filename="": _fake_parse(),
+        )
+        monkeypatch.setattr(
+            "mock_api.reflection_pipeline.match_paper_by_title",
+            lambda title, db: "paper001",
+        )
+        monkeypatch.setattr(
+            "mock_api.reflection_pipeline.compute_fidelity",
+            lambda sections, full, emb: _fake_fidelity(0.65),
+        )
+        monkeypatch.setattr(
+            "mock_api.reflection_pipeline.compute_ai_likelihood",
+            lambda text: _fake_ai(),
+        )
+
+        # 生产形态：scores 只有 4 维 + average，verdict 是顶层字段
+        class _ProdShapedResult:
+            scores = {
+                "understanding_accuracy": 0.82,
+                "analysis_depth": 0.76,
+                "innovative_insights": 0.80,
+                "evidence_support": 0.84,
+                "average": 0.78,
+            }
+            verdict = "well_done"
+
+        monkeypatch.setattr(
+            "mock_api.depth_eval_reflection.ReflectionReviewer",
+            lambda: Mock(review=lambda rid, title, raw, student_id="", paper_text="": _ProdShapedResult()),
+        )
+        monkeypatch.setattr(
+            "mock_api.reflection_pipeline._get_paper_text_emb",
+            lambda db, pid: ("full paper text", None),
+        )
+        monkeypatch.setattr(
+            "mock_api.integrity.citation_verifier.assess_citation_integrity",
+            lambda text, verify_online=True: {"integrity_flag": "inconsistent"},
+        )
+
+        result = analyze_reflection_file(str(test_file), Mock())
+        assert result["verdict"] == "needs_evidence"  # well_done 被 inconsistent 降级
+        assert result["citation_override_reason"]
+
+    def test_verifier_exception_fail_open(self, tmp_path, monkeypatch):
+        """校验器抛异常 → fail-open，verdict 不受影响。"""
+        from mock_api.reflection_pipeline import analyze_reflection_file
+
+        test_file = tmp_path / "report.docx"
+        test_file.write_bytes(b"fake docx bytes")
+
+        monkeypatch.setenv("PAPERFORGE_CITATION_VERIFY", "1")
+        monkeypatch.setattr(
+            "mock_api.reflection_pipeline.parse_docx_from_bytes",
+            lambda data, filename="": _fake_parse(),
+        )
+        monkeypatch.setattr(
+            "mock_api.reflection_pipeline.match_paper_by_title",
+            lambda title, db: "paper001",
+        )
+        monkeypatch.setattr(
+            "mock_api.reflection_pipeline.compute_fidelity",
+            lambda sections, full, emb: _fake_fidelity(0.65),
+        )
+        monkeypatch.setattr(
+            "mock_api.reflection_pipeline.compute_ai_likelihood",
+            lambda text: _fake_ai(),
+        )
+        monkeypatch.setattr(
+            "mock_api.depth_eval_reflection.ReflectionReviewer",
+            lambda: Mock(
+                review=lambda rid, title, raw, student_id="", paper_text="": _fake_review_result(
+                    0.78, "well_done"
+                )
+            ),
+        )
+        monkeypatch.setattr(
+            "mock_api.reflection_pipeline._get_paper_text_emb",
+            lambda db, pid: ("full paper text", None),
+        )
+        monkeypatch.setattr(
+            "mock_api.integrity.citation_verifier.assess_citation_integrity",
+            lambda text, verify_online=True: (_ for _ in ()).throw(RuntimeError("Crossref down")),
+        )
+
+        result = analyze_reflection_file(str(test_file), Mock())
+        assert result["citation_integrity"] == {}
+        assert result["verdict"] == "well_done"

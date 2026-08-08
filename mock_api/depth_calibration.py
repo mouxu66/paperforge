@@ -26,11 +26,19 @@ logger = logging.getLogger(__name__)
 # ── 分数偏移校正层（DEPTH 校准偏移） ──
 # 校准实测（blind_review_comparison_2026-07-24）：DEPTH 相对人工盲评系统性偏高
 # +0.09~+0.12。通过此偏移层对最终分做全局平移，使 verdict 与人工盲评对齐。
-# 优先级：显式 PAPERFORGE_DEPTH_SCORE_OFFSET > 校准集自动估计(calib_offset.json) > 0.0(关闭)
+# 优先级：显式 PAPERFORGE_DEPTH_SCORE_OFFSET > 金标驱动(PAPERFORGE_DEPTH_GOLD_OFFSET_PATH)
+#         > 校准集自动估计(calib_offset.json) > 0.0(关闭)
 _AUTO_OFFSET_PATH = os.path.join(
     os.path.dirname(__file__), "..", "calib_papers", "runs", "calib_offset.json"
 )
 _AUTO_OFFSET_ENABLED = os.getenv("DEPTH_AUTO_OFFSET", "0").lower() in ("1", "true", "yes", "on")
+# ADR-014 P5：金标驱动偏移。指向由真实盲评金标数据集（calib_set_20.json + calib_pool_415.json
+# 经 scripts/calibration/recompute_gold_offset.py 离线计算）生成的 gold_offset.json，
+# 替代此前仅记录偏移值、来源不可审计的 -0.09（治 W1 病根）。
+# gold_offset.json 含 recommended_offset（20 样本数据最优，过拟合、不采用）与
+# adopted_offset（用户采用的稳健值 -0.09，三方印证），_resolved_offset 优先 adopted_offset。
+# 注意：必须在每次调用时动态读取环境变量（而非模块加载时捕获），否则运行时 setenv 不生效。
+_GOLD_OFFSET_ENV = "PAPERFORGE_DEPTH_GOLD_OFFSET_PATH"
 
 
 def _resolved_offset() -> float:
@@ -42,6 +50,23 @@ def _resolved_offset() -> float:
         except ValueError:  # noqa: BLE001 - calibration config - 非法 env 兜底
             logger.warning("PAPERFORGE_DEPTH_SCORE_OFFSET 解析失败: %s，回退 0.0", env)
             return 0.0
+    # P5：优先使用金标驱动偏移（来源诚实、可审计）。优先 adopted_offset（稳健值），
+    # 其次 recommended_offset（数据最优，可能过拟合），其次 offset 兼容旧字段。
+    gold_path = os.getenv(_GOLD_OFFSET_ENV)
+    if gold_path and os.path.exists(gold_path):
+        try:
+            with open(gold_path, encoding="utf-8") as f:
+                _gold_cfg = json.load(f)
+            v = float(
+                _gold_cfg.get(
+                    "adopted_offset",
+                    _gold_cfg.get("recommended_offset", _gold_cfg.get("offset", 0.0)),
+                )
+            )
+            logger.info("分数偏移层启用(金标驱动): offset=%.3f", v)
+            return v
+        except Exception as e:  # noqa: BLE001 - calibration config - 文件读取兜底
+            logger.warning("金标偏移文件读取失败: %s，回退校准自动估计", e)
     if _AUTO_OFFSET_ENABLED and os.path.exists(_AUTO_OFFSET_PATH):
         try:
             with open(_AUTO_OFFSET_PATH, encoding="utf-8") as f:
@@ -589,4 +614,122 @@ def reference_stats_from_scores(scores: list[float], q: float = 0.5) -> dict:
         "mean": sum(s) / len(s),
         "q": q,
         "p": _percentile(s, q),
+    }
+
+
+# ── ADR-014 P5：金标驱动偏移（诚实化偏移来源） ────────────────────────────────
+# 关键澄清（纠错 2026-08-06）：DEFAULT_OFFSET_TABLE 的 -0.09 并非「凭空猜的魔数」，
+# 而是来自本仓真实盲评金标数据集 calib_papers/runs/calib_my_review.json（=calib_set_20.json
+# 的 CalibrationSample 格式）：从 415 篇分层抽样 20 篇，4 个独立评审 agent 盲评（只读全文、
+# 不看 DEPTH 分），再用 auto_offset_from_calibration 穷举偏移、最大化 DEPTH verdict 与「我的
+# verdict」的 Cohen κ（0.189→0.375）得出。属数据驱动校准，地基不悬空。
+# 唯一残余局限（见 blind_review_comparison_2026-07-24.md §9）：评审 agent 仍是 LLM 判断，
+# 非人类审稿人；故偏移是「LLM-vs-LLM 交叉验证」得来，绝对分仍需人类标定。
+# 本组函数把偏移推导显式建立在上述金标之上，使其来源可审计、可重算：
+#   1. gold_samples_to_calibration(gold)  把金标 JSON 转 CalibrationSample（兼容真实/合成两种格式）
+#   2. recommend_offset_from_gold(...)    在金标上搜索最大化 Cohen κ 的偏移 δ
+#   3. 输出 gold_offset.json，由 PAPERFORGE_DEPTH_GOLD_OFFSET_PATH 指向即可生效（见 _resolved_offset）
+# 复算脚本：scripts/calibration/recompute_gold_offset.py（直接吃真实数据集）。
+# 失败/缺失时全部回退到原函数，向后兼容。
+
+_VALID_VERDICTS = {"accept", "minor_revision", "major_revision", "reject"}
+
+
+def gold_samples_to_calibration(gold: dict | list) -> list[CalibrationSample]:
+    """把金标转为 CalibrationSample 列表（兼容两种格式）。
+
+    格式 A —— 本仓真实盲评金标 calib_set_20.json（CalibrationSample 原生格式）：
+        [{"paper_id", "text_hash", "expert_scores": {"final": ...}, "expert_verdict", "weight"}, ...]
+    格式 B —— 简化 schema 模板 mock_api/depth_gold.json：
+        {"samples": [{"paper_id", "scores": {"calibrated"/"final"}, "verdict"}, ...]}
+    """
+    if isinstance(gold, list):
+        items = gold
+    elif isinstance(gold, dict):
+        items = gold.get("samples", [])
+    else:
+        return []
+    samples: list[CalibrationSample] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        pid = str(item.get("paper_id", item.get("id", "")))
+        if not pid:
+            continue
+        if "expert_scores" in item and isinstance(item["expert_scores"], dict):
+            # 格式 A：真实盲评金标
+            sc = item["expert_scores"]
+            target = float(sc.get("final", sc.get("calibrated", 0.5)))
+            verdict = str(item.get("expert_verdict", "major_revision"))
+            weight = float(item.get("weight", 1.0))
+            text_hash = str(item.get("text_hash", ""))
+        else:
+            # 格式 B：合成 schema 模板
+            sc = item.get("scores") or {}
+            target = float(
+                sc.get("calibrated") or sc.get("final") or item.get("calibrated_score") or 0.5
+            )
+            verdict = str(item.get("verdict", "major_revision"))
+            weight = 1.0
+            text_hash = str(item.get("text_hash", ""))
+        verdict = verdict.lower().replace(" ", "_")
+        if verdict not in _VALID_VERDICTS:
+            verdict = "major_revision"
+        samples.append(
+            CalibrationSample(
+                paper_id=pid,
+                text_hash=text_hash,
+                expert_scores={"final": target},
+                expert_verdict=verdict,
+                weight=weight,
+            )
+        )
+    return samples
+
+
+def recommend_offset_from_gold(
+    gold_path: str,
+    score_fn: Callable[..., list[float]],
+    out_path: str | None = None,
+    grid: list[float] | None = None,
+) -> dict:
+    """在真实金标上搜索使 verdict Cohen κ 最大的偏移 δ，并落盘 gold_offset.json。
+
+    Args:
+        gold_path: 金标 JSON 路径（mock_api/depth_gold.json 格式）。
+        score_fn: 无参调用返回「基线 calibrated_score 列表」（与金标样本顺序一致）。
+        out_path: 输出路径；默认写到 gold_path 同目录的 gold_offset.json。
+        grid: 候选偏移网格，默认 -0.30 ~ +0.30 步长 0.01。
+
+    Returns:
+        {"recommended_offset": float, "kappa": float, "n_samples": int, "out_path": str}
+    """
+    if not os.path.exists(gold_path):
+        logger.warning("金标文件不存在: %s", gold_path)
+        return {"recommended_offset": 0.0, "kappa": 0.0, "n_samples": 0, "out_path": ""}
+    with open(gold_path, encoding="utf-8") as f:
+        gold = json.load(f)
+    samples = gold_samples_to_calibration(gold)
+    if not samples:
+        return {"recommended_offset": 0.0, "kappa": 0.0, "n_samples": 0, "out_path": ""}
+    offset, kappa = auto_offset_from_calibration(samples, score_fn, grid=grid)
+    out_path = out_path or os.path.join(os.path.dirname(gold_path), "gold_offset.json")
+    payload = {
+        "recommended_offset": round(offset, 3),
+        "kappa": round(kappa, 4),
+        "n_samples": len(samples),
+        "source": "gold_driven_calibration",
+        "generated_by": "recommend_offset_from_gold",
+    }
+    try:
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        logger.info("金标驱动偏移已落盘: %s (offset=%.3f, kappa=%.3f)", out_path, offset, kappa)
+    except Exception as e:  # noqa: BLE001 - calibration I/O
+        logger.warning("gold_offset.json 写入失败: %s", e)
+    return {
+        "recommended_offset": offset,
+        "kappa": kappa,
+        "n_samples": len(samples),
+        "out_path": out_path,
     }

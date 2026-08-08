@@ -46,7 +46,9 @@ XLING_MAX_SIM_LOW = (
     0.65  # 最高余弦低于此且含断言性低相似句 → 强烈编造信号，重罚（stray_penalty=0.50）
 )
 XLING_CHAR_OVERLAP_THR = 0.10  # 字符集重叠率低于此 → 跨语言场景，禁用 6-gram 门阀
-COVERAGE_THR = 0.40  # 论文关键句与报告某句向量余弦 ≥ 此且该句非照抄 → 已覆盖
+COVERAGE_THR = (
+    0.55  # 论文关键句与报告某句向量余弦 ≥ 此且该句非照抄 → 已覆盖（调严：0.40→0.55，跨领域区分度）
+)
 COVERAGE_FAIL = 0.30  # 覆盖度低于此 → verdict 降为 needs_depth
 MAX_PAPER_KEYPOINTS = 12  # 从原论文抽取的关键句上限
 MAX_PAPER_SENTENCES = 300  # 参与句对句比对的论文句上限（embed 成本控制）

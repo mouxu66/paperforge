@@ -119,6 +119,11 @@ def _safe_int_map(value):
     return {}
 
 
+def _safe_dict(value):
+    """安全透传 dict 字段（缺失/非 dict 一律返回 {}）。"""
+    return dict(value) if isinstance(value, dict) else {}
+
+
 def analyze_reflection_file(
     path: str,
     db,
@@ -143,6 +148,24 @@ def analyze_reflection_file(
     # 2.5 AI 生成疑似度（事后检测，仅供参考 / 不进入 scores/verdict）
     ai = compute_ai_likelihood(parse.raw_text)
 
+    # 2.6 引用真值校验（ADR-014 P4，解决 W8：感悟报告同样可能编造参考文献）
+    # 仅当 PAPERFORGE_CITATION_VERIFY 开启时执行；否则为空 dict（零开销、向后兼容）。
+    # 结果会在第 5 步被 verdict 硬校验层消费：fabricated_suspected → rewrite_required
+    # （一票否决级，对齐论文侧 FATAL_VETO）；inconsistent → needs_evidence。
+    # 校验本身 fail-open（网络/限流异常降级为 unknown，绝不误杀报告）。
+    citation_integrity: dict = {}
+    _cv_flag = os.environ.get("PAPERFORGE_CITATION_VERIFY")
+    if _cv_flag:
+        try:
+            from .integrity.citation_verifier import assess_citation_integrity
+
+            citation_integrity = assess_citation_integrity(
+                parse.raw_text,
+                verify_online=_cv_flag.strip().lower() in ("1", "true", "on", "yes"),
+            )
+        except Exception:  # noqa: BLE001 - 引用校验异常隔离，不影响主流程
+            citation_integrity = {}
+
     # 3. 现有 4 维（容错）
     four = None
     # 4 维评审的诊断信息（默认值对应「未跑 LLM」）。
@@ -158,8 +181,10 @@ def analyze_reflection_file(
         "llm_failed": False,
         "four_truncated": False,
         "evidence_rejections": {},
+        "score_uncertainty": {},
     }
     # 开发自检开关：PAPERFORGE_BENCH_NO_LLM=1 时跳过 LLM，4 维用结构启发式（快速跑 fidelity）
+    reviewer_verdict: str | None = None  # 评审器最终 verdict（含 crossval 加分），供 verdict 基线
     if os.environ.get("PAPERFORGE_BENCH_NO_LLM") == "1":
         four = _heuristic_four(parse.sections)
     else:
@@ -175,6 +200,11 @@ def analyze_reflection_file(
                 paper_text=full,  # 原论文全文（可选注入 prompt，对照核验理解准确性）
             )
             four = res.scores
+            # verdict 是结果对象的独立字段（不在 scores dict 里），单独取出作基线；
+            # 否则 four.get("verdict") 永远取到默认值，inconsistent 降级分支会失活。
+            # 防御：只接受真实 str（测试替身 Mock 的任意属性会自建 truthy Mock）。
+            _rv = getattr(res, "verdict", None)
+            reviewer_verdict = _rv if isinstance(_rv, str) and _rv else None
         except Exception:  # noqa: BLE001 - reflection pipeline - 子任务异常隔离
             four = None
             diag["llm_failed"] = True
@@ -193,6 +223,8 @@ def analyze_reflection_file(
                     llm_empty=_safe_int(getattr(res, "llm_empty", 0)),
                     four_truncated=_safe_bool(getattr(res, "truncated", False)),
                     evidence_rejections=_safe_int_map(getattr(res, "evidence_rejections", None)),
+                    # ADR-014 P2：不确定门控报告（bootstrap CI），透传给上层供复核/展示。
+                    score_uncertainty=_safe_dict(getattr(res, "score_uncertainty", None)),
                 )
                 # LLM 故障判定：解析彻底失败，或任一次调用空返回（超时/连接失败）。
                 # 此时四维分数是系统故障的产物，不代表报告质量，调用方须视为无效。
@@ -226,6 +258,16 @@ def analyze_reflection_file(
         "fidelity": fid.fidelity if fid.fidelity is not None else 0.0,
         "coverage": cov.coverage if cov.coverage is not None else 0.0,
     }
+    copy_ratio = cov.copy_ratio if cov.copy_ratio is not None else (fid.copy_ratio or 0.0)
+    # ── 照抄封杀：copy_ratio ≥ COPY_RATIO_FAIL → fidelity/coverage 向量分全部置零 ──
+    # 照抄报告在向量层天然高分（每句都能在论文里找到高余弦匹配），占权重 40%。
+    # 此前只联动 verdict 不改原始分，造成「verdict=rewrite_required 但 coverage=0.85」
+    # 的分叉——老师一算就能发现照抄者仍有 40% 的向量保底分。
+    # 现直接清零：照抄 ≠ 忠实，抄来的句子不算「覆盖了核心要点」。
+    copy_crushed = not llm_failed and copy_ratio is not None and copy_ratio >= COPY_RATIO_FAIL
+    if copy_crushed:
+        scores["fidelity"] = 0.0
+        scores["coverage"] = 0.0
     # LLM 失败时平均分也必须为空；否则确定性 fidelity/coverage 的部分加权平均
     # 会制造一个看似真实的总分，继续污染排名/诚信报告。
     if llm_failed:
@@ -240,28 +282,58 @@ def analyze_reflection_file(
             avg = sum(weighted.values()) / len(weighted) if weighted else 0.0
 
     # 5. verdict 扩展：
+    #    - 引用真值（ADR-014 P4，仅 PAPERFORGE_CITATION_VERIFY 开启时非空）：
+    #      fabricated_suspected（Crossref 查无 DOI，疑似编造参考文献）→ rewrite_required
+    #      （一票否决级，对齐论文侧 FATAL_VETO）；inconsistent（文中引用 vs 参考文献
+    #      列表不一致，漏引/虚列）→ 至少 needs_evidence
     #    - copy_ratio 过高（大量照抄论文原文）→ rewrite_required
     #    - fidelity 过低 + 非绑定错配（报告编造论点）→ rewrite_required
     #    - coverage 过低（论文核心没讲到，正确性不足）→ needs_depth
     #    - 绑定错配：fidelity 极低且无照抄（论文绑错）→ 仅 advisory，不覆盖 verdict
-    verdict = "llm_failed" if llm_failed else four.get("verdict", "needs_evidence")
-    copy_ratio = cov.copy_ratio if cov.copy_ratio is not None else (fid.copy_ratio or 0.0)
-    if not llm_failed and copy_ratio is not None and copy_ratio >= COPY_RATIO_FAIL:
-        verdict = "rewrite_required"
-    elif not llm_failed and fid.fidelity is not None and fid.fidelity < FIDELITY_FAIL:
-        # 绑定错配保护：fidelity 极低 + 照抄极少 + 无任何有效复述句
-        # （报告与绑定论文零交集）→ 疑似论文绑错，仅 advisory，不强制 rewrite_required。
-        # 真实编造报告通常仍会有零星句子与论文沾边（grounded_ratio > 0）→ 照常降级。
-        mismatch = (
-            fid.grounded_ratio is not None
-            and fid.grounded_ratio == 0
-            and copy_ratio is not None
-            and copy_ratio < 0.05
+    verdict = (
+        "llm_failed" if llm_failed else (reviewer_verdict or four.get("verdict", "needs_evidence"))
+    )
+    citation_override_reason = ""
+    if copy_crushed:
+        citation_override_reason = (
+            f"照抄封杀: copy_ratio={copy_ratio:.2%} ≥ {COPY_RATIO_FAIL:.0%}，"
+            f"向量层 fidelity/coverage 均置零"
         )
-        if not mismatch:
+    if not llm_failed and citation_integrity:
+        _cv_integrity_flag = citation_integrity.get("integrity_flag")
+        if _cv_integrity_flag == "fabricated_suspected":
             verdict = "rewrite_required"
-    elif not llm_failed and cov.coverage is not None and cov.coverage < COVERAGE_FAIL:
-        verdict = "needs_depth"
+            citation_override_reason = (
+                "引用真值校验: 疑似编造参考文献（Crossref 查无 DOI）→ verdict=rewrite_required"
+            )
+        elif _cv_integrity_flag == "inconsistent" and verdict not in (
+            "rewrite_required",
+            "needs_depth",
+            "needs_evidence",
+        ):
+            verdict = "needs_evidence"
+            citation_override_reason = (
+                "引用真值校验: 文中引用与参考文献列表不一致 → verdict=needs_evidence"
+            )
+    # 照抄/编造/覆盖度硬规则：仅在引用否决未把 verdict 锁为 rewrite_required 时评估
+    # （弱规则不得覆盖强裁决）。
+    if not llm_failed and verdict != "rewrite_required":
+        if copy_ratio is not None and copy_ratio >= COPY_RATIO_FAIL:
+            verdict = "rewrite_required"
+        elif fid.fidelity is not None and fid.fidelity < FIDELITY_FAIL:
+            # 绑定错配保护：fidelity 极低 + 照抄极少 + 无任何有效复述句
+            # （报告与绑定论文零交集）→ 疑似论文绑错，仅 advisory，不强制 rewrite_required。
+            # 真实编造报告通常仍会有零星句子与论文沾边（grounded_ratio > 0）→ 照常降级。
+            mismatch = (
+                fid.grounded_ratio is not None
+                and fid.grounded_ratio == 0
+                and copy_ratio is not None
+                and copy_ratio < 0.05
+            )
+            if not mismatch:
+                verdict = "rewrite_required"
+        elif cov.coverage is not None and cov.coverage < COVERAGE_FAIL:
+            verdict = "needs_depth"
 
     # 5.5 分数/verdict 联动：照抄或编造判定后，总分封顶（防「分数虚高但 verdict 改写」分叉）
     #     — 权重重构后 coverage 权重 0.35，照抄报告的 coverage 可能很高，
@@ -291,6 +363,7 @@ def analyze_reflection_file(
         "stray_claims": fid.stray_claims,
         "copy_ratio": copy_ratio,
         "copy_sentences": getattr(fid, "copy_sentences", []),
+        "copy_crushed": copy_crushed,
         # 修复：four 是 dict（res.scores），dict 上 getattr("truncated") 恒为 False，
         # 导致 truncated 永远报 False。改从 reviewer 结果透传的 diag 取。
         "truncated": diag["four_truncated"],
@@ -302,6 +375,8 @@ def analyze_reflection_file(
         "llm_empty": diag["llm_empty"],
         "llm_failed": diag["llm_failed"],
         "evidence_rejections": diag["evidence_rejections"],
+        # ADR-014 P2：分数不确定性（bootstrap 95% CI；仅 PAPERFORGE_UNCERTAINTY_GATE 开启时非空）
+        "score_uncertainty": diag["score_uncertainty"],
         # —— 论文→报告 反向覆盖度（正确性核心指标）——
         "coverage": cov.coverage,
         "coverage_status": cov.status,
@@ -313,4 +388,7 @@ def analyze_reflection_file(
         "ai_likelihood_tier": ai["tier"],
         "ai_likelihood_signals": ai["signals"],
         "ai_likelihood_note": ai["note"],
+        # —— 引用真值校验（ADR-014 P4，fabricated 已进 verdict 硬校验层）——
+        "citation_integrity": citation_integrity,
+        "citation_override_reason": citation_override_reason,
     }

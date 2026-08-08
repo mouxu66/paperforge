@@ -19,6 +19,7 @@ PaperForge 框架演进过程中的关键架构决策记录，遵循 [Michael Ny
 | 011 | DEPTH 校准偏移决策（SCORE_OFFSET / DEPTH_AUTO_OFFSET / DEFAULT_OFFSET_TABLE） | ✅ Accepted | 2026-07-24 |
 | 012 | FATAL_VETO 学术诚信护栏 | ✅ Accepted | 2026-07-30 |
 | 013 | VRAM 调度重构：text-Qwen↔vision-Qwen 双模型仲裁 | 🔶 Proposed | 2026-07-31 |
+| 014 | DEPTH × 感悟报告 评分严谨化改造（专家评审面板 + 引用真值校验） | 🔶 Proposed | 2026-08-06 |
 
 ## ADR 模板
 

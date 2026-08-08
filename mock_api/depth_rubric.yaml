@@ -1,0 +1,64 @@
+# DEPTH v4.2 显式评分量表（ADR-014 · P1）
+#
+# 目的：把 DEPTH 各维度 0~1 分数映射为「人类评审可读、可复核」的明确档位，
+# 解决原系统「分数从哪来、每档意味着什么」不透明的薄弱点（W1/W9）。
+# 评审面板（depth_panel.py）与金标回归（tests/test_depth_gold_regression.py）
+# 均以此量表为单一事实来源。
+#
+# 约定：
+#   - 分数区间用 [lo, hi] 闭区间表示（hi 可省略表示到 1.0）。
+#   - 每档给出：label（定性档位）、requires（该档必须存在的证据）、red_flags（该档不该出现的信号）。
+#   - verdict 由 calibrated_score 经偏移后套用下方 verdict_mapping。
+
+schema_version: 1
+
+# ── 各评分维度档位定义 ──────────────────────────────────────────────────────
+dimensions:
+  novelty_score:        # 创新性
+    - { lo: 0.80, label: "原创性强", requires: ["明确对比已有 SOTA 差异", "指出具体未解决问题"], red_flags: ["仅复述已有方法", "差异描述模糊"] }
+    - { lo: 0.50, label: "改良型", requires: ["在已有方法上有可量化改进"], red_flags: ["改进幅度不可量化"] }
+    - { lo: 0.20, label: "增量微小", requires: ["与基线差异有限"], red_flags: ["自称为首创但文献已存在"] }
+    - { lo: 0.00, label: "无新颖性", requires: [], red_flags: ["纯综述/复现宣称创新"] }
+
+  rigor_score:         # 严谨性
+    - { lo: 0.80, label: "方法严谨", requires: ["消融实验", "统计检验/置信区间", "多数据集验证"], red_flags: [] }
+    - { lo: 0.50, label: "基本严谨", requires: ["有对比实验", "说明超参/设置"], red_flags: ["无基线对比"] }
+    - { lo: 0.20, label: "论证薄弱", requires: [], red_flags: ["结论无实验支撑", "样本量过小未说明"] }
+    - { lo: 0.00, label: "不严谨", requires: [], red_flags: ["主张与数据矛盾"] }
+
+  influence_score:      # 影响力（客观指标 + 内容）
+    - { lo: 0.80, label: "高影响", requires: ["高被引/顶会"], red_flags: [] }
+    - { lo: 0.40, label: "中等影响", requires: ["一定引用基础"], red_flags: [] }
+    - { lo: 0.00, label: "低影响", requires: [], red_flags: ["引用数为 0 却宣称重要"] }
+
+  reproducibility_score: # 可复现性
+    - { lo: 0.80, label: "高度可复现", requires: ["公开代码/数据", "环境/依赖声明"], red_flags: [] }
+    - { lo: 0.50, label: "部分可复现", requires: ["关键设置描述完整"], red_flags: [] }
+    - { lo: 0.00, label: "不可复现", requires: [], red_flags: ["关键超参/数据缺失"] }
+
+  hotspot_alignment_score: # 与研究方向契合度
+    - { lo: 0.70, label: "高度契合", requires: ["直接回应研究热点"], red_flags: [] }
+    - { lo: 0.30, label: "部分契合", requires: [], red_flags: [] }
+    - { lo: 0.00, label: "偏离", requires: [], red_flags: ["与课题无关"] }
+
+  figure_consistency_score: # 图文一致性（有图时）
+    - { lo: 0.70, label: "图文一致", requires: ["图表支撑正文论断"], red_flags: [] }
+    - { lo: 0.30, label: "部分一致", requires: [], red_flags: ["图注与正文矛盾"] }
+    - { lo: 0.00, label: "不一致", requires: [], red_flags: ["正文主张图表未支撑"] }
+
+# ── 终评 verdict 映射（偏移后 calibrated_score） ─────────────────────────────
+verdict_mapping:
+  accept: 0.80          # ≥ 0.80
+  minor_revision: 0.70  # ≥ 0.70
+  major_revision: 0.50  # ≥ 0.50
+  reject: 0.00          # < 0.50
+
+# ── 否决护栏（与 DEPTH FATAL_VETO 对齐，但明确列出触发条件） ─────────────────
+veto:
+  min_fatal: 2          # 出现 ≥2 条致命缺陷才一票否决
+  accept_floor: 0.90     # 偏移后分 ≥0.90 且 LLM 判 accept 时保护不被否决
+  fatal_conditions:
+    - "核心实验不可复现且无合理解释"
+    - "编造/无法核实的参考文献（见 citation_integrity.fabricated_suspected）"
+    - "正文主张与图表数据直接矛盾"
+    - "样本/数据存在严重选择性偏差未说明"

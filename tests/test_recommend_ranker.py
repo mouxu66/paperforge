@@ -15,6 +15,7 @@ from mock_api.recommend_ranker import (
     compute_recency,
     mmr_rerank,
     recommend,
+    recommend_from_search,
 )
 
 
@@ -298,3 +299,84 @@ class TestRecommend:
         results = recommend(db, "context", ["p1", "p2"], RecommendConfig())
         assert len(results) == 1
         assert results[0].paper_id == "p2"
+
+
+class TestRecommendFromSearch:
+    """recommend_from_search 端到端：真正走 hybrid_search_papers 召回。"""
+
+    def test_uses_hybrid_search_papers_for_recall(self, monkeypatch):
+        """候选来自 hybrid_search_papers（而非全表扫描），再交给 recommend。"""
+        from mock_api import recommend_ranker as rr
+
+        db = MagicMock()
+        captured = {}
+
+        class FakePaper:
+            def __init__(self, pid):
+                self.id = pid
+
+        monkeypatch.setattr(
+            rr,
+            "hybrid_search_papers",
+            lambda d, q, top_k=10: [FakePaper("p1"), FakePaper("p2")],
+        )
+
+        def fake_meta(db, pid):
+            return {
+                "id": pid,
+                "title": f"Paper {pid}",
+                "abstract": "We propose a method and achieve 95% accuracy.",
+                "year": 2026,
+                "citations": 10,
+                "journal": "Nature",
+            }
+
+        monkeypatch.setattr(rr, "_get_paper_meta", fake_meta)
+        monkeypatch.setattr(rr, "_get_embedding_by_ids", lambda db, ids: {})
+        monkeypatch.setattr(rr, "vector_available", lambda: False)
+
+        results = rr.recommend_from_search(db, "transformer attention", top_k=10)
+
+        assert len(results) == 2
+        assert results[0].paper_id == "p1"
+        for r in results:
+            assert 0.0 <= r.recommend_score <= 1.0
+            assert r.tier in {"strong", "good", "optional"}
+
+    def test_empty_recall_returns_empty(self, monkeypatch):
+        """召回层无结果 → 返回空列表。"""
+        from mock_api import recommend_ranker as rr
+
+        db = MagicMock()
+        monkeypatch.setattr(rr, "hybrid_search_papers", lambda d, q, top_k=10: [])
+
+        assert rr.recommend_from_search(db, "nothing matches", top_k=10) == []
+
+    def test_default_top_k_uses_config(self, monkeypatch):
+        """未传 top_k 时使用 config.retrieve_top_k（默认 40）。"""
+        from mock_api import recommend_ranker as rr
+
+        db = MagicMock()
+        captured = {}
+        monkeypatch.setattr(
+            rr,
+            "hybrid_search_papers",
+            lambda d, q, top_k=10: (captured.__setitem__("top_k", top_k) or []),
+        )
+        rr.recommend_from_search(db, "context")
+        assert captured.get("top_k") == 40  # RecommendConfig().retrieve_top_k
+
+
+# 兼容旧导入：原文件末尾直接 import recommend_from_search 的用例若存在，
+# 通过 __all__ 显式导出避免遗漏。
+__all__ = [
+    "RecommendConfig",
+    "RecommendResult",
+    "compute_authority",
+    "compute_citable",
+    "compute_match",
+    "compute_recency",
+    "mmr_rerank",
+    "recommend",
+    "recommend_from_search",
+]

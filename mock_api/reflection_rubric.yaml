@@ -1,0 +1,132 @@
+# 感悟报告显式评分量表（ADR-014 · P1，reflection 侧）
+#
+# 目的：把 depth_eval_reflection.py PROMPT_REFLECTION 中「写在 prompt 字符串里的
+# 三档锚点」抽为独立、可审计的单一事实来源，并把 reflection_fidelity.py 的
+# 硬编码阈值（W9 类魔数）集中治理于此，逐项标注「依据」。
+#
+# 约定：
+#   - 分数区间用 [lo, hi] 闭区间（hi 省略表示到 1.0）。
+#   - 每档给出：label（定性档位）、requires（该档必须出现的信号）、
+#     red_flags（该档不该出现的信号）。
+#   - verdict 由代码层硬校验规则决定（evidence 门阀 + 阈值），此处仅作档位对照。
+#
+# 使用：
+#   - mock_api/reflection_rubric.py 的 load_rubric() 读取（fail-open）。
+#   - 阈值同时仍是代码常量（运行时的真实裁决来源）；本文件是「治理记录 +
+#     一致性测试基准」——tests/test_reflection_rubric_consistency.py 断言
+#     yaml 值与代码常量一致，防止魔数漂移。
+
+schema_version: 1
+
+# ── 4 维评分锚点（与 PROMPT_REFLECTION 的三档锚点一致） ─────────────────────
+dimensions:
+  understanding_accuracy:  # 对原论文方法/结论的复述是否具体、准确、自洽
+    - { lo: 0.80, label: "好", requires: ["方法/结论复述具体准确", "关键数字与术语齐全"], red_flags: ["复述含糊", "张冠李戴", "关键概念错误"] }
+    - { lo: 0.50, label: "中", requires: ["复述正确但简略"], red_flags: ["缺关键细节"] }
+    - { lo: 0.20, label: "差", requires: [], red_flags: ["复述含糊", "张冠李戴", "关键概念错误"] }
+
+  analysis_depth:  # 对原文细节的展开程度
+    - { lo: 0.80, label: "好", requires: ["对原文细节深入展开", "有机制解释或权衡讨论"], red_flags: [] }
+    - { lo: 0.50, label: "中", requires: ["有少量分析但停留在表面"], red_flags: [] }
+    - { lo: 0.20, label: "差", requires: ["只复述无展开"], red_flags: [] }
+
+  innovative_insights:  # 原创/批判性思考
+    - { lo: 0.80, label: "好", requires: ["有原创批判", "独立见解", "跨领域联系"], red_flags: [] }
+    - { lo: 0.50, label: "中", requires: ["有零星想法但未深入"], red_flags: [] }
+    - { lo: 0.20, label: "差", requires: ["无独立观点、纯总结"], red_flags: [] }
+
+  evidence_support:  # 观点是否有具体引述/数据/例子支撑
+    - { lo: 0.80, label: "好", requires: ["多数观点有独立数据/数字/例子逐条支撑", "引述≥3 处、含具体数值"], red_flags: [] }
+    - { lo: 0.50, label: "中", requires: ["有引述但零散", "缺乏数据/数字"], red_flags: [] }
+    - { lo: 0.20, label: "差", requires: ["观点无引用/数据支撑"], red_flags: [] }
+
+# ── verdict 档位（代码层硬校验决定，此处仅为对照说明） ───────────────────────
+verdicts:
+  well_done:        # 证据充实、分析有深度、观点有支撑
+  needs_evidence:   # 平均分低于 AVERAGE_SCORE_POOR，或引用不一致
+  needs_depth:      # 理解/创新不足，或覆盖度过低
+  rewrite_required: # 证据不足(<2)、照抄(copy_ratio)、fidelity 过低、编造引用
+
+# ── 硬校验阈值治理（W9 类魔数；value 必须与代码常量一致） ────────────────────
+# evidence_basis 说明每个阈值的来源；未知/拍脑袋的标注 "heuristic"，留实验依据位。
+thresholds:
+  # —— depth_eval_reflection.py 证据门阀 ——
+  MIN_EVIDENCE_FOR_VALID_REVIEW:
+    value: 2
+    evidence_basis: "heuristic（<2 条无法支撑任何评分；论文侧 FATAL_VETO_MIN=2 同源）"
+  MIN_EVIDENCE_FOR_HIGH_SCORE:
+    value: 5
+    evidence_basis: "heuristic（调严 4→5，防证据不足推高分）"
+  MAX_SCORE_WHEN_EVIDENCE_INSUFFICIENT:
+    value: 0.3
+    evidence_basis: "heuristic（R1 证据门阀的分数上限）"
+  MAX_SCORE_WHEN_EVIDENCE_BELOW_HIGH:
+    value: 0.85
+    evidence_basis: "heuristic（R1.5：证据 2-4 条时分数上限）"
+  UNDERSTANDING_THRESHOLD_DEEP:
+    value: 0.50
+    evidence_basis: "heuristic（调严 0.40→0.50；需实验标定）"
+  AVERAGE_SCORE_POOR:
+    value: 0.65
+    evidence_basis: "heuristic（调严 0.50→0.65；需实验标定）"
+  INNOVATION_THRESHOLD:
+    value: 0.45
+    evidence_basis: "heuristic（创新不足门阀；需实验标定）"
+
+  # —— reflection_fidelity.py 忠实度/照抄/覆盖度阈值 ——
+  FIDELITY_THR:
+    value: 0.40
+    evidence_basis: "spec（reflection_analysis_spec.html 第六章）"
+  COPY_SIM_THR:
+    value: 0.85
+    evidence_basis: "spec（逐字/逐句翻译判定）"
+  MIN_COPY_CHARS:
+    value: 15
+    evidence_basis: "spec（短句共享名词防误报）"
+  COPY_GRAM_N:
+    value: 8
+    evidence_basis: "spec（字符 n-gram 粒度，中英通用）"
+  COPY_GRAM_HIT:
+    value: 0.6
+    evidence_basis: "spec（≥60% gram 命中判照抄）"
+  GROUNDED_GRAM_MIN:
+    value: 0.15
+    evidence_basis: "spec（余弦≥0.40 句子的 6-gram 下限）"
+  COPY_RATIO_FAIL:
+    value: 0.30
+    evidence_basis: "heuristic（verdict 联动；需实验标定）"
+  FIDELITY_FAIL:
+    value: 0.30
+    evidence_basis: "heuristic（verdict 联动；需实验标定）"
+  STRAY_THR:
+    value: 0.35
+    evidence_basis: "heuristic（疑似编造句相似度下限）"
+  XLING_MAX_SIM_HIGH:
+    value: 0.70
+    evidence_basis: "heuristic（跨语言编造中等惩罚线）"
+  XLING_MAX_SIM_LOW:
+    value: 0.65
+    evidence_basis: "heuristic（跨语言编造重罚线）"
+  XLING_CHAR_OVERLAP_THR:
+    value: 0.10
+    evidence_basis: "heuristic（跨语言场景判定）"
+  COVERAGE_THR:
+    value: 0.55
+    evidence_basis: "spec（论文关键句被覆盖的余弦阈值；2026-08-06 调严：0.40→0.55，41篇人工基准 coverage 均值0.668、std0.039，0.40低于1σ下限无法区分跨领域错配）"
+  COVERAGE_FAIL:
+    value: 0.30
+    evidence_basis: "heuristic（verdict 联动；需实验标定）"
+  MAX_PAPER_KEYPOINTS:
+    value: 12
+    evidence_basis: "heuristic（关键句抽取上限，embed 成本控制）"
+  MAX_PAPER_SENTENCES:
+    value: 300
+    evidence_basis: "heuristic（句对句比对上限，embed 成本控制）"
+  MIN_REPORT_CHARS:
+    value: 100
+    evidence_basis: "heuristic（报告正文最短字符数）"
+
+  # —— reflection_pipeline.py 分数/verdict 联动 ——
+  REWRITE_AVG_CAP:
+    value: 0.60
+    evidence_basis: "heuristic（rewrite_required 时总分封顶，防分叉）"

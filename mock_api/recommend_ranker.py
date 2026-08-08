@@ -61,6 +61,17 @@ except Exception as exc:  # pragma: no cover  # noqa: BLE001 - 极端降级 impo
     logger.debug("semantic_scholar.get_journal_tier 导入失败: %s", exc)
     get_journal_tier = None
 
+# 召回层入口：顶层导入供 recommend_from_search 使用（测试可 monkeypatch 替换）。
+# 懒加载避免循环依赖：crud.search 内部仅在函数内引用本模块（mmr_rerank）。
+hybrid_search_papers: Callable | None = None
+
+try:
+    from .crud.search import hybrid_search_papers as _hybrid_search_papers
+
+    hybrid_search_papers = _hybrid_search_papers
+except Exception as exc:  # pragma: no cover  # noqa: BLE001 - 极端降级 import fallback
+    logger.debug("hybrid_search_papers 导入失败（延迟到调用时重试）: %s", exc)
+
 
 # ===========================================================================
 # 配置（对应规格「配置总表 12 项」+ 原 4 个待确认项）
@@ -592,22 +603,17 @@ def _hotspot_display(abstract: str, config: RecommendConfig) -> str | None:
 def recommend_from_search(
     db, context_text: str, top_k: int | None = None, config: RecommendConfig | None = None
 ) -> list[RecommendResult]:
-    """端到端：召回层 hybrid_search → 推荐重排。
+    """端到端：召回层 hybrid_search_papers（FTS5 + 向量 + RRF）→ 推荐重排。
 
-    TODO(集成): 替换为项目实际的 hybrid_search_papers 调用。
-    当前为示意：从 papers 表取全部 id 作为候选（小规模库可如此，大规模须走召回层）。
+    RRF 融合负责召回候选，recommend() 内做加权评分 + MMR 多样性重排。
+    召回函数取模块级 hybrid_search_papers（顶层导入），便于测试 monkeypatch 替换。
     """
     config = config or RecommendConfig()
     top_k = top_k or config.retrieve_top_k
-    from .crud import get_papers
-
-    rows, _ = get_papers(db, keyword=None, category=None, sort=None, page=1, page_size=top_k)
-    # 上面仅示意；正式集成应调用 hybrid_search_papers(db, context_text, top_k)
-    # 下面用最小可用实现：
-    candidates = [p.id for p in rows]
-    if not candidates:
-        # 回退：直接查 papers 表前 top_k（演示用）
-        from .models import Paper as PaperORM
-
-        candidates = [r.id for r in db.query(PaperORM.id).limit(top_k).all()]
+    # 顶层 try/except 若吞掉导入失败，此处二次兜底避免 None 调用（见顶层导入注释）
+    fn = hybrid_search_papers
+    if fn is None:
+        from .crud.search import hybrid_search_papers as fn
+    papers = fn(db, context_text, top_k=top_k)
+    candidates = [p.id for p in papers]
     return recommend(db, context_text, candidates, config)

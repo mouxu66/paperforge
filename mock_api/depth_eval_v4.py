@@ -357,6 +357,15 @@ class DepthV4Result(BaseModel):
     node_score_stds: dict[str, float] = Field(default_factory=dict)
     node_logs: list[str] = Field(default_factory=list)
     evaluated_at: str = ""
+    # ADR-014 P0：可复现性快照。记录本次评测实际使用的 seed / 模型 / 提供商 / 温度，
+    # 使任何一次评分都可被他人精确复现。空 dict 表示未启用可复现种子。
+    llm_params_snapshot: dict = Field(default_factory=dict)
+    # ADR-014 P4：引用真值校验报告（解决 W8：此前只数引用个数、不查真伪）。
+    # 仅当 PAPERFORGE_CITATION_VERIFY 开启时填充，默认空 dict（零开销、向后兼容）。
+    citation_integrity: dict = Field(default_factory=dict)
+    # ADR-014 P2：分数不确定性（bootstrap 95% CI + 不确定门控）。解决 W4：此前只有点估计。
+    # 仅当 PAPERFORGE_UNCERTAINTY_GATE 开启时填充，默认空 dict（零开销、向后兼容）。
+    score_uncertainty: dict = Field(default_factory=dict)
 
 
 # v4.2: Rebuild DAGOutputs after all result types are defined.
@@ -513,9 +522,22 @@ def _call_llm_provider(
     v4.2: 仅对 provider 调用层做 retry（3 次，1s/2s/4s），
     外层 call_llm 仍然 fail-open 返回 ""，保持向后兼容。
     """
+    from .llm.reproducibility import get_eval_seed
+
     factory = get_factory()
     provider = factory.get_provider()
-    return provider.chat(messages, temperature=temperature, max_tokens=max_tokens, **extra_kwargs)
+    result = provider.chat(messages, temperature=temperature, max_tokens=max_tokens, **extra_kwargs)
+    # ADR-014 P0：把本次实际使用的种子 / 模型 / 提供商写入结果 meta，
+    # 供结果存档，使分数可精确复现。任何异常都不应影响主流程。
+    try:
+        seed = extra_kwargs.get("seed") if "seed" in extra_kwargs else get_eval_seed()
+        if seed is not None:
+            result.meta["seed"] = seed
+        result.meta["model"] = getattr(provider, "model", None)
+        result.meta["provider"] = getattr(provider, "provider_name", None)
+    except Exception:  # noqa: BLE001 - 快照仅为存档
+        pass
+    return result
 
 
 def call_llm(
@@ -550,6 +572,9 @@ def call_llm(
         LLM 响应内容，或 None（表示调用失败 / 超时 / 不可恢复错误）。
         调用方必须显式检查 None，而非用空字符串继续解析（会产出垃圾分数）。
     """
+    # ADR-014 P0：可复现种子（延迟导入，避免模块顶层循环依赖）
+    from .llm.reproducibility import get_eval_seed, with_eval_seed
+
     # ── 缓存检查 ──
     cache_key = 0  # 默认值，防止缓存块异常时未赋值
     try:
@@ -559,7 +584,9 @@ def call_llm(
                 temperature = _t
             if max_tokens is None:
                 max_tokens = _m
-        cache_key = _llm_cache_key(system_prompt, prompt, temperature, max_tokens, grammar)
+        cache_key = _llm_cache_key(
+            system_prompt, prompt, temperature, max_tokens, grammar, get_eval_seed()
+        )
         cached = _llm_cache_get(cache_key)
         if cached is not None:
             logger.debug("DEPTH v4.1 LLM 缓存命中")
@@ -588,6 +615,9 @@ def call_llm(
         extra_kwargs: dict[str, Any] = {}
         if grammar and _depth_grammar_enabled():
             extra_kwargs["grammar"] = grammar
+        # ADR-014 P0：注入可复现种子（仅当 PAPERFORGE_EVAL_SEED 已设置；
+        # 未设置时等同于历史行为，完全向后兼容）。with_eval_seed 已在函数顶部导入。
+        extra_kwargs = with_eval_seed(extra_kwargs)
         executor = _get_llm_watchdog_executor()
         future = executor.submit(
             _call_llm_provider,
@@ -643,12 +673,14 @@ def _llm_cache_key(
     temperature: float,
     max_tokens: int,
     grammar: str | None = None,
+    seed: int | None = None,
 ) -> int:
     """生成缓存键（sha256，进程重启后仍稳定）。
 
     grammar 纳入键：同一 prompt 在有/无语法约束下输出不同，不能共用缓存。
+    seed 纳入键（ADR-014 P0）：固定种子下输出确定，但不同种子必须隔离缓存。
     """
-    raw = f"{system_prompt}\n{prompt}\n{temperature}\n{max_tokens}\n{grammar or ''}"
+    raw = f"{system_prompt}\n{prompt}\n{temperature}\n{max_tokens}\n{grammar or ''}\n{seed}"
     return int(hashlib.sha256(raw.encode("utf-8")).hexdigest(), 16) % (2**63)
 
 
@@ -3561,6 +3593,7 @@ class DepthReviewer:
             weights,
             node_stds=self._node_stds,
             qf=qf,
+            full_text=full_text,
         )
 
     # ------------------------------------------------------------------
@@ -3823,6 +3856,7 @@ class DepthReviewer:
             weights,
             node_stds=self._node_stds,
             qf=qf_res,
+            full_text=full_text,
         )
 
     # ------------------------------------------------------------------
@@ -3846,6 +3880,7 @@ class DepthReviewer:
         weights: dict[str, float],
         node_stds: dict[str, dict[str, float]] | None = None,
         qf: QFResult | None = None,
+        full_text: str = "",
     ) -> DepthV4Result:
         node_stds = node_stds or {}
         qf = qf or QFResult()
@@ -3917,7 +3952,92 @@ class DepthReviewer:
             node_score_stds=flat_stds,
             node_logs=list(self._logs),
             evaluated_at=datetime.now().isoformat(),
+            llm_params_snapshot=_eval_params_snapshot(),
+            citation_integrity=_citation_integrity_report(full_text),
+            score_uncertainty=_score_uncertainty_report(q5c.calibrated_score, q2, q3, q4, q5c),
         )
+
+
+def _eval_params_snapshot() -> dict:
+    """ADR-014 P0：收集本次评测的 LLM 参数快照（种子 / 模型 / 提供商）。
+
+    fail-open：任何异常都返回空 dict，绝不因快照失败影响主流程。
+    """
+    try:
+        from .llm.reproducibility import get_llm_params_snapshot
+
+        return get_llm_params_snapshot()
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _citation_integrity_report(full_text: str) -> dict:
+    """ADR-014 P4：论文侧引用真值校验（解决 W8：此前只数引用个数、不查真伪）。
+
+    环境开关（默认关闭，零开销、100% 向后兼容）：
+      - 未设置 PAPERFORGE_CITATION_VERIFY            → 返回 {}（不计算）
+      - PAPERFORGE_CITATION_VERIFY=offline          → 仅本地抽取 + 引用一致性（不触网）
+      - PAPERFORGE_CITATION_VERIFY=1/true/on/yes     → 额外接 Crossref 在线核验真伪
+
+    fail-open：任何异常（网络/解析/限流）都返回 {}，绝不阻断评测管线。
+    """
+    raw = os.environ.get("PAPERFORGE_CITATION_VERIFY")
+    if raw is None or raw.strip() == "":
+        return {}
+    mode = raw.strip().lower()
+    if mode in ("offline",):
+        online = False
+    elif mode in ("1", "true", "yes", "on"):
+        online = True
+    else:
+        # 其他非空值视为开启离线一致性检查（安全默认）
+        online = False
+    try:
+        from .integrity.citation_verifier import assess_citation_integrity
+
+        return assess_citation_integrity(full_text, verify_online=online)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("引用真值校验异常降级: %s", e)
+        return {}
+
+
+def _score_uncertainty_report(
+    calibrated_score: float,
+    q2: Any,
+    q3: Any,
+    q4: Any,
+    q5c: Any,
+) -> dict:
+    """ADR-014 P2：分数不确定性（bootstrap 95% CI + 不确定门控，解决 W4 点估计无置信）。
+
+    用各维度子分数作为 bootstrap 样本，估计整体质量评分的置信区间；
+    CI 过宽时（且开启 PAPERFORGE_UNCERTAINTY_GATE）标为 needs_human_review。
+
+    仅当 PAPERFORGE_UNCERTAINTY_GATE 开启时计算，默认返回 {}（零开销、向后兼容）。
+    fail-open：任何异常返回 {}，绝不改变原有 verdict。
+    """
+    raw = os.environ.get("PAPERFORGE_UNCERTAINTY_GATE")
+    if raw is None or raw.strip() == "":
+        return {}
+    gate = raw.strip().lower() in ("1", "true", "on", "yes")
+    try:
+        from .stats.bootstrap import uncertainty_gate
+
+        sub_scores = [
+            float(getattr(q2, "novelty_score", 0.5)),
+            float(getattr(q2, "hotspot_alignment_score", 0.5)),
+            float(getattr(q3, "rigor_score", 0.5)),
+            float(getattr(q4, "influence_score", 0.5)),
+            float(getattr(q4, "reproducibility_score", 0.5)),
+        ]
+        width = float(os.environ.get("PAPERFORGE_UNCERTAINTY_WIDTH", "0.15"))
+        result = uncertainty_gate(
+            float(calibrated_score), sub_scores, width_threshold=width, gate_enabled=gate
+        )
+        return result.to_dict()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("不确定门控异常降级: %s", e)
+        return {}
 
 
 # ===========================================================================

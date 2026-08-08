@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "note": "DEPTH 人工金标（ADR-014 · P3）。⚠️ 当前为占位示例（合成数据，仅用于跑通回归测试骨架）。请替换为真实人工盲评金标后再启用 PAPERFORGE_GOLD_OFFSET_PATH。calibrated_score 与 verdict 已按偏移后阈值（accept≥0.80 / minor≥0.70 / major≥0.50 / reject<0.50）对齐。",
+  "source": "PLACEHOLDER_SYNTHETIC",
+  "samples": [
+    {
+      "paper_id": "gold_demo_001",
+      "scores": {
+        "novelty": 0.88,
+        "rigor": 0.82,
+        "influence": 0.80,
+        "reproducibility": 0.80
+      },
+      "calibrated_score": 0.85,
+      "verdict": "accept"
+    },
+    {
+      "paper_id": "gold_demo_002",
+      "scores": {
+        "novelty": 0.70,
+        "rigor": 0.72,
+        "influence": 0.68,
+        "reproducibility": 0.70
+      },
+      "calibrated_score": 0.72,
+      "verdict": "minor_revision"
+    },
+    {
+      "paper_id": "gold_demo_003",
+      "scores": {
+        "novelty": 0.25,
+        "rigor": 0.30,
+        "influence": 0.20,
+        "reproducibility": 0.35
+      },
+      "calibrated_score": 0.40,
+      "verdict": "reject"
+    },
+    {
+      "paper_id": "gold_demo_004",
+      "scores": {
+        "novelty": 0.60,
+        "rigor": 0.62,
+        "influence": 0.58,
+        "reproducibility": 0.60
+      },
+      "calibrated_score": 0.60,
+      "verdict": "major_revision"
+    },
+    {
+      "paper_id": "gold_demo_005",
+      "scores": {
+        "novelty": 0.52,
+        "rigor": 0.55,
+        "influence": 0.50,
+        "reproducibility": 0.48
+      },
+      "calibrated_score": 0.55,
+      "verdict": "major_revision"
+    }
+  ]
+}

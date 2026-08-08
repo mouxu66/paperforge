@@ -1,0 +1,10 @@
+{
+  "recommended_offset": -0.18,
+  "recommended_kappa": 0.4167,
+  "adopted_offset": -0.09,
+  "adopted_kappa": 0.375,
+  "kappa_before": 0.1892,
+  "n_samples": 20,
+  "source": "calib_my_review_2026-07-24 (blind_review_comparison, 20 stratified samples)",
+  "note": "recommended_offset 为 20 样本数据最优（过拟合，不采用）；生产沿用 adopted_offset=-0.09（三方印证稳健值）。"
+}

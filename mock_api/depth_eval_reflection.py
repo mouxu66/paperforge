@@ -117,6 +117,125 @@ UNDERSTANDING_THRESHOLD_DEEP = 0.50  # 理解准确性 < 此即判 needs_depth�
 AVERAGE_SCORE_POOR = 0.65  # 平均 < 此即判 needs_evidence（调严：0.50→0.65）
 INNOVATION_THRESHOLD = 0.45  # 创新见解 < 此即判 needs_depth（新增门阀：创新不足）
 
+_INNOVATION_NO_MARKER_CAP = 0.50  # R4.5：无原创性标记时创新分封顶（防千问 validates_confidence）
+
+# ======== ADR-014 P7：千问校准层（5-AI 交叉验证诊断所得） ========
+# 千问偏松的三大盲区：① 对缺段报告仍打 0.85+ 高分；
+# ② 对反思空洞（reflection 段 < 100 字）的 innovate_insights 仍在 0.7+；
+# ③ 短篇（< 1200 字）又无证据支撑 → 但 avg 仍推高。
+# 校准策略：在硬编码层（R4.5 之后）插入确定性的结构下限，防千问 validates_confidence。
+# 环境开关 PAPERFORGE_QWEN_CALIBRATION=1（默认关闭，向后兼容）。
+# 运行 5-AI 对比基线后，用户可用此开关调整千问评分使其接近多 AI 共识。
+_QWEN_CALIBRATION_ENABLED = os.environ.get("PAPERFORGE_QWEN_CALIBRATION", "0").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+_QWEN_CALIBRATION_2SEC_CAP = 0.70  # R5：仅 2 段时全维封顶
+_QWEN_CALIBRATION_3SEC_CAP = 0.50  # R5：仅 3 段时 ii 封顶
+_QWEN_CALIBRATION_REFL_MIN_CHARS = 100  # R6：reflection 段字数下限
+_QWEN_CALIBRATION_REFL_II_CAP = 0.40  # R6：reflection < 100 字 → ii 封顶
+_QWEN_CALIBRATION_SHORT_CHARS = 1200  # R7：短篇阈值
+_QWEN_CALIBRATION_SHORT_CAP = 0.70  # R7：短篇且 avg > 0.70 → 全维封顶
+
+# 原创性标记词表。千问不看论文容易给照抄报告也打高创新分，
+# 若全文无一命中则无论千问打多高分都封顶 0.5——真正的独立思考不可能一句标记都没有。
+_ORIGINALITY_MARKERS = [
+    "值得商榷",
+    "有待改进",
+    "值得怀疑",
+    "不一定",
+    "局限",
+    "不足",
+    "缺点",
+    "我认为",
+    "我觉得",
+    "在我看来",
+    "我个人",
+    "我的看法",
+    "可以改进",
+    "建议",
+    "应该",
+    "可以考虑",
+    "不妨",
+    "不同于",
+    "与之相反",
+    "换个角度",
+    "另一种",
+    "不同看法",
+    "值得思考",
+    "有意思的是",
+    "令人惊讶",
+    "意外",
+    "没想到",
+    "进一步",
+    "后续",
+    "未来",
+    "下一步",
+    "接下来",
+    "不认同",
+    "不同意",
+    "质疑",
+    "商榷",
+]
+
+
+def _has_originality_markers(full_text: str) -> bool:
+    """报告全文是否包含至少一个原创性/批判性标记。
+
+    返回 False 表示全文纯复述/总结，没有任何独立思考的痕迹
+    ——此时不应允许千问的 validates_confidence 偏差把创新分推高。
+    """
+    t = (full_text or "").lower()
+    return any(m in t for m in _ORIGINALITY_MARKERS)
+
+
+_SECTION_MARKERS_CN = ["一、", "二、", "三、", "四、"]
+
+# 字母格式段落标记（报告常见 a./b./c./d. 格式）
+# 匹配规则：段首出现 "a." 或 "b." 等 + 紧随叙述句。
+# 用完整词表而不仅仅看开头，防止误判英文摘要里的 a.。
+_SECTION_MARKERS_EN = ["a. ", "b. ", "c. ", "d. "]
+
+
+def _count_sections(raw_text: str) -> int:
+    """统计报告含几大段标记（支持中文「一、」和英文「a.」两种格式）。
+
+    优先中文格式；中文全 0 时启用英文格式匹配。
+    """
+    if not raw_text:
+        return 0
+    cn = sum(1 for m in _SECTION_MARKERS_CN if m in raw_text)
+    if cn >= 2:
+        return cn
+    # 检查英文格式：a./b./c./d. 且后跟中文/英文描述（至少 5 个后续字）
+    en_hits = 0
+    for m in _SECTION_MARKERS_EN:
+        idx = raw_text.find(m)
+        if idx >= 0:
+            # 确认标记后至少 5 个字符是叙述而非缩写
+            rest = raw_text[idx + len(m) : idx + len(m) + 30]
+            if any("\u4e00" <= c <= "\u9fff" for c in rest) or len(rest.strip()) >= 5:
+                en_hits += 1
+    return max(cn, en_hits)
+
+
+def _reflection_section_length(raw_text: str) -> int:
+    """估算 reflection 段（四、或 d. 之后）的字数。"""
+    if not raw_text:
+        return 0
+    # 中文格式
+    m = re.search(r"四、(.+)$", raw_text, re.DOTALL)
+    if m:
+        return len(m.group(1).strip())
+    # 英文格式 d. 收获与感想
+    m = re.search(r"d\.\s*(?:收获|感想|看[完后]).{0,20}\n(.+)$", raw_text, re.DOTALL)
+    if m:
+        return len(m.group(1).strip())
+    return 0
+
+
 VALID_VERDICTS = {"well_done", "needs_evidence", "needs_depth", "rewrite_required"}
 
 # 文本截断（感悟报告通常比论文短）：超限时保留开头+结尾，中间丢弃并告知 LLM。
@@ -242,6 +361,48 @@ class ReflectionReviewResult(BaseModel):
     evidence_rejections: dict = Field(default_factory=dict)
     node_logs: list[str] = Field(default_factory=list)
     evaluated_at: str = ""
+    # ADR-014 P2：分数不确定性（bootstrap 95% CI + 不确定门控）。解决 W4：
+    # 此前只有点估计，不知道“这个分把握多大”。仅当 PAPERFORGE_UNCERTAINTY_GATE
+    # 开启时填充，默认空 dict（零开销、向后兼容）。与论文侧 DepthV4Result 同构。
+    score_uncertainty: dict = Field(default_factory=dict)
+
+
+# ===========================================================================
+# 分数不确定性（ADR-014 · P2，bootstrap 95% CI）
+# ===========================================================================
+
+
+def _reflection_uncertainty_report(scores: dict) -> dict:
+    """ADR-014 P2：感悟报告分数不确定性（bootstrap 95% CI + 不确定门控）。
+
+    用 4 维子分作为 bootstrap 样本，估计整体质量评分的置信区间；
+    CI 过宽时（且开启 PAPERFORGE_UNCERTAINTY_GATE）标为 needs_human_review。
+
+    仅当 PAPERFORGE_UNCERTAINTY_GATE 开启时计算，默认返回 {}（零开销、向后兼容）。
+    fail-open：任何异常返回 {}，绝不改变原有 verdict（置信区间仅作附加信号）。
+    与论文侧 depth_eval_v4._score_uncertainty_report 同构，复用 stats/bootstrap。
+    """
+    raw = os.environ.get("PAPERFORGE_UNCERTAINTY_GATE")
+    if raw is None or raw.strip() == "":
+        return {}
+    gate = raw.strip().lower() in ("1", "true", "on", "yes")
+    try:
+        from .stats.bootstrap import uncertainty_gate
+
+        dims = (
+            "understanding_accuracy",
+            "analysis_depth",
+            "innovative_insights",
+            "evidence_support",
+        )
+        sub_scores = [float(scores.get(d, 0.5)) for d in dims]
+        avg = float(scores.get("average", 0.5))
+        width = float(os.environ.get("PAPERFORGE_UNCERTAINTY_WIDTH", "0.15"))
+        result = uncertainty_gate(avg, sub_scores, width_threshold=width, gate_enabled=gate)
+        return result.to_dict()
+    except Exception as e:  # noqa: BLE001 - 不确定门控异常隔离
+        logger.warning("感悟报告不确定门控异常降级: %s", e)
+        return {}
 
 
 # ===========================================================================
@@ -281,6 +442,13 @@ PROMPT_REFLECTION = """你是一位严谨的阅读笔记评审专家。请评审
    - `evidence_support`：观点是否有具体引述/数据/例子支撑（0-1）
 
 【评分参照系】请严格使用 0-1 全区间，**不要集中在 0.85-0.95**。
+
+⚠️ **结构完整性对分数有直接下限约束**（代码层会在你打出的分上叠加封顶）：
+- 报告理应包含「一、论文问题」「二、软硬件结构」「三、实验与结果」「四、收获与感想」四段。
+- 若报告只有 2-3 段，说明内容天生不完整——此时 understanding_accuracy/analysis_depth 不应超过 0.70，innovative_insights 不应超过 0.50。
+- 若「四、收获与感想」段字数不足 100 字，innovative_insights 不应超过 0.40（没有真实反思内容）。
+- 若报告总字数不足 1200 字，所有维度不应超过 0.70。
+
 各维度三档锚点（对照报告实际内容判断落在哪档，允许中间值）：
 
 - `understanding_accuracy`：
@@ -334,6 +502,13 @@ PAPER_SECTION_TEMPLATE = """【原论文参考内容】（⚠️ 只读背景材
 # 证据不足重试：LLM 首次只产出 < MIN_EVIDENCE_FOR_VALID_REVIEW 条有效证据
 # （本地量化模型常见波动：3-5 条要求却只给 1-2 条 → R1 把整篇压到 0.3 的误伤）。
 # 仅对「解析成功但证据不足」的报告追加一次定向重试，要求补齐 3-5 条逐字引文。
+RETRY_EVIDENCE_TEMPLATE_FROM_PAPER = (
+    "\n\n【引证来源修正要求】你的证据片段有一部分摘自【原论文参考内容】而不是学生报告"
+    "——那是背景材料，不能当证据。"
+    "{diagnosis}"
+    "请重新输出完整 JSON：claims 3-5 个、evidence_pool 3-5 段（snippet 必须与报告原文逐字一致，"
+    "包括标点，不得改写或编造）、4 维分数、summary、verdict_suggestion。不要任何解释，直接输出 JSON。"
+)
 RETRY_EVIDENCE_TEMPLATE = (
     "\n\n【证据不足修正要求】你上一次只输出了 {n} 条有效证据（snippet 必须逐字出现在报告原文中）。"
     "{diagnosis}"
@@ -479,23 +654,26 @@ class ReflectionReviewer:
             valid_eids.add(eid)
         valid_cids = {c.get("id", "").strip() for c in claims if c.get("id")}
 
-        # 正向：claim 引用了存在的 evidence
-        forward = sum(1 for c in claims if c.get("evidence_id", "").strip() in valid_eids)
-        # 反向：evidence 引用了存在的 claim（且自身 snippet 有效）
-        backward = sum(
-            1
-            for ev in evidence_pool
-            if (ev.get("claim_ref") or "").strip() in valid_cids
-            and (ev.get("id") or "").strip() in valid_eids
-        )
-        effective = max(forward, backward)
+        # effective = 被至少一个 claim 引用的、snippet 真实出现的去重 evidence 条数。
+        # 旧版用 max(forward, backward) —— LLM 把 5 个 claim 全指向同一条真 evidence
+        # 时 effective=5，可绕过 R1 / R1.5 门阀。现改为去重计数，一条真证据就是一条。
+        effective_eids = {
+            c.get("evidence_id", "").strip()
+            for c in claims
+            if c.get("evidence_id", "").strip() in valid_eids
+        }
+        effective = len(effective_eids)
 
+        # validated_pool 只保留被至少一个 claim 正向引用的 evidence（对齐 effective 口径）。
+        # 旧版 includes backward-only evidence（claim_ref 匹配但 claim 不引用该 evidence_id），
+        # 会导致 evidence_pool 里有条目但 effective=0 的口径撕裂。
         validated_claims = [c for c in claims if c.get("evidence_id", "").strip() in valid_eids]
         validated_pool = [
             ev
             for ev in evidence_pool
             if (ev.get("claim_ref") or "").strip() in valid_cids
             and (ev.get("id") or "").strip() in valid_eids
+            and (ev.get("id") or "").strip() in effective_eids
         ]
         return effective, validated_claims, validated_pool
 
@@ -508,18 +686,24 @@ class ReflectionReviewer:
         llm_verdict: str,
         summary: str,
         full_text: str = "",
+        *,
+        override_section_count: int | None = None,
+        override_reflection_length: int | None = None,
     ) -> ReflectionScoredOutput:
         """应用硬编码校验规则，输出最终结果。
 
         规则优先级（从上到下，后面的规则可叠加，但 verdict 一旦被强制就锁死）：
-        1. effective_evidence_count < MIN_EVIDENCE_FOR_VALID_REVIEW (2)
-           → 4 维分数全部上限 CAP 到 MAX_SCORE_WHEN_EVIDENCE_INSUFFICIENT (0.3)
-           → verdict 锁死为 rewrite_required
-        2. understanding_accuracy < UNDERSTANDING_THRESHOLD_DEEP (0.40)
-           → verdict 锁死为 needs_depth（理解不够深）
-        3. 4 维平均 < AVERAGE_SCORE_POOR (0.50)
-           → verdict 锁死为 needs_evidence
-        4. 其余 → 通过，verdict 使用 LLM 的 verdict_suggestion
+        1. (R1) effective_evidence_count < MIN_EVIDENCE_FOR_VALID_REVIEW (2)
+           → 4 维分数全部上限 CAP 到 0.3 + verdict=rewrite_required
+        2. (R1.5) effective_evidence 2-4 条 → 封顶 0.85
+        3. (R2) understanding < 0.50 → verdict=needs_depth
+        4. (R3) 4 维平均 < 0.65 → verdict=needs_evidence
+        5. (R4) innovative < 0.45 → verdict=needs_depth
+        6. (R4.5) innovative > 0.50 但无原创标记 → 封顶 0.50
+        7. (P7 - 千问校准层，需 PAPERFORGE_QWEN_CALIBRATION=1)：
+           R5: 报告仅 2 段 → 全维封顶 0.70；3 段 → ii 封顶 0.50
+           R6: reflection 段 < 100 字 → ii 封顶 0.40
+           R7: 短篇 (< 1200 字) 且 avg > 0.70 → 全维封顶 0.70
         """
         overrides: list[str] = []
         effective, v_claims, v_pool = cls._cross_validate_evidence(claims, evidence_pool, full_text)
@@ -594,6 +778,109 @@ class ReflectionReviewer:
                     f"R4: 创新见解 {innovation:.2f} < 阈值 {INNOVATION_THRESHOLD}, "
                     f"verdict=needs_depth（创新不足，缺乏独立思考）"
                 )
+        # ── 规则 4.5：创新分高但无原创性标记 → 封顶 0.5（千问 validates_confidence 偏差防护）──
+        # 千问不看论文原文，容易把照抄/空泛报告的创新分也给到 0.7+。
+        # 若报告全文没有任何独立见解标记（批判性词/个人判断/局限讨论/改进建议），
+        # 即使千问给分高也封顶——真正的独立思考不可能隐身在纯粹复述中。
+        innovation = out_scores.get("innovative_insights", 0.5)
+        if not rule_1_fired and innovation > _INNOVATION_NO_MARKER_CAP and full_text:
+            if not _has_originality_markers(full_text):
+                out_scores["innovative_insights"] = _INNOVATION_NO_MARKER_CAP
+                overrides.append(
+                    f"R4.5: 创新分 {innovation:.2f} 但全文无原创性标记（批判/判断/局限/改进），"
+                    f"封顶至 {_INNOVATION_NO_MARKER_CAP}"
+                )
+
+        # ── ADR-014 P7：千问校准层（5-AI 交叉验证诊断）──
+        # 当 PAPERFORGE_QWEN_CALIBRATION=1 时启用，在 R4.5 之后施加结构性下限。
+        # 这些规则**不覆盖 R1**（证据门阀优先），但可与 R1.5/R2/R3/R4/R4.5 叠加。
+        # 宗旨：千问对「缺段/空反思/短篇」的 validates_confidence 偏差过高，
+        # 用确定性规则封顶使其接近多 AI 中位数基线。
+        # 优先使用调用方预解析的 section_count / ref_len（docx parser 更可靠）；
+        # 未提供时 fallback 扫描 raw_text。
+        if _QWEN_CALIBRATION_ENABLED and full_text:
+            section_count = (
+                override_section_count
+                if override_section_count is not None
+                else _count_sections(full_text)
+            )
+            ref_len = (
+                override_reflection_length
+                if override_reflection_length is not None
+                else _reflection_section_length(full_text)
+            )
+            total_chars = len(full_text)
+            calib_any = False
+
+            # R5：结构完整性约束。报告应含 4 段（一、~ 四、）。
+            #   - 仅 2 段：回退到多 AI 基线观察（千问在此给 0.85+、基线 ~0.63）→ 全维封顶 0.70。
+            #   - 仅 3 段（通常缺 reflection）：ii 封顶 0.50（不触发时 R4 已有 ii 门阀）。
+            if not rule_1_fired:
+                if section_count <= 1 and total_chars > 100:
+                    # 无任何段落标记：极不规范的报告
+                    for k in ("understanding_accuracy", "analysis_depth"):
+                        if out_scores.get(k, 0) > _QWEN_CALIBRATION_2SEC_CAP:
+                            out_scores[k] = _QWEN_CALIBRATION_2SEC_CAP
+                            calib_any = True
+                    overrides.append(
+                        f"R5(P7): 报告无段落标记（非标报告），understanding & analysis 封顶至 {_QWEN_CALIBRATION_2SEC_CAP}"
+                    )
+                elif section_count <= 2:
+                    for k in list(out_scores.keys()):
+                        if out_scores[k] > _QWEN_CALIBRATION_2SEC_CAP:
+                            out_scores[k] = _QWEN_CALIBRATION_2SEC_CAP
+                            calib_any = True
+                    if calib_any:
+                        overrides.append(
+                            f"R5(P7): 报告仅 {section_count} 段（应 4 段），"
+                            f"所有维度封顶至 {_QWEN_CALIBRATION_2SEC_CAP}"
+                        )
+                        # 缺段 → 证据也必然不足 → verdict 至少 needs_evidence
+                        if verdict == "well_done":
+                            verdict = "needs_evidence"
+                elif section_count <= 3:
+                    ii_val = out_scores.get("innovative_insights", 0)
+                    if ii_val > _QWEN_CALIBRATION_3SEC_CAP:
+                        out_scores["innovative_insights"] = _QWEN_CALIBRATION_3SEC_CAP
+                        calib_any = True
+                        overrides.append(
+                            f"R5(P7): 报告仅 {section_count} 段（缺少完整反思），"
+                            f"innovative_insights 封顶至 {_QWEN_CALIBRATION_3SEC_CAP}"
+                        )
+
+            # R6：reflection 段质量约束。reflection 是报告的核心价值所在；
+            #   字数 < 100 → 基本是空的；封顶 ii 到 0.40。
+            if (
+                not rule_1_fired
+                and ref_len >= 0
+                and ref_len < _QWEN_CALIBRATION_REFL_MIN_CHARS
+                and section_count >= 4
+            ):
+                ii_val = out_scores.get("innovative_insights", 0)
+                if ii_val > _QWEN_CALIBRATION_REFL_II_CAP:
+                    out_scores["innovative_insights"] = _QWEN_CALIBRATION_REFL_II_CAP
+                    calib_any = True
+                    overrides.append(
+                        f"R6(P7): reflection段仅 {ref_len} 字（< {_QWEN_CALIBRATION_REFL_MIN_CHARS}），"
+                        f"innovative_insights 封顶至 {_QWEN_CALIBRATION_REFL_II_CAP}"
+                    )
+                    if verdict == "well_done":
+                        verdict = "needs_depth"
+
+            # R7：结构-篇幅不匹配约束。
+            #   短篇（< 1200 字）且 avg > 0.70 → 千问只看字数没读结构 → 全维封顶。
+            if not rule_1_fired and total_chars < _QWEN_CALIBRATION_SHORT_CHARS:
+                if avg > _QWEN_CALIBRATION_SHORT_CAP:
+                    for k in list(out_scores.keys()):
+                        if out_scores[k] > _QWEN_CALIBRATION_SHORT_CAP:
+                            out_scores[k] = _QWEN_CALIBRATION_SHORT_CAP
+                            calib_any = True
+                    if calib_any:
+                        overrides.append(
+                            f"R7(P7): 报告仅 {total_chars} 字（< {_QWEN_CALIBRATION_SHORT_CHARS}），"
+                            f"所有维度封顶至 {_QWEN_CALIBRATION_SHORT_CAP}"
+                        )
+
         # 【修复】原代码中还存在「verdict=needs_evidence 但平均尚可 → 升回 well_done」的逆向逻辑。
         # 该路径不可复现、非幂等（取决于 overrides 是否为空），会迷惑后续维护者。
         # 现已删除：硬编码层仅负责向下封闭，不反向覆盖 LLM 的合理建议。
@@ -623,6 +910,9 @@ class ReflectionReviewer:
         full_text: str,
         student_id: str = "",
         paper_text: str = "",
+        *,
+        override_section_count: int | None = None,
+        override_reflection_length: int | None = None,
     ) -> ReflectionReviewResult:
         """评审单篇报告。
 
@@ -633,6 +923,9 @@ class ReflectionReviewer:
                 （2026-08 实验 B：千问拿到论文后 understanding/evidence 判得更准，
                 但分数整体上浮——权重重构已把区分度不足维度降权以吸收该效应）。
                 不传时 prompt 与旧版完全一致。
+            override_section_count: 预解析的段落数（来自 docx parser），
+                传 None 时 fallback 扫描 raw_text。
+            override_reflection_length: 预解析的 reflection 段字数（来自 docx parser）。
         """
         self._logs = []
         self._llm_calls = 0
@@ -744,17 +1037,30 @@ class ReflectionReviewer:
             scores=scores_in,
             llm_verdict=llm_output.verdict_suggestion,
             summary=llm_output.summary,
-            full_text=full_text,  # snippet 真实性校验（原始全文，非截断版）
+            full_text=full_text,
+            override_section_count=override_section_count,
+            override_reflection_length=override_reflection_length,
         )
 
-        # 2.1 证据不足定向重试（本地量化模型波动：好报告也常只给 1-2 条证据）
-        if not parse_failed and scored.effective_evidence_count < MIN_EVIDENCE_FOR_VALID_REVIEW:
+        # 2.1 证据不足定向重试（本地量化模型波动：好报告也常只给 1-2 条证据。
+        # 2026-08 补：模型引错来源（from_paper>0）也触发重试——证据来自原论文而非
+        # 学生报告，不纠正等于把系统问题算成学生证据不足。）
+        _pre_rej = diagnose_evidence_rejections(llm_output.evidence_pool, full_text, paper_text)
+        _retry_ev_count = scored.effective_evidence_count < MIN_EVIDENCE_FOR_VALID_REVIEW
+        _retry_from_paper = _pre_rej["counts"].get("from_paper", 0) > 0
+        _need_retry = not parse_failed and (_retry_ev_count or _retry_from_paper)
+        if _need_retry:
             # 先弄清楚上一轮到底错在哪，把具体原因写进重试提示。
             # 只报「你才给了 1 条」模型往往原样再来一遍；
             # 告诉它「你那条摘自原论文」才纠得回来。
-            rej = diagnose_evidence_rejections(llm_output.evidence_pool, full_text, paper_text)
+            rej = _pre_rej
             self._evidence_rejections = rej["counts"]
-            retry_ev = base_prompt.rstrip() + RETRY_EVIDENCE_TEMPLATE.format(
+            # from_paper 优先用来源修正模板（即使同时也证据不足——根源是引错来源，
+            # 告诉模型"你那条不是报告里的"比"你只给了 N 条"更能纠偏）。
+            _retry_tmpl = (
+                RETRY_EVIDENCE_TEMPLATE_FROM_PAPER if _retry_from_paper else RETRY_EVIDENCE_TEMPLATE
+            )
+            retry_ev = base_prompt.rstrip() + _retry_tmpl.format(
                 n=scored.effective_evidence_count,
                 diagnosis=build_evidence_diagnosis_text(rej),
             )
@@ -788,6 +1094,8 @@ class ReflectionReviewer:
                     llm_verdict=llm_ev.verdict_suggestion,
                     summary=llm_ev.summary,
                     full_text=full_text,
+                    override_section_count=override_section_count,
+                    override_reflection_length=override_reflection_length,
                 )
                 if scored_ev.effective_evidence_count > scored.effective_evidence_count:
                     scored = scored_ev
@@ -876,6 +1184,7 @@ class ReflectionReviewer:
             evidence_rejections=dict(self._evidence_rejections),
             evaluated_at=datetime.now().isoformat(timespec="seconds"),
             node_logs=list(self._logs),
+            score_uncertainty=_reflection_uncertainty_report(final_scores),
         )
 
 
@@ -1088,7 +1397,18 @@ def _resolve_paper_pair(student_id: str, full_text: str) -> dict | None:
     """
     # 1. 缓存命中
     if student_id in _VERIFIED_CACHE:
-        return _VERIFIED_CACHE[student_id]
+        # 缓存仅存 arXiv 元数据——student_title/author 必须每次从当前 full_text 现扫，
+        # 避免「学生首次报告匹配论文 A、缓存污染，此后所有报告都按 A 的引用准确度加分」。
+        cached = _VERIFIED_CACHE[student_id]
+        sources = _scan_paper_source(full_text)
+        return {
+            "arxiv_id": cached["arxiv_id"],
+            "title": cached["title"],
+            "authors": cached["authors"],
+            "student_title": sources.get("title"),
+            "student_author": sources.get("author"),
+            "student_arxiv": sources.get("arxiv_id") or cached.get("arxiv_id", ""),
+        }
 
     # 2. 扫描全文
     sources = _scan_paper_source(full_text)

@@ -383,8 +383,15 @@ def search_hybrid(req: HybridSearchRequest, db: Session = Depends(get_db)) -> di
     q = (req.q or "").strip()
     top_k = req.top_k or 10
 
-    # 论文级检索
-    papers = crud.hybrid_search_papers(db, q, top_k=top_k) if q else []
+    # 论文级检索：RRF 召回 + MMR 多样性重排（复用 recommend_ranker 的 MMR）
+    mmr_lambda = None
+    try:
+        from ..recommend_ranker import RecommendConfig
+
+        mmr_lambda = RecommendConfig().diversity_mmr_lambda  # 默认 0.7
+    except Exception:  # noqa: BLE001 - 路由增强 - 极端降级回退旧行为
+        mmr_lambda = None
+    papers = crud.hybrid_search_papers(db, q, top_k=top_k, mmr_lambda=mmr_lambda) if q else []
     paper_rank = {p.id: i + 1 for i, p in enumerate(papers)}
 
     # figure 级检索

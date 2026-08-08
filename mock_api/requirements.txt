@@ -3,22 +3,25 @@
 # Rule: use < compatible ceiling (never hard-pin exact) so the range is locked but installs still work.
 # Lockfile: run `pip-compile mock_api/requirements.txt -o requirements.lock.txt` on your machine.
 
-fastapi==0.115.0
-uvicorn[standard]==0.30.6
-pydantic==2.9.2
-# pydantic-settings: keep >=2.14.0. Verified real on PyPI (latest 2.14.2, released 2026-04-20),
-# NOT a typo, so no need to lower the floor. Coupled with pinned pydantic==2.9.2, leave it unbounded.
-pydantic-settings>=2.14.0
+fastapi>=0.115.0,<0.142
+# fastapi 0.141.x 要求 starlette>=0.46.0（无上界）。已验证环境为 0.46.x；
+# 不加钉全新安装会解析到 starlette 1.x（大版本，含 app.routes 惰性化等破坏性变更），
+# 故显式钉住 <0.47 防漂移。
+starlette>=0.46.0,<0.47
+uvicorn[standard]>=0.30.6,<0.53
+pydantic>=2.9.2,<3.0
+# pydantic-settings: keep >=2.14.0. Verified real on PyPI (latest 2.15.0).
+pydantic-settings>=2.14.0,<3.0
 SQLAlchemy>=2.0.0,<2.1
 requests>=2.32.4,<3.0
 zhipuai>=2.1.0,<3.0
 python-docx>=1.1.0,<2.0
-pypdf>=4.0.0,<5.0
+pypdf>=4.0.0,<7.0
 # pymupdf pinned <1.29 to align with the validated 1.28.x; avoids unverified breaking changes in 1.29+ (Archi debt #2)
 pymupdf>=1.24.0,<1.29
 python-multipart>=0.0.9,<0.1
 apscheduler>=3.10.0,<4.0
-tenacity>=8.0.0,<9.0
+tenacity>=8.0.0,<10.0
 
 # exe packaging only (teacher build); dev mode can skip
 pyinstaller>=6.0.0,<7.0
@@ -46,7 +49,7 @@ matplotlib>=3.7.0,<4.0
 # ---- dev dependencies (testing) ----
 # install: pip install -r mock_api/requirements.txt
 # run: pytest tests/ -v
-pytest>=7.0.0,<9.0
+pytest>=7.0.0,<10.0
 pytest-cov>=7.0.0,<8.0
-pytest-asyncio>=0.23.0,<1.0
+pytest-asyncio>=0.23.0,<2.0
 httpx>=0.27.0,<1.0

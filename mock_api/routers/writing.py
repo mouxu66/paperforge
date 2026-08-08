@@ -4,7 +4,14 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
+
+# 长生成（章节撰写）采样温度：低温度 → 草稿接受率高 → 消除投机解码掉速 + 输出更可复现。
+try:
+    _LONG_GEN_TEMPERATURE = float(os.getenv("PAPERFORGE_LONG_GEN_TEMPERATURE", "0.2"))
+except (TypeError, ValueError):
+    _LONG_GEN_TEMPERATURE = 0.2
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -215,7 +222,7 @@ def generate_chapter_content(
 
     try:
         provider = factory.get_provider()
-        result = provider.chat(messages, temperature=0.5, max_tokens=2048)
+        result = provider.chat(messages, temperature=_LONG_GEN_TEMPERATURE, max_tokens=2048)
     except Exception as e:
         raise LLMError(e, factory.current_label()) from e
 

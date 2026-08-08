@@ -180,20 +180,26 @@ def hybrid_search_papers(
     fts_top: int = 20,
     vec_top: int = 20,
     paper_ids: list[str] | None = None,
+    mmr_lambda: float | None = None,
 ) -> list[Paper]:
-    """混合检索：FTS5 + 向量 + RRF 融合，返回 Top K 论文。
+    """混合检索：FTS5 + 向量 + RRF 融合 + 可选 MMR 多样性重排，返回 Top K 论文。
 
     流程：
     1. FTS5 关键词检索（含 authors 字段）取前 fts_top 条。
     2. 若 fastembed 可用且向量表非空：编码查询 → 余弦相似度取前 vec_top 条。
-    3. RRF（k=60）融合两路结果，返回前 top_k 条。
-    4. 若向量检索不可用，直接返回 FTS5 结果前 top_k 条（降级）。
+    3. RRF（k=60）融合两路结果，作为召回候选集。
+    4. 若 mmr_lambda 非 None：对候选集做 MMR 多样性重排（复用
+       recommend_ranker.mmr_rerank，从 paper_embeddings 读候选论文向量），
+       再取前 top_k 条——即「RRF 负责找得到、MMR 负责挑得开」。
+    5. 若向量检索不可用或未启用 MMR，直接返回 RRF/FTS5 结果前 top_k 条。
 
     Args:
         query: 用户查询文本（自然语言）。
         top_k: 最终返回数量，默认 10。
         fts_top / vec_top: 两路检索的召回数量，默认各 20。
         paper_ids: 可选，限定检索范围（仅 FTS5 侧生效；向量侧不裁剪）。
+        mmr_lambda: MMR 权衡系数（1=纯相关，0=纯多样，0.7=默认平衡）。
+                    None（默认）= 不启用 MMR，行为与旧版完全一致（向后兼容）。
     """
     from ..semantic_search import embed_text, is_available
 
@@ -227,6 +233,10 @@ def hybrid_search_papers(
         allowed = set(paper_ids)
         ranked_ids = [pid for pid in ranked_ids if pid in allowed]
 
+    # 5. MMR 多样性重排（可选，RRF 召回 → MMR 精选）
+    if mmr_lambda is not None and len(ranked_ids) > 1:
+        ranked_ids = _mmr_rerank_ids(db, ranked_ids, mmr_lambda, top_k)
+
     # 5. 加载论文 ORM 行并按融合顺序返回 schema
     if not ranked_ids:
         return []
@@ -241,6 +251,51 @@ def hybrid_search_papers(
         if p:
             result.append(paper_to_schema(p, favorited=pid in fav_ids))
     return result
+
+
+def _mmr_rerank_ids(
+    db: Session,
+    ranked_ids: list[str],
+    mmr_lambda: float,
+    top_k: int,
+) -> list[str]:
+    """对 RRF 召回候选集做 MMR 多样性重排（复用 recommend_ranker.mmr_rerank）。
+
+    相关度分数：候选来自 RRF 融合/单路检索，此处无显式分数，用
+    (n - rank) / n 线性映射到 [0,1] 作为相关性信号——保持与
+    recommend() 内一致的 MMR 语义（lambda 越高越尊重原排序）。
+
+    向量：从 paper_embeddings 表批量读候选论文向量；无向量的论文
+    在 mmr_rerank 内自动退化为纯相关排序（vec=None 时 val=lambda*score）。
+
+    返回重排后取前 top_k 的 paper_id 列表。
+    """
+    if len(ranked_ids) <= 1:
+        return ranked_ids[:top_k]
+    from ..recommend_ranker import mmr_rerank
+
+    # 相关度：rank 越靠前分越高（保持 RRF 顺序偏好）
+    n = len(ranked_ids)
+    relevance = {pid: (n - i) / n for i, pid in enumerate(ranked_ids)}
+
+    # 批量读候选论文向量
+    from ..models import PaperEmbedding as PaperEmbeddingORM
+    from ..semantic_search import deserialize_vector
+
+    rows = (
+        db.query(PaperEmbeddingORM.paper_id, PaperEmbeddingORM.embedding)
+        .filter(PaperEmbeddingORM.paper_id.in_(ranked_ids))
+        .all()
+    )
+    vec_map: dict[str, list[float]] = {}
+    for pid, emb_str in rows:
+        vec = deserialize_vector(emb_str)
+        if vec:
+            vec_map[pid] = vec
+
+    items = [(pid, relevance.get(pid, 0.0), vec_map.get(pid)) for pid in ranked_ids]
+    order = mmr_rerank(items, mmr_lambda)
+    return order[:top_k]
 
 
 def retrieve_context(

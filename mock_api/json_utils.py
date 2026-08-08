@@ -89,6 +89,11 @@ def safe_json_parse(text: str, logger_instance: logging.Logger | None = None) ->
     处理：Markdown 代码块、全角引号归一化、裸控制字符转义、
     内嵌中文双引号修复、超长输入截断、多次兜底解析。
 
+    全角双引号策略：默认【保留】为中文内容引号（不转 ASCII "），仅当首轮
+    解析失败才【兜底归一化】为 ASCII "，以兼容 LLM 误用全角引号当 JSON
+    分隔符的极端情况。这避免了把 "四类核心实验" 这类正文引号误转义而导致
+    JSON 字符串断裂（Expecting ',' delimiter）。
+
     Args:
         text: LLM 原始输出字符串。
         logger_instance: 可选外部 logger，默认使用本模块 logger。
@@ -133,67 +138,69 @@ def safe_json_parse(text: str, logger_instance: logging.Logger | None = None) ->
                 text = text[:half] + "\n[...已截断...]\n" + text[-half:]
     s = text.strip()
 
-    # 全角引号归一化
-    _QUOTE_PAIRS = (
-        ("\u201c", '"'),
-        ("\u201d", '"'),
-        ("\u2018", "'"),
-        ("\u2019", "'"),
-        ("\uff02", '"'),
-        ("\uff07", "'"),
-    )
-    for src, dst in _QUOTE_PAIRS:
-        s = s.replace(src, dst)
-
-    # Markdown 代码块剥离
-    if s.startswith("```"):
-        first_nl = s.find("\n")
-        if first_nl != -1:
-            s = s[first_nl + 1 :]
-        if s.endswith("```"):
-            s = s[:-3].strip()
-
-    # 控制字符转义
-    s = _escape_control_chars_in_strings(s)
-
-    # 内嵌 ASCII 双引号转义
-    s, n_inner_quotes = _INNER_QUOTE_RE.subn('\\"', s)
-    if n_inner_quotes > 0:
-        log.info("DEPTH safe_json_parse 内嵌 ASCII 双引号转义: %d 处", n_inner_quotes)
-
-    s, n_pair_quotes = _INNER_QUOTE_PAIR_RE.subn('\\"\\"', s)
-    if n_pair_quotes > 0:
-        log.info("DEPTH safe_json_parse 连续裸双引号转义: %d 处", n_pair_quotes)
-
-    # 直接解析
-    try:
-        return json.loads(s)
-    except (ValueError, json.JSONDecodeError) as e:
-        _log_decode_error(s, e)
-
-    # 提取 { ... }
-    start = s.find("{")
-    end = s.rfind("}")
-    if start != -1 and end != -1 and end > start:
+    def _core(t: str):
+        """对单轮候选文本做 Markdown 剥离 + 控制字符转义 + 内嵌引号修复 + 多策略解析。"""
+        # Markdown 代码块剥离
+        if t.startswith("```"):
+            first_nl = t.find("\n")
+            if first_nl != -1:
+                t = t[first_nl + 1 :]
+            if t.endswith("```"):
+                t = t[:-3].strip()
+        # 控制字符转义
+        t = _escape_control_chars_in_strings(t)
+        # 内嵌 ASCII 双引号转义
+        t, n_inner = _INNER_QUOTE_RE.subn('\\"', t)
+        if n_inner > 0:
+            log.info("DEPTH safe_json_parse 内嵌 ASCII 双引号转义: %d 处", n_inner)
+        t, n_pair = _INNER_QUOTE_PAIR_RE.subn('\\"\\"', t)
+        if n_pair > 0:
+            log.info("DEPTH safe_json_parse 连续裸双引号转义: %d 处", n_pair)
+        # 直接解析
         try:
-            return json.loads(s[start : end + 1])
+            return json.loads(t)
         except (ValueError, json.JSONDecodeError) as e:
-            _log_decode_error(s[start : end + 1], e)
-
-    # 提取 [ ... ]
-    start = s.find("[")
-    end = s.rfind("]")
-    if start != -1 and end != -1 and end > start:
+            _log_decode_error(t, e)
+        # 提取 { ... }
+        start = t.find("{")
+        end = t.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            try:
+                return json.loads(t[start : end + 1])
+            except (ValueError, json.JSONDecodeError) as e:
+                _log_decode_error(t[start : end + 1], e)
+        # 提取 [ ... ]
+        start = t.find("[")
+        end = t.rfind("]")
+        if start != -1 and end != -1 and end > start:
+            try:
+                return {"items": json.loads(t[start : end + 1])}
+            except (ValueError, json.JSONDecodeError) as e:
+                _log_decode_error(t[start : end + 1], e)
+        # strict=False 兜底
         try:
-            return {"items": json.loads(s[start : end + 1])}
+            return json.loads(t, strict=False)
         except (ValueError, json.JSONDecodeError) as e:
-            _log_decode_error(s[start : end + 1], e)
+            _log_decode_error(t, e)
+        return None
 
-    # strict=False 兜底
-    try:
-        return json.loads(s, strict=False)
-    except (ValueError, json.JSONDecodeError) as e:
-        _log_decode_error(s, e)
+    # 第一轮: 仅归一化全角单引号(对 JSON 无害), 保留全角双引号作中文「内容引号」。
+    #   避免把 "四类核心实验" 这类内容引号误转成 ASCII " 而破坏 JSON 字符串。
+    s1 = s
+    for src, dst in (("\u2018", "'"), ("\u2019", "'"), ("\uff07", "'")):
+        s1 = s1.replace(src, dst)
+    r = _core(s1)
+    if r is not None:
+        return r
+
+    # 第二轮(兜底): 仅当首轮失败, 才把全角双引号归一化为 ASCII "
+    #   —— 应对极个别 LLM 误用全角引号当 JSON 分隔符的极端情况(保留旧行为)。
+    s2 = s1
+    for src, dst in (("\u201c", '"'), ("\u201d", '"'), ("\uff02", '"')):
+        s2 = s2.replace(src, dst)
+    r = _core(s2)
+    if r is not None:
+        return r
 
     log.warning("DEPTH safe_json_parse 无法解析（前 300 字符）: %r...", s[:300])
     return {}
