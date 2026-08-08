@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import PaperCard from "@/components/PaperCard";
@@ -39,6 +39,10 @@ function makePaper(overrides?: Partial<Paper>): Paper {
 }
 
 describe("PaperCard", () => {
+  beforeEach(() => {
+    mockNavigate.mockClear();
+  });
+
   it("renders paper title and authors", () => {
     render(<PaperCard paper={makePaper()} />);
     expect(screen.getByText("Test Paper")).toBeInTheDocument();
@@ -92,6 +96,16 @@ describe("PaperCard", () => {
     const card = container.querySelector(".pf-report-card");
     expect(card).toBeInTheDocument();
     expect(screen.getByLabelText("paper.report")).toBeInTheDocument();
+  });
+
+  it("opens the detailed reflection analysis without using the paper detail route", async () => {
+    const user = userEvent.setup();
+    render(<PaperCard paper={makePaper({ category: "report" })} />);
+
+    await user.click(screen.getByRole("button", { name: "paper.reflectionAnalysis" }));
+
+    expect(mockNavigate).toHaveBeenLastCalledWith("/reflection/result/p1");
+    expect(mockNavigate).toHaveBeenCalledTimes(1);
   });
 
   it("does not apply report card style for regular papers", () => {

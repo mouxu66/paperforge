@@ -422,7 +422,9 @@
     "relationGraphMode": {
       "citation": "Citation Graph",
       "similarity": "Similarity Graph (fallback)"
-    }
+    },
+    "reflectionAnalysis": "Open detailed reflection analysis",
+    "reflectionAnalysisShort": "Detailed analysis"
   },
   "duplicates": {
     "title": "Duplicate Papers",

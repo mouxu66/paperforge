@@ -422,7 +422,9 @@
     "relationGraphMode": {
       "citation": "引用关系图",
       "similarity": "相似关系图（降级）"
-    }
+    },
+    "reflectionAnalysis": "查看感悟报告详细分析",
+    "reflectionAnalysisShort": "详细分析"
   },
   "duplicates": {
     "title": "重复论文",

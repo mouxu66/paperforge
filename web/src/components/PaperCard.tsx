@@ -273,6 +273,23 @@ export default function PaperCard({ paper, selected, onToggleSelect, onEnrich, d
               </Tooltip>
             </Dropdown>
           )}
+          {paper.category === "report" && (
+            <Tooltip title={t("paper.reflectionAnalysis", "查看感悟报告详细分析")}>
+              <Button
+                type="link"
+                size="small"
+                aria-label={t("paper.reflectionAnalysis", "查看感悟报告详细分析")}
+                icon={<Radar />}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`/reflection/result/${paper.id}`);
+                }}
+                style={{ padding: "0 4px", fontSize: 13, whiteSpace: "nowrap" }}
+              >
+                {t("paper.reflectionAnalysisShort", "详细分析")}
+              </Button>
+            </Tooltip>
+          )}
           {paper.category === "report" && paper.sourcePaperId ? (
             <Tooltip title={t("paper.sourcePaper", "查看被点评的原论文")}>
               <a

@@ -35,7 +35,7 @@ import {
   Empty,
   Table,
   Tooltip,
-  message,
+  App,
   Collapse,
 } from "antd";
 
@@ -46,6 +46,7 @@ import {
   type FidelityAnchor,
 } from "@/api/reflection";
 import { useTaskStore } from "@/store/useTaskStore";
+import ReflectionRadar from "./ReflectionRadar";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -107,11 +108,13 @@ function ScoreBar({
 export default function ReflectionResultView() {
   const { paperId } = useParams<{ paperId: string }>();
   const navigate = useNavigate();
+  const { message } = App.useApp();
   const { subscribeSSE } = useTaskStore();
   const [result, setResult] = useState<ReflectionResultResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [restarting, setRestarting] = useState(false);
+  const [activeClaimId, setActiveClaimId] = useState<string | null>(null);
   const fetchingRef = useRef(false);
   const resultRef = useRef(result);
   useEffect(() => {
@@ -211,6 +214,18 @@ export default function ReflectionResultView() {
     result.status === "failed" ||
     result.status === "timed_out";
   const isActive = ACTIVE_STATUSES.has(result.status);
+  const analysisScores = r?.analysis_v2 ?? r?.scores;
+  const selectedEvidence =
+    activeClaimId && r?.evidence_pool
+      ? r.evidence_pool.filter(
+          (item) => item.claim_ref === activeClaimId || r.claims.some(
+            (claim) => claim.id === activeClaimId && claim.evidence_id === item.id,
+          ),
+        )
+      : [];
+  const coverage = r?.analysis_v2?.coverage ?? r?.coverage ?? r?.scores?.coverage;
+  const coveredKeypoints = r?.coverage_covered ?? [];
+  const uncoveredKeypoints = r?.coverage_uncovered ?? [];
 
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "24px 16px" }}>
@@ -290,21 +305,39 @@ export default function ReflectionResultView() {
       {result.status === "completed" && r && !llmFailed && (
         <>
           {/* 综合分 + 判决 */}
-          <Card style={{ marginBottom: 16, textAlign: "center" }}>
-            <Title level={2} style={{ marginBottom: 4 }}>
-              综合得分 {((r.analysis_v2?.average ?? scores?.average ?? 0) * 100).toFixed(0)}%
-            </Title>
-            <Tag
-              color={VERDICT_COLORS[r.verdict] || "default"}
-              style={{ fontSize: 16, padding: "4px 16px" }}
+          <Card style={{ marginBottom: 16 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 24,
+                flexWrap: "wrap",
+              }}
             >
-              {VERDICT_LABELS[r.verdict] || r.verdict}
-            </Tag>
-            {r.verdict_reason && (
-              <Paragraph type="secondary" style={{ marginTop: 12, fontSize: 13 }}>
-                {r.verdict_reason}
-              </Paragraph>
-            )}
+              <div style={{ flex: "1 1 300px", minWidth: 0 }}>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  感悟报告深度分析
+                </Text>
+                <Title level={2} style={{ margin: "4px 0 8px" }}>
+                  综合得分 {((r.analysis_v2?.average ?? scores?.average ?? 0) * 100).toFixed(0)}%
+                </Title>
+                <Tag
+                  color={VERDICT_COLORS[r.verdict] || "default"}
+                  style={{ fontSize: 16, padding: "4px 16px" }}
+                >
+                  {VERDICT_LABELS[r.verdict] || r.verdict}
+                </Tag>
+                {r.verdict_reason && (
+                  <Paragraph type="secondary" style={{ margin: "12px 0 0", fontSize: 13 }}>
+                    {r.verdict_reason}
+                  </Paragraph>
+                )}
+              </div>
+              <div style={{ flex: "0 0 190px", textAlign: "center" }}>
+                <ReflectionRadar scores={analysisScores} size={174} showDetail />
+              </div>
+            </div>
             {/* 忠实度过低导致的 rewrite_required 警告 */}
             {r.verdict === "rewrite_required" && r.fidelity != null && r.fidelity < 0.3 && (
               <Alert
@@ -317,9 +350,9 @@ export default function ReflectionResultView() {
             )}
           </Card>
 
-          {/* 5 维评分（analysis_v2）或 4 维评分（旧版） */}
+          {/* 6 维评分（analysis_v2）或 4 维评分（旧版） */}
           <Card
-            title={r.analysis_v2 ? "5 维评分（含忠实度）" : "4 维评分"}
+            title={r.analysis_v2 ? "6 维评分（含有据性与覆盖度）" : "4 维评分"}
             style={{ marginBottom: 16 }}
           >
             <ScoreBar
@@ -412,11 +445,21 @@ export default function ReflectionResultView() {
               );
             })()}
             {r.analysis_v2 && (
-              <div style={{ textAlign: "center", marginTop: 8 }}>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  5 维均权综合分：{Math.round((r.analysis_v2.average ?? 0) * 100)}%（含忠实度维度）
-                </Text>
-              </div>
+              <>
+                {r.analysis_v2.coverage != null && (
+                  <ScoreBar
+                    label="覆盖度（原论文 → 报告）"
+                    score={r.analysis_v2.coverage}
+                    color="#13c2c2"
+                    icon={<FileSearch />}
+                  />
+                )}
+                <div style={{ textAlign: "center", marginTop: 8 }}>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    6 维均权综合分：{Math.round((r.analysis_v2.average ?? 0) * 100)}%（含有据性与覆盖度）
+                  </Text>
+                </div>
+              </>
             )}
           </Card>
 
@@ -471,6 +514,41 @@ export default function ReflectionResultView() {
           )}
 
           {/* 疑似编造句（fidelity_stray_claims） */}
+          {coverage != null || coveredKeypoints.length > 0 || uncoveredKeypoints.length > 0 ? (
+            <Card title="论文要点覆盖度" style={{ marginBottom: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 12 }}>
+                <Progress
+                  type="circle"
+                  percent={Math.round((coverage ?? 0) * 100)}
+                  size={74}
+                  strokeColor={(coverage ?? 0) >= 0.6 ? "#52c41a" : "#faad14"}
+                />
+                <div>
+                  <Text strong>报告覆盖了多少原论文核心内容</Text>
+                  <div style={{ color: "var(--pf-text-muted)", fontSize: 12, marginTop: 4 }}>
+                    已覆盖 {coveredKeypoints.length} 项，仍有 {uncoveredKeypoints.length} 项值得补充
+                  </div>
+                </div>
+              </div>
+              {uncoveredKeypoints.length > 0 && (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message="建议补充的原论文要点"
+                  description={
+                    <Space direction="vertical" size={4} style={{ width: "100%" }}>
+                      {uncoveredKeypoints.map((item, index) => (
+                        <div key={`${item.keypoint}-${index}`}>
+                          {item.keypoint} <Tag color="orange">相似度 {Math.round(item.sim * 100)}%</Tag>
+                        </div>
+                      ))}
+                    </Space>
+                  }
+                />
+              )}
+            </Card>
+          ) : null}
+
           {r.fidelity_stray_claims && r.fidelity_stray_claims.length > 0 && (
             <Card
               title={
@@ -506,32 +584,93 @@ export default function ReflectionResultView() {
             </Card>
           )}
           {r.claims && r.claims.length > 0 && (
-            <Card title="核心观点" style={{ marginBottom: 16 }}>
-              {" "}
-              {r.claims.map((c: import("@/api/reflection").ReflectionClaim) => (
+            <Card
+              title="核心观点与证据链"
+              extra={
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  点击观点查看对应原文证据
+                </Text>
+              }
+              style={{ marginBottom: 16 }}
+            >
+              {r.claims.map((c: import("@/api/reflection").ReflectionClaim) => {
+                const claimEvidenceCount = r.evidence_pool.filter(
+                  (item) => item.claim_ref === c.id || item.id === c.evidence_id,
+                ).length;
+                const selected = activeClaimId === c.id;
+                return (
+                  <div
+                    key={c.id}
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={selected}
+                    onClick={() => setActiveClaimId(selected ? null : c.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setActiveClaimId(selected ? null : c.id);
+                      }
+                    }}
+                    style={{
+                      padding: "10px 14px",
+                      background: selected ? "var(--pf-primary-soft)" : "var(--pf-bg-tertiary)",
+                      borderRadius: 6,
+                      marginBottom: 8,
+                      borderLeft: `3px solid ${selected ? "var(--pf-primary)" : "#1677ff"}`,
+                      cursor: "pointer",
+                      transition: "background 0.2s, border-color 0.2s",
+                    }}
+                  >
+                    <Space wrap>
+                      <Tag color="blue">{c.id}</Tag>
+                      <span>{c.text}</span>
+                      <Tag color={claimEvidenceCount > 0 ? "green" : "default"}>
+                        {claimEvidenceCount} 条证据
+                      </Tag>
+                      {c.evidence_id && (
+                        <Tooltip title="支撑该观点的证据 ID">
+                          <Tag color="green" icon={<Link />}>
+                            {c.evidence_id}
+                          </Tag>
+                        </Tooltip>
+                      )}
+                    </Space>
+                  </div>
+                );
+              })}
+              {activeClaimId && (
                 <div
-                  key={c.id}
                   style={{
-                    padding: "10px 14px",
-                    background: "var(--pf-bg-tertiary)",
-                    borderRadius: 6,
-                    marginBottom: 8,
-                    borderLeft: "3px solid #1677ff",
+                    marginTop: 12,
+                    padding: 12,
+                    border: "1px solid var(--pf-border-light)",
+                    borderRadius: 8,
+                    background: "var(--pf-bg-primary)",
                   }}
                 >
-                  <Space>
-                    <Tag color="blue">{c.id}</Tag>
-                    <span>{c.text}</span>
-                    {c.evidence_id && (
-                      <Tooltip title="支撑该观点的证据 ID">
-                        <Tag color="green" icon={<Link />}>
-                          {c.evidence_id}
-                        </Tag>
-                      </Tooltip>
-                    )}
-                  </Space>
+                  <Text strong>{activeClaimId} 的关联证据</Text>
+                  {selectedEvidence.length > 0 ? (
+                    selectedEvidence.map((item) => (
+                      <div
+                        key={item.id}
+                        style={{
+                          marginTop: 8,
+                          padding: "8px 10px",
+                          borderLeft: "3px solid #52c41a",
+                          background: "var(--pf-bg-tertiary)",
+                          fontSize: 13,
+                        }}
+                      >
+                        <Tag color="green">{item.id}</Tag> {item.snippet}
+                      </div>
+                    ))
+                  ) : (
+                    <Text type="secondary" style={{ display: "block", marginTop: 8 }}>
+                      后端没有为该观点绑定证据片段，请在原报告中补充引用或实验依据。
+                    </Text>
+                  )}
                 </div>
-              ))}
+              )}
             </Card>
           )}
 
