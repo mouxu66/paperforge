@@ -10,6 +10,7 @@
     "generate": "生成综述",
     "write": "写作",
     "depth": "DEPTH 评估",
+    "reflection": "感悟报告",
     "experimentAudit": "实验审计",
     "figures": "图检索",
     "models": "模型管理",
@@ -1047,6 +1048,10 @@
       "coverage": "覆盖度"
     },
     "dimsAvg": "均值",
+    "page": {
+      "title": "感悟报告分析",
+      "subtitle": "对每份感悟实验报告做 6 维评审（理解/分析/创新/证据/有据性/覆盖度），定位证据缺口与编造风险"
+    },
     "list": {
       "scoresColumn": "感悟雷达",
       "empty": "暂无 reflection 评审记录",

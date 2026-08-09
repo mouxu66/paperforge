@@ -22,6 +22,7 @@ const WritingDashboard = lazy(() => import("./pages/WritingDashboard"));
 const WritingEditor = lazy(() => import("./pages/WritingEditor"));
 const DepthAnalysis = lazy(() => import("./pages/DepthAnalysis"));
 const DepthReview = lazy(() => import("./pages/DepthReview"));
+const ReflectionReportsPage = lazy(() => import("./pages/ReflectionReportsPage"));
 const ExperimentAuditPage = lazy(() => import("./pages/ExperimentAuditPage"));
 const FigureSearchPage = lazy(() => import("./pages/FigureSearchPage"));
 const ReflectionResultView = lazy(() => import("./components/ReflectionResultView"));
@@ -83,6 +84,7 @@ export default function App() {
             <Route path="/figures" element={<FigureSearchPage />} />
             <Route path="/extension" element={<ExtensionPage />} />
             <Route path="/local-rag" element={<LocalRagPage />} />
+            <Route path="/reflection" element={<ReflectionReportsPage />} />
             <Route path="/reflection/result/:paperId" element={<ReflectionResultView />} />
             <Route path="/favorites" element={<FavoritesPage />} />
             <Route path="/paper/:id" element={<DetailPage />} />

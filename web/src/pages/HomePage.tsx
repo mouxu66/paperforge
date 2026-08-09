@@ -329,7 +329,7 @@ export default function HomePage() {
       <ReflectionUpload
         open={reflectionUploadOpen}
         onClose={() => setReflectionUploadOpen(false)}
-        onSuccess={() => navigate("/depth-v4?tab=report")}
+        onSuccess={() => navigate("/reflection")}
       />
 
       <BatchTagModal

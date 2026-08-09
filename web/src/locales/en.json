@@ -10,6 +10,7 @@
     "generate": "Generate",
     "write": "Writing",
     "depth": "DEPTH",
+    "reflection": "Reflection Reports",
     "experimentAudit": "Experiment Audit",
     "figures": "Figures",
     "models": "Models",
@@ -1016,6 +1017,10 @@
       "coverage": "Cov."
     },
     "dimsAvg": "Avg",
+    "page": {
+      "title": "Reflection Report Analysis",
+      "subtitle": "6-dimension review of each reflection report (understanding/analysis/innovation/evidence/fidelity/coverage) to surface evidence gaps and fabrication risk"
+    },
     "list": {
       "scoresColumn": "Reflection Radar",
       "empty": "No reflection review records",

@@ -9,7 +9,7 @@ import ScoreBar from "@/components/ScoreBar";
  */
 import * as React from "react";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams, Navigate } from "react-router-dom";
 import {
   Button,
   Card,
@@ -23,7 +23,6 @@ import {
   Space,
   Empty,
   Tooltip,
-  Tabs,
   App,
   Popconfirm,
   Select,
@@ -40,7 +39,6 @@ import {
   type DepthReviewV4PaperItem,
   type EvidenceItem,
 } from "../api/depth";
-import ReflectionList from "../components/ReflectionList";
 import QwenLoadingBanner from "@/components/QwenLoadingBanner";
 import FigureDetailsList from "@/components/FigureDetailsList";
 import EvidenceSeverityCard from "@/components/EvidenceSeverityCard";
@@ -1157,60 +1155,26 @@ function DepthListPage() {
   );
 }
 
-// ---- Tabs 容器（论文 v4.1 + 感悟报告） ----
-
-/**
- * 在 /depth-v4/list 下呈现双 Tab：
- * - 论文深度审稿 (V4.1)：原 DepthListPage
- * - 感悟实验报告：ReflectionList（reflection 轻量 pipeline 评审记录）
- *
- * URL 同步：?tab=report 深度链接，缺省为 paper。
- * 设计为物理隔离，避免 v4.1 与 reflection 的字段在列表里互冲。
- */
-function TabsContainer() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = searchParams.get("tab") === "report" ? "report" : "paper";
-
-  return (
-    <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-      <Tabs
-        activeKey={activeTab}
-        onChange={(key) => {
-          if (key === "paper") {
-            // 回到 paper tab 时清除 tab 参数，保持 URL 干净
-            // 【修复】不要原地修改 searchParams，必须构造新实例
-            // react-router-dom v6 使用引用比较，原地修改不会触发重渲染
-            const next = new URLSearchParams(searchParams);
-            next.delete("tab");
-            setSearchParams(next);
-          } else {
-            setSearchParams({ tab: key });
-          }
-        }}
-        items={[
-          {
-            key: "paper",
-            label: "论文深度审稿 (V4.1)",
-            children: <DepthListPage />,
-          },
-          {
-            key: "report",
-            label: "感悟实验报告",
-            children: <ReflectionList />,
-          },
-        ]}
-      />
-    </div>
-  );
-}
-
 // ---- 路由入口 ----
 
+/**
+ * DEPTH v4.1 深度审稿页。
+ * - /depth-v4/result/:paperId  审稿结果展示
+ * - /depth-v4、/depth-v4/list  审稿记录列表
+ *
+ * 感悟报告评审已拆分为独立入口 /reflection（见 ReflectionReportsPage），
+ * 不再在本页以 Tab 形式混排，保证论文分析与会话报告分析物理隔离。
+ * 旧版深链 ?tab=report（曾指向感悟报告 Tab）自动重定向到新入口。
+ */
 export default function DepthReviewPage() {
   const { paperId } = useParams<{ paperId?: string }>();
+  const [searchParams] = useSearchParams();
 
+  if (!paperId && searchParams.get("tab") === "report") {
+    return <Navigate to="/reflection" replace />;
+  }
   if (paperId) {
     return <DepthResultView paperId={paperId} />;
   }
-  return <TabsContainer />;
+  return <DepthListPage />;
 }

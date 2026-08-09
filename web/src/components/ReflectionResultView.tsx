@@ -231,7 +231,7 @@ export default function ReflectionResultView() {
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "24px 16px" }}>
       {/* 顶部状态栏 */}
       <Space style={{ marginBottom: 16 }}>
-        <Button size="small" icon={<ArrowLeft />} onClick={() => navigate("/depth-v4?tab=report")}>
+        <Button size="small" icon={<ArrowLeft />} onClick={() => navigate("/reflection")}>
           返回报告列表
         </Button>
         {STATUS_ICONS[result.status]}
