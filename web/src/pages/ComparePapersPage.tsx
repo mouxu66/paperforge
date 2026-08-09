@@ -244,7 +244,7 @@ export default function ComparePapersPage() {
       />
 
       <Card className="pf-glass-card" variant="borderless" style={{ marginBottom: 20 }}>
-        <Space direction="vertical" style={{ width: "100%" }} size="large">
+        <Space orientation="vertical" style={{ width: "100%" }} size="large">
           <div>
             <Typography.Text strong>{t("compare.selectPapers")}</Typography.Text>
             <Select

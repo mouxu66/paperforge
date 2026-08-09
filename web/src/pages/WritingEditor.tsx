@@ -828,42 +828,49 @@ export default function WritingEditor() {
             </Space>
           }
           extra={
-            <Dropdown.Button
-              icon={<Download />}
-              disabled={project.chapterCount === 0 || exportProgress !== null}
-              menu={{
-                items: [
-                  {
-                    key: "markdown",
-                    label: "Markdown (.md)",
-                    icon: <FileCode />,
+            <Space.Compact>
+              <Button disabled={project.chapterCount === 0 || exportProgress !== null}>
+                {t("common.export")}
+              </Button>
+              <Dropdown
+                menu={{
+                  items: [
+                    {
+                      key: "markdown",
+                      label: "Markdown (.md)",
+                      icon: <FileCode />,
+                    },
+                    {
+                      key: "word",
+                      label: "Word (.doc)",
+                      icon: <FileType />,
+                    },
+                    {
+                      key: "latex",
+                      label: "LaTeX (.tex)",
+                      icon: <FileText />,
+                    },
+                    {
+                      key: "csl",
+                      label: t("editor.exportCsl"),
+                      icon: <FileText />,
+                    },
+                  ],
+                  onClick: ({ key }) => {
+                    if (key === "markdown") void prepareExport("markdown");
+                    else if (key === "word") void prepareExport("word");
+                    else if (key === "latex") void prepareExport("latex");
+                    else if (key === "csl") void handleOpenCslModal();
                   },
-                  {
-                    key: "word",
-                    label: "Word (.doc)",
-                    icon: <FileType />,
-                  },
-                  {
-                    key: "latex",
-                    label: "LaTeX (.tex)",
-                    icon: <FileText />,
-                  },
-                  {
-                    key: "csl",
-                    label: t("editor.exportCsl"),
-                    icon: <FileText />,
-                  },
-                ],
-                onClick: ({ key }) => {
-                  if (key === "markdown") void prepareExport("markdown");
-                  else if (key === "word") void prepareExport("word");
-                  else if (key === "latex") void prepareExport("latex");
-                  else if (key === "csl") void handleOpenCslModal();
-                },
-              }}
-            >
-              {t("common.export")}
-            </Dropdown.Button>
+                }}
+              >
+                <Button
+                  aria-label={t("common.export")}
+                  icon={<Download />}
+                  disabled={project.chapterCount === 0 || exportProgress !== null}
+                />
+              </Dropdown>
+            </Space.Compact>
           }
         >
           {/* 导出进度条 */}

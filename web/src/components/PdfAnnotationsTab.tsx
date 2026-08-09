@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Empty, List, Skeleton, Typography } from "antd";
+import { Empty, Skeleton, Typography } from "antd";
 import { listPdfAnnotations } from "@/api/pdfAnnotations";
 import type { PdfAnnotation } from "@/api/types";
+import { List } from "@/components/CompatList";
 
 interface PdfAnnotationsTabProps {
   paperId: string;
@@ -48,6 +49,7 @@ export default function PdfAnnotationsTab({ paperId, refreshKey = 0 }: PdfAnnota
   return (
     <div data-testid="pdf-annotations-tab">
       <List
+        rowKey="id"
         dataSource={annotations}
         renderItem={(item) => (
           <List.Item

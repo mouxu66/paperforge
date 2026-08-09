@@ -747,7 +747,7 @@ export default function ChapterEditor({
           icon={<Info />}
           closable
           onClose={dismissAiNotice}
-          message={t("chapter.aiNoticeTitle")}
+          title={t("chapter.aiNoticeTitle")}
           description={t("chapter.aiNotice")}
           style={{ borderRadius: 0, borderBottom: "1px solid var(--pf-border)" }}
         />

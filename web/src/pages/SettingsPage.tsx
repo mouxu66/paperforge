@@ -1,7 +1,7 @@
 import { Import, Link, Merge } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Button, Card, Input, List, Progress, Space, Tag, Typography, App } from "antd";
+import { Alert, Button, Card, Input, Progress, Space, Tag, Typography, App } from "antd";
 
 import { importFromZotero } from "@/api/zotero";
 import type { ZoteroImportResult } from "@/api/types";
@@ -10,6 +10,7 @@ import VramEventPanel from "@/components/VramEventPanel";
 import ResearchPageAccent from "@/components/ResearchPageAccent";
 import PageHeader from "@/components/PageHeader";
 import DepthSettingsPanel from "@/components/DepthSettingsPanel";
+import { List } from "@/components/CompatList";
 
 const { Text, Link: AntLink } = Typography;
 
@@ -101,7 +102,7 @@ export default function SettingsPage() {
           type="info"
           showIcon
           style={{ marginBottom: 20 }}
-          message={t("settings.duplicatePapersHelp")}
+          title={t("settings.duplicatePapersHelp")}
         />
         <Button
           type="primary"
@@ -125,7 +126,7 @@ export default function SettingsPage() {
           type="info"
           showIcon
           style={{ marginBottom: 20 }}
-          message={t("settings.zoteroHelp")}
+          title={t("settings.zoteroHelp")}
           description={
             <Text style={{ fontSize: 13 }}>
               {t("settings.zoteroHelpStep1")}{" "}
@@ -210,6 +211,7 @@ export default function SettingsPage() {
 
         {results.length > 0 && (
           <List
+            rowKey="id"
             style={{ marginTop: 20 }}
             size="small"
             dataSource={results}

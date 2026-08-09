@@ -104,7 +104,7 @@ export default function NoteList({ paperId }: NoteListProps) {
       ) : notes.length === 0 ? (
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("notes.empty")} />
       ) : (
-        <Space direction="vertical" size={12} style={{ display: "flex" }}>
+        <Space orientation="vertical" size={12} style={{ display: "flex" }}>
           {notes.map((note) => (
             <Card
               key={note.id}

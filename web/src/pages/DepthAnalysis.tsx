@@ -428,7 +428,7 @@ export default function DepthAnalysis() {
       {results.length > validResults.length && (
         <Alert
           type="warning"
-          message={t("depth.failedCount", { count: results.length - validResults.length })}
+          title={t("depth.failedCount", { count: results.length - validResults.length })}
           style={{ marginBottom: 16 }}
           showIcon
         />

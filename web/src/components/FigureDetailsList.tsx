@@ -108,11 +108,11 @@ export default function FigureDetailsList({ paperId }: FigureDetailsListProps) {
   }, [figures]);
 
   if (loading) {
-    return <Spin tip={t("common.loading")} />;
+    return <Spin description={t("common.loading")} />;
   }
 
   if (error) {
-    return <Alert type="error" message={error} showIcon />;
+    return <Alert type="error" title={error} showIcon />;
   }
 
   if (figures.length === 0) {
@@ -125,7 +125,7 @@ export default function FigureDetailsList({ paperId }: FigureDetailsListProps) {
   }
 
   return (
-    <Space direction="vertical" style={{ width: "100%" }} size="middle">
+    <Space orientation="vertical" style={{ width: "100%" }} size="middle">
       <FigureSummary stats={stats} t={t} />
 
       {figures.map((fig) => {
@@ -158,7 +158,7 @@ export default function FigureDetailsList({ paperId }: FigureDetailsListProps) {
               </Space>
             }
           >
-            <Space direction="vertical" style={{ width: "100%" }} size="middle">
+            <Space orientation="vertical" style={{ width: "100%" }} size="middle">
               {fig.imageUrl && (
                 <div>
                   <Image
@@ -205,7 +205,7 @@ export default function FigureDetailsList({ paperId }: FigureDetailsListProps) {
                   <Text type="secondary" style={{ display: "block", marginBottom: 4 }}>
                     {t("figureDetails.claimValidation", "数值断言校验")}
                   </Text>
-                  <Space direction="vertical" style={{ width: "100%" }} size="small">
+                  <Space orientation="vertical" style={{ width: "100%" }} size="small">
                     {pairs.map((pair, idx) => (
                       <ClaimValidationItem key={idx} pair={pair} t={t} />
                     ))}
@@ -272,7 +272,7 @@ function AxisInfoView({
           borderRadius: 4,
         }}
       >
-        <Space direction="vertical" style={{ width: "100%" }} size={8}>
+        <Space orientation="vertical" style={{ width: "100%" }} size={8}>
           {(xLabel || yLabel) && (
             <Space wrap>
               {xLabel && (
@@ -555,7 +555,7 @@ function FigureSummary({
 
   return (
     <Card size="small" style={{ background: "var(--pf-bg-secondary)" }}>
-      <Space direction="vertical" style={{ width: "100%" }} size="small">
+      <Space orientation="vertical" style={{ width: "100%" }} size="small">
         <Title level={5} style={{ margin: 0 }}>
           {t("figureDetails.validationSummary", "数值断言校验概览")}
         </Title>
@@ -592,7 +592,7 @@ function FigureSummary({
           <Alert
             type="warning"
             showIcon
-            message={t(
+            title={t(
               "figureDetails.inconsistentWarning",
               "检测到 {{invalidClaims}} 条数值断言与图表 axis 范围不一致，建议复核。",
               { invalidClaims },

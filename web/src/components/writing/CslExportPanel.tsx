@@ -419,7 +419,7 @@ export default function CslExportPanel({
       </Card>
 
       {error && (
-        <Alert message={t("csl.errorTitle")} description={error} type="error" showIcon closable />
+        <Alert title={t("csl.errorTitle")} description={error} type="error" showIcon closable />
       )}
 
       <Card
@@ -434,7 +434,7 @@ export default function CslExportPanel({
       >
         {loadingItems || loadingStyle ? (
           <div style={{ textAlign: "center", padding: 40 }}>
-            <Spin tip={t("csl.loading")} />
+            <Spin description={t("csl.loading")} />
           </div>
         ) : items.length === 0 ? (
           <div style={{ textAlign: "center", padding: 40, color: "var(--pf-text-placeholder)" }}>

@@ -162,7 +162,7 @@ export default function FigureSearchPage() {
           type="error"
           showIcon
           style={{ marginBottom: 16 }}
-          message={t("figures.searchError")}
+          title={t("figures.searchError")}
         />
       )}
 
@@ -248,7 +248,7 @@ export default function FigureSearchPage() {
                     </div>
                   }
                 >
-                  <Space direction="vertical" size={6} style={{ width: "100%" }}>
+                  <Space orientation="vertical" size={6} style={{ width: "100%" }}>
                     <Link
                       to={`/paper/${hit.paper_id}`}
                       className="pf-link"

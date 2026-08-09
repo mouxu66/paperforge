@@ -14,11 +14,11 @@ import {
   Tabs,
   Statistic,
   Empty,
-  List,
   Dropdown,
   App,
 } from "antd";
 import PdfAnnotationsTab from "@/components/PdfAnnotationsTab";
+import { List } from "@/components/CompatList";
 
 import {
   enrichPaperMetadata,
@@ -99,6 +99,7 @@ function CitationRelationsTab({ paper }: { paper: Paper }) {
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("paper.noRelatedPapers")} />
       ) : (
         <List
+          rowKey="id"
           dataSource={references}
           renderItem={(item) => (
             <List.Item style={{ padding: "10px 0" }}>
@@ -349,7 +350,7 @@ export default function DetailPage() {
             </Space>
           </div>
 
-          <Space direction="vertical" size="small">
+          <Space orientation="vertical" size="small">
             <FavoriteButton paper={paper} variant="primary" size="middle" showLabel />
             <Button
               icon={<LinkIcon />}
@@ -358,26 +359,35 @@ export default function DetailPage() {
             >
               {t("paper.viewOriginal")}
             </Button>
-            <Dropdown.Button
-              icon={<ChevronDown aria-label="paper.metadataActions" />}
-              loading={enrichLoading}
-              onClick={() => {
-                const enrichItem = metadataItems.find((i) => i.key === "enrich");
-                enrichItem?.onClick();
-              }}
-              menu={{
-                items: metadataItems
-                  .filter((i) => i.key !== "enrich")
-                  .map((item) => ({
-                    key: item.key,
-                    icon: <item.icon />,
-                    label: item.label,
-                    onClick: () => item.onClick(),
-                  })),
-              }}
-            >
-              <Zap /> {t("paper.enrichMetadata", "补全元数据")}
-            </Dropdown.Button>
+            <Space.Compact block>
+              <Button
+                loading={enrichLoading}
+                onClick={() => {
+                  const enrichItem = metadataItems.find((i) => i.key === "enrich");
+                  enrichItem?.onClick();
+                }}
+              >
+                <Zap /> {t("paper.enrichMetadata", "补全元数据")}
+              </Button>
+              <Dropdown
+                menu={{
+                  items: metadataItems
+                    .filter((i) => i.key !== "enrich")
+                    .map((item) => ({
+                      key: item.key,
+                      icon: <item.icon />,
+                      label: item.label,
+                      onClick: () => item.onClick(),
+                    })),
+                }}
+              >
+                <Button
+                  aria-label="paper.metadataActions"
+                  icon={<ChevronDown />}
+                  loading={enrichLoading}
+                />
+              </Dropdown>
+            </Space.Compact>
           </Space>
         </div>
 

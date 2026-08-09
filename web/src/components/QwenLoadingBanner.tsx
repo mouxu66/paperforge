@@ -26,7 +26,7 @@ export default function QwenLoadingBanner({ status }: Props) {
         type="info"
         showIcon
         icon={<Loader />}
-        message="Qwen 模型加载中"
+        title="Qwen 模型加载中"
         description={`llama-server 正在冷启动（CUDA kernel 编译），DEPTH 需等待其就绪。${formatEta(eta_seconds)}完成后自动继续，请勿关闭页面。`}
         style={{ marginBottom: 16 }}
       />
@@ -39,7 +39,7 @@ export default function QwenLoadingBanner({ status }: Props) {
         type="warning"
         showIcon
         icon={<ArrowLeftRight />}
-        message="正在切换模型（显存互斥）"
+        title="正在切换模型（显存互斥）"
         description={`OCR 与 Qwen 互斥：一端释放显存，另一端加载中（llama-server 冷启动）。${formatEta(eta_seconds)}完成后自动继续，请勿关闭页面。`}
         style={{ marginBottom: 16 }}
       />

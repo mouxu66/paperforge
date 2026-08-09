@@ -294,7 +294,7 @@ export default function ReflectionList({
       key: "paper_title",
       ellipsis: true,
       render: (t: string, record: ReflectionListItem) => (
-        <Space size={4} direction="vertical">
+        <Space size={4} orientation="vertical">
           <span>{t || "(未命名)"}</span>
           <Text type="secondary" style={{ fontSize: 11 }} copyable={{ text: record.paper_id }}>
             {record.paper_id}

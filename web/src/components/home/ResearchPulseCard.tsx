@@ -122,7 +122,7 @@ export default function ResearchPulseCard() {
             className="pf-pulse-link"
             onClick={() => navigate("/depth")}
             icon={<ArrowRight size={14} />}
-            iconPosition="end"
+            iconPlacement="end"
           >
             {t("pulse.viewAll", "查看评估")}
           </Button>

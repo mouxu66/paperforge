@@ -20,7 +20,7 @@ export default function ExtensionPage() {
     <div style={{ maxWidth: 800, margin: "0 auto" }}>
       <PageHeader title={t("extension.title")} description={t("extension.subtitle")} />
       <Card className="pf-glass-card" style={{ marginBottom: 24 }}>
-        <Space direction="vertical" size="large" style={{ width: "100%" }}>
+        <Space orientation="vertical" size="large" style={{ width: "100%" }}>
           <Title level={5} style={{ marginTop: 0 }}>
             <Puzzle size={20} style={{ marginRight: 8, verticalAlign: "middle" }} />
             {t("extension.download")}

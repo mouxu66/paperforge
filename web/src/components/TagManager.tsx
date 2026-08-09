@@ -86,7 +86,7 @@ export function BatchTagModal({ open, selectedIds, onClose, onSuccess }: BatchTa
       okText={t("tag.batch.apply", "应用到 {{count}} 篇", { count: selectedIds.length })}
       destroyOnHidden
     >
-      <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+      <Space orientation="vertical" size="middle" style={{ width: "100%" }}>
         <div>
           <div style={{ marginBottom: 6, fontSize: 13, color: "var(--pf-text-secondary)" }}>
             {t("tag.batch.addLabel", "添加标签")}
@@ -185,7 +185,7 @@ export function TagManagerModal({ open, onClose }: { open: boolean; onClose: () 
       ) : tags.length === 0 ? (
         <Empty description={t("tag.manager.empty", "暂无标签，上传论文后可在详情页添加")} />
       ) : (
-        <Space direction="vertical" size="small" style={{ width: "100%" }}>
+        <Space orientation="vertical" size="small" style={{ width: "100%" }}>
           {tags.map((tag) => (
             <div
               key={tag.name}

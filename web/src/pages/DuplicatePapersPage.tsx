@@ -70,7 +70,7 @@ export default function DuplicatePapersPage() {
       <Alert
         type="info"
         showIcon
-        message={t("duplicates.hintTitle")}
+        title={t("duplicates.hintTitle")}
         description={t("duplicates.hintDescription")}
         style={{ marginBottom: 24 }}
       />
@@ -78,7 +78,7 @@ export default function DuplicatePapersPage() {
       {groups.length === 0 ? (
         <Empty description={t("duplicates.noDuplicates")} />
       ) : (
-        <Space direction="vertical" size="large" style={{ width: "100%" }}>
+        <Space orientation="vertical" size="large" style={{ width: "100%" }}>
           {groups.map((group, idx) => {
             const key = groupKey(group);
             const sel = selections[key] ?? makeDefaultSelection(group);

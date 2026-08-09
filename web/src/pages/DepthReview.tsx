@@ -292,7 +292,7 @@ function DepthResultView({ paperId }: { paperId: string }) {
       {result.status === "failed" && (
         <Alert
           type="error"
-          message="审稿失败"
+          title="审稿失败"
           description={result.error_message}
           style={{ marginBottom: 16 }}
           showIcon
@@ -302,7 +302,7 @@ function DepthResultView({ paperId }: { paperId: string }) {
       {result.status === "timed_out" && (
         <Alert
           type="warning"
-          message="审稿超时"
+          title="审稿超时"
           description={result.error_message || "任务超过最大执行时长，未生成可用结果；可以重新审稿。"}
           style={{ marginBottom: 16 }}
           showIcon
@@ -312,7 +312,7 @@ function DepthResultView({ paperId }: { paperId: string }) {
       {result.status === "running" && (
         <Alert
           type="info"
-          message="审稿正在进行中，请稍候..."
+          title="审稿正在进行中，请稍候..."
           style={{ marginBottom: 16 }}
           showIcon
         />
@@ -935,7 +935,7 @@ function DepthListPage() {
             dataIndex: "paper_title",
             ellipsis: true,
             render: (t: string, record: DepthReviewV4PaperItem) => (
-              <Space size={4} direction="vertical">
+              <Space size={4} orientation="vertical">
                 <span>{t || "(未命名)"}</span>
                 <Text
                   type="secondary"

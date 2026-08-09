@@ -39,11 +39,11 @@ import {
   Tabs,
   Upload,
   Tag,
-  List,
   type UploadProps,
 } from "antd";
 
 import { useTranslation } from "react-i18next";
+import { List } from "@/components/CompatList";
 import {
   createReflectionReport,
   uploadReflectionReports,
@@ -534,7 +534,7 @@ export default function ReflectionUpload({
       {error && (
         <Alert
           type="error"
-          message={error}
+          title={error}
           showIcon
           closable
           onClose={() => setError(null)}
@@ -562,7 +562,7 @@ export default function ReflectionUpload({
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
-          message={
+          title={
             <span>
               关联论文：<Text strong>{sourcePaperTitle || sourcePaperId}</Text>
             </span>
@@ -723,6 +723,7 @@ export default function ReflectionUpload({
                       )}
                     </div>
                     <List
+                      rowKey="key"
                       size="small"
                       bordered
                       dataSource={fileItems}

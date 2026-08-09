@@ -211,7 +211,7 @@ export default function IntegrityReportModal({ paperId, open, onClose }: Props) 
               type="warning"
               showIcon
               style={{ marginTop: 8 }}
-              message={`AI 生成疑似度：${fmtScore(aiUse.advisory.ai_likelihood)}（${aiUse.advisory.tier_label || aiUse.advisory.tier}）`}
+              title={`AI 生成疑似度：${fmtScore(aiUse.advisory.ai_likelihood)}（${aiUse.advisory.tier_label || aiUse.advisory.tier}）`}
               description={aiUse.advisory_note}
             />
           )}
@@ -275,7 +275,7 @@ export default function IntegrityReportModal({ paperId, open, onClose }: Props) 
             </Text>
           ) : null}
           {scoring.trust_warnings?.map((w) => (
-            <Alert key={w} type="error" showIcon message={w} style={{ marginTop: 8 }} />
+            <Alert key={w} type="error" showIcon title={w} style={{ marginTop: 8 }} />
           ))}
           {scoring.hardcoded_overrides?.map((o) => (
             <Text key={o} type="secondary" style={{ fontSize: 12, display: "block" }}>

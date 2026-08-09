@@ -261,7 +261,7 @@ export default function ReflectionResultView() {
       {result.status === "failed" && (
         <Alert
           type="error"
-          message="评审失败"
+          title="评审失败"
           description={result.error_message}
           showIcon
           style={{ marginBottom: 16 }}
@@ -271,7 +271,7 @@ export default function ReflectionResultView() {
       {result.status === "timed_out" && (
         <Alert
           type="warning"
-          message="评审超时"
+          title="评审超时"
           description={
             result.error_message || "任务超过最大执行时长，未生成可用结果；可以重新评审。"
           }
@@ -283,7 +283,7 @@ export default function ReflectionResultView() {
       {result.status === "running" && (
         <Alert
           type="info"
-          message="reflection 评审进行中，请稍候..."
+          title="reflection 评审进行中，请稍候..."
           showIcon
           style={{ marginBottom: 16 }}
         />
@@ -292,7 +292,7 @@ export default function ReflectionResultView() {
       {llmFailed && (
         <Alert
           type="error"
-          message="评审无效：LLM 服务故障"
+          title="评审无效：LLM 服务故障"
           description={
             result.error_message ||
             "本次没有生成可信评分。请检查模型服务后点击“重新评审”，不要将此结果视为报告质量结论。"
@@ -344,7 +344,7 @@ export default function ReflectionResultView() {
                 type="warning"
                 showIcon
                 icon={<TriangleAlert />}
-                message={`忠实度过低（${Math.round(r.fidelity * 100)}%）：报告内容与原论文匹配度不足 30%，大量论点疑似编造，系统判定需重写`}
+                title={`忠实度过低（${Math.round(r.fidelity * 100)}%）：报告内容与原论文匹配度不足 30%，大量论点疑似编造，系统判定需重写`}
                 style={{ marginTop: 12, textAlign: "left" }}
               />
             )}
@@ -534,9 +534,9 @@ export default function ReflectionResultView() {
                 <Alert
                   type="warning"
                   showIcon
-                  message="建议补充的原论文要点"
+                  title="建议补充的原论文要点"
                   description={
-                    <Space direction="vertical" size={4} style={{ width: "100%" }}>
+                    <Space orientation="vertical" size={4} style={{ width: "100%" }}>
                       {uncoveredKeypoints.map((item, index) => (
                         <div key={`${item.keypoint}-${index}`}>
                           {item.keypoint} <Tag color="orange">相似度 {Math.round(item.sim * 100)}%</Tag>
@@ -563,7 +563,7 @@ export default function ReflectionResultView() {
               <Alert
                 type="warning"
                 showIcon
-                message="以下句子与原论文相似度过低（< 35%）且含绝对化断言/数字，疑似编造，请逐条核实"
+                title="以下句子与原论文相似度过低（< 35%）且含绝对化断言/数字，疑似编造，请逐条核实"
                 style={{ marginBottom: 12 }}
               />
               {r.fidelity_stray_claims.map((s: string, i: number) => (

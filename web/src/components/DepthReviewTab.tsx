@@ -142,7 +142,7 @@ export default function DepthReviewTab({ paperId }: DepthReviewTabProps) {
     return (
       <Alert
         type="error"
-        message={t("depth.errorTitle", "获取审稿结果失败")}
+        title={t("depth.errorTitle", "获取审稿结果失败")}
         description={error}
         action={
           <Button size="small" icon={<RefreshCw />} onClick={() => fetchResult(true)}>
@@ -160,7 +160,7 @@ export default function DepthReviewTab({ paperId }: DepthReviewTabProps) {
 
   return (
     <Spin spinning={refreshing}>
-      <Space direction="vertical" style={{ width: "100%" }} size="middle">
+      <Space orientation="vertical" style={{ width: "100%" }} size="middle">
         <Space wrap>
           {result.status === "running" || result.status === "pending" ? (
             <Tag color="blue">{t("depth.statusRunning", "审稿中")}</Tag>
@@ -201,7 +201,7 @@ export default function DepthReviewTab({ paperId }: DepthReviewTabProps) {
         {result.status === "running" && (
           <Alert
             type="info"
-            message={t("depth.runningMessage", "审稿正在进行中，请稍候...")}
+            title={t("depth.runningMessage", "审稿正在进行中，请稍候...")}
             showIcon
           />
         )}
@@ -209,7 +209,7 @@ export default function DepthReviewTab({ paperId }: DepthReviewTabProps) {
         {result.status === "failed" && (
           <Alert
             type="error"
-            message={t("depth.failedTitle", "审稿失败")}
+            title={t("depth.failedTitle", "审稿失败")}
             description={result.error_message || t("depth.unknownError", "未知错误")}
             showIcon
           />
@@ -218,7 +218,7 @@ export default function DepthReviewTab({ paperId }: DepthReviewTabProps) {
         {result.status === "timed_out" && (
           <Alert
             type="warning"
-            message={t("depth.statusTimedOut", "审稿超时")}
+            title={t("depth.statusTimedOut", "审稿超时")}
             description={
               result.error_message ||
               t("depth.timedOutMessage", "任务超过最大执行时长，未生成可用结果；可以重新审稿。")

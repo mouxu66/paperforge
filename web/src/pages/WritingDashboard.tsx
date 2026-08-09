@@ -665,7 +665,7 @@ export default function WritingDashboard() {
 
         {outlineStage === "generating" && (
           <div style={{ textAlign: "center", padding: "32px 0" }}>
-            <Spin tip={t("write.outlineGenerating")} size="large">
+            <Spin description={t("write.outlineGenerating")} size="large">
               <div style={{ padding: 24 }} />
             </Spin>
             {outlineChunk && (

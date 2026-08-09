@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Alert, Card, Col, List, Row, Typography, Upload } from "antd";
+import { Alert, Card, Col, Row, Typography, Upload } from "antd";
 import type { UploadFile } from "antd";
 import { Inbox, Zap, Pencil, BookOpen } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import PageHeader from "@/components/PageHeader";
+import { List } from "@/components/CompatList";
 
 const { Title, Paragraph, Text } = Typography;
 
@@ -112,7 +113,7 @@ export default function LocalRagPage() {
         <Alert
           type="warning"
           showIcon
-          message={t("localRag.notConnectedTitle", "文档知识库尚未接入")}
+          title={t("localRag.notConnectedTitle", "文档知识库尚未接入")}
           description={t(
             "localRag.notConnectedDesc",
             "当前文件只保留在本页内存中用于预览，刷新页面后会消失，也不会参与问答、综述或写作检索。",
@@ -150,6 +151,7 @@ export default function LocalRagPage() {
 
         {files.length > 0 && (
           <List
+            rowKey="uid"
             size="small"
             style={{ marginTop: 16 }}
             dataSource={files}

@@ -1,9 +1,10 @@
 import { CheckCircle, Clock, XCircle, Trash2, Loader, RefreshCw, ArrowLeftRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Card, Empty, List, Space, Tag, Tooltip, Typography } from "antd";
+import { Button, Card, Empty, Space, Tag, Tooltip, Typography } from "antd";
 
 import { clearQwenEvents, getQwenEvents, type VramEvent as VramEventType } from "@/api/qwen";
+import { List } from "@/components/CompatList";
 
 const { Text } = Typography;
 
@@ -131,6 +132,7 @@ export default function VramEventPanel() {
         />
       ) : (
         <List
+          rowKey={(item) => `${item.ts}-${item.kind}-${item.message}`}
           size="small"
           style={{ maxHeight: 320, overflow: "auto" }}
           dataSource={events}

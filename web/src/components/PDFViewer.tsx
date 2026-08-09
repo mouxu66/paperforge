@@ -5,7 +5,6 @@ import {
   ColorPicker,
   Empty,
   Input,
-  List,
   App,
   Popover,
   Select,
@@ -29,6 +28,7 @@ interface PdfTextItem {
 // Vite 通过 ?url 后缀将 worker 文件作为 URL 资源导入
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import type { Paper, TranslationHistoryItem } from "@/api/types";
+import { List } from "@/components/CompatList";
 import type { HighlightColor } from "@/api/types";
 import {
   deleteTranslationHistory,
@@ -234,6 +234,7 @@ function TranslationPanel({
             {t("pdf.translationHistory", "翻译历史")}
           </div>
           <List
+            rowKey="id"
             size="small"
             dataSource={history}
             renderItem={(item) => (
@@ -908,7 +909,7 @@ export default function PDFViewer({ paper, pdfUrl, initialPage, highlightText }:
 
         {loading && (
           <div style={{ textAlign: "center", padding: "60px 0" }}>
-            <Spin tip={t("pdf.loadingPdf")}>
+            <Spin description={t("pdf.loadingPdf")}>
               <div style={{ padding: 24 }} />
             </Spin>
           </div>
@@ -1292,6 +1293,7 @@ export default function PDFViewer({ paper, pdfUrl, initialPage, highlightText }:
             />
           ) : (
             <List
+              rowKey="id"
               size="small"
               dataSource={highlights}
               renderItem={(h) => (

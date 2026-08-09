@@ -197,7 +197,7 @@ export default function PaperCard({ paper, selected, onToggleSelect, onEnrich, d
             </Tag>
           ))}
           {paper.tags.slice(0, 3).map((t) => (
-            <Tag key={t} bordered={false} color="default" style={{ fontSize: 12, lineHeight: 1.6 }}>
+            <Tag key={t} variant="filled" color="default" style={{ fontSize: 12, lineHeight: 1.6 }}>
               {t}
             </Tag>
           ))}
