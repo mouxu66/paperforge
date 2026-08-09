@@ -114,6 +114,14 @@ class LLMFactory:
             timeout=timeout,
         )
 
+    def build_provider(self, config) -> BaseLLMProvider:
+        """根据 DB 配置行构建 Provider 实例（公开入口）。
+
+        与 _build_provider 等价，但不改动全局 _current 状态，
+        供需要「临时构建一个非当前模型」的调用方使用（如双模型交叉复核）。
+        """
+        return self._build_provider(config)
+
     def _init_provider(self, config_id: int) -> None:
         """从 DB 加载指定 config_id 的配置并初始化 Provider。"""
         config = self._load_config_by_id(config_id)

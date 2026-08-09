@@ -468,6 +468,107 @@ function DepthResultView({ paperId }: { paperId: string }) {
             )}
           </Card>
 
+          {/* 评审依据（可复核性）：分数把握、双模型印证、复现参数 */}
+          {(fv.score_uncertainty || fv.cross_check || fv.llm_params_snapshot || fv.citation_integrity) && (
+            <Card
+              title={
+                <Space>
+                  <FileSearch />
+                  评审依据（可复核性）
+                </Space>
+              }
+              size="small"
+              style={{ marginBottom: 16 }}
+            >
+              {/* 双模型交叉复核 */}
+              {fv.cross_check?.enabled && (
+                <Alert
+                  type={fv.cross_check.flag === "disagreement" ? "warning" : "success"}
+                  showIcon
+                  style={{ marginBottom: 12 }}
+                  title={
+                    fv.cross_check.flag === "disagreement"
+                      ? "双模型分歧：建议人工复核"
+                      : "双模型交叉印证一致"
+                  }
+                  description={
+                    <Space orientation="vertical" size={4} style={{ width: "100%" }}>
+                      <div>
+                        第二评审员：{fv.cross_check.second_model || fv.cross_check.second_provider || "-"}
+                        {fv.cross_check.second_score != null && (
+                          <span style={{ marginLeft: 8 }}>
+                            次评分：{(Number(fv.cross_check.second_score) * 100).toFixed(0)}%
+                          </span>
+                        )}
+                        {fv.cross_check.second_verdict && (
+                          <Tag
+                            style={{ marginLeft: 8 }}
+                            color={fv.cross_check.flag === "disagreement" ? "orange" : "green"}
+                          >
+                            {fv.cross_check.second_verdict}
+                          </Tag>
+                        )}
+                        {fv.cross_check.score_delta != null && (
+                          <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                            |Δ|={Number(fv.cross_check.score_delta).toFixed(2)}
+                          </Text>
+                        )}
+                      </div>
+                      {(fv.cross_check.second_reason || fv.cross_check.note) && (
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          {fv.cross_check.second_reason || fv.cross_check.note}
+                        </Text>
+                      )}
+                    </Space>
+                  }
+                />
+              )}
+
+              {/* 分数不确定性（bootstrap CI） */}
+              {fv.score_uncertainty && fv.score_uncertainty.ci_low != null && (
+                <div style={{ marginBottom: 12 }}>
+                  <Space wrap>
+                    <Text strong>分数置信区间（95%）</Text>
+                    <Tag color={fv.score_uncertainty.status === "needs_human_review" ? "volcano" : "blue"}>
+                      {(Number(fv.score_uncertainty.ci_low) * 100).toFixed(0)}% ~{" "}
+                      {(Number(fv.score_uncertainty.ci_high) * 100).toFixed(0)}%
+                    </Tag>
+                    {fv.score_uncertainty.status === "needs_human_review" && (
+                      <Tag color="red">建议人工复核</Tag>
+                    )}
+                  </Space>
+                  {fv.score_uncertainty.note && (
+                    <div style={{ fontSize: 12, color: "var(--pf-text-muted)", marginTop: 4 }}>
+                      {fv.score_uncertainty.note}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 引用真值校验 */}
+              {fv.citation_integrity &&
+                (typeof fv.citation_integrity === "object") &&
+                Object.keys(fv.citation_integrity).length > 0 && (
+                  <div style={{ marginBottom: 12 }}>
+                    <Text strong>引用真值校验</Text>
+                    <div style={{ fontSize: 12, color: "var(--pf-text-muted)", marginTop: 4 }}>
+                      {JSON.stringify(fv.citation_integrity)}
+                    </div>
+                  </div>
+                )}
+
+              {/* LLM 参数快照（可复现性） */}
+              {fv.llm_params_snapshot && Object.keys(fv.llm_params_snapshot).length > 0 && (
+                <div>
+                  <Text strong style={{ fontSize: 12 }}>评审参数（可复现）</Text>
+                  <div style={{ fontSize: 12, color: "var(--pf-text-muted)", marginTop: 2 }}>
+                    {JSON.stringify(fv.llm_params_snapshot)}
+                  </div>
+                </div>
+              )}
+            </Card>
+          )}
+
           {/* 类型判别 */}
           <Card title="论文类型" style={{ marginBottom: 16 }}>
             <Descriptions size="small" column={2}>

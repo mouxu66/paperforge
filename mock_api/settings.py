@@ -495,6 +495,71 @@ class Settings(BaseSettings):
         description="触发 bonus 所需的最少一致 claim 数量。",
     )
 
+    # ── ADR-014 P9：全文覆盖层（分块摘要 + 采样增强）—— 漏洞 C ────────────
+    # 本地 9B 模型 ctx≈8K token，segment_paper_text 只给摘要/引言/结论 + 正文开头
+    # （max_chars_full），论文中段几乎不可见 → QE 证据池残缺。开启后对全文做
+    # 分块摘要（map-reduce）生成全局摘要，并采样中段原文注入 QE/Q234 prompt。
+    # 默认关：任何失败降级为无补充（零行为变化）。详见 mock_api/depth_fulltext.py。
+    depth_fulltext_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "PAPERFORGE_DEPTH_FULLTEXT_ENABLED", "PAPERFORGE_DEPTH_FULLTEXT"
+        ),
+        description=(
+            "DEPTH 全文覆盖层开关（默认 False）。开启后评审前对全文做分块摘要 + "
+            "中段原文采样，让本地模型在 8K ctx 内「看到」论文全文梗概与真实段落，"
+            "缓解漏洞 C（ctx 只读头尾）。全程 fail-open，失败自动降级。"
+        ),
+    )
+    depth_fulltext_chunk_size: int = Field(
+        default=1500,
+        ge=300,
+        validation_alias=AliasChoices(
+            "PAPERFORGE_DEPTH_FULLTEXT_CHUNK_SIZE", "DEPTH_FULLTEXT_CHUNK_SIZE"
+        ),
+        description="分块摘要的块大小（字符）。",
+    )
+    depth_fulltext_chunk_overlap: int = Field(
+        default=120,
+        ge=0,
+        validation_alias=AliasChoices(
+            "PAPERFORGE_DEPTH_FULLTEXT_CHUNK_OVERLAP", "DEPTH_FULLTEXT_CHUNK_OVERLAP"
+        ),
+        description="分块重叠（字符）。",
+    )
+    depth_fulltext_top_k: int = Field(
+        default=8,
+        ge=1,
+        le=32,
+        validation_alias=AliasChoices("PAPERFORGE_DEPTH_FULLTEXT_TOP_K", "DEPTH_FULLTEXT_TOP_K"),
+        description="注入 prompt 的采样块数量。",
+    )
+
+    # ── ADR-014 P8：双模型交叉复核（second opinion）──────────────────────
+    # 本地单模型意见不可当终审（qwen_vs_others 对比：与 ChatGPT 真实分歧 ~0.10、
+    # 与混元排序不相关）。开启后每条评审会额外请第二个（云端/不同端点）模型
+    # 独立打分，分歧大时在结果里标记 needs_human_review 建议。全程 fail-open。
+    second_opinion_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "PAPERFORGE_SECOND_OPINION_ENABLED", "PAPERFORGE_SECOND_OPINION"
+        ),
+        description=(
+            "双模型交叉复核开关（默认 False）。开启后本地 Qwen 评审完，会从 "
+            "llm_configs 里挑一个与主 provider 不同的云端/独立端点模型做第二次评审，"
+            "分歧大时在结果里标记 needs_human_review。需在「模型管理」配置至少一个 "
+            "非本地模型才会真正生效；无第二模型时静默跳过。"
+        ),
+    )
+    second_opinion_threshold: float = Field(
+        default=0.15,
+        ge=0.01,
+        validation_alias=AliasChoices(
+            "PAPERFORGE_SECOND_OPINION_THRESHOLD", "SECOND_OPINION_THRESHOLD"
+        ),
+        description="双模型分数分歧阈值：|Δscore| ≥ 此值或 verdict 不一致 → 建议人工复核。",
+    )
+
     # ── 绑定地址 ──────────────────────────────────────────────────
     bind_host: str = Field(
         default="127.0.0.1",

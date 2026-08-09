@@ -190,7 +190,8 @@ def run(out_path: str | None = None, with_figures: bool = False, baseline: bool 
         os.environ["PAPERFORGE_DEPTH_SCORE_OFFSET"] = "0"
         os.environ["PAPERFORGE_DEPTH_CAP_THRESHOLD"] = "2.0"
     else:
-        os.environ["PAPERFORGE_DEPTH_OFFSET_TABLE"] = '{"default":-0.09,"peerread":0.18}'
+        # 2026-08-09 重扫：peerread 偏移在 0.6 阈值下为 0.0（旧 +0.18 是 0.8 阈值产物）
+        os.environ["PAPERFORGE_DEPTH_OFFSET_TABLE"] = '{"default":-0.09,"peerread":0.0}'
         os.environ["PAPERFORGE_DEPTH_SCORE_OFFSET"] = "-0.09"
         os.environ["PAPERFORGE_DEPTH_CAP_THRESHOLD"] = "0.80"
     os.environ["PAPERFORGE_DEPTH_CAP_TAPER"] = "0.15"

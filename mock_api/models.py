@@ -444,6 +444,36 @@ class HotspotConfig(Base):
     )
 
 
+class DepthFulltextCache(Base):
+    """DEPTH 全文覆盖层缓存表（ADR-014 P9，漏洞 C 软件解法）。
+
+    按 (paper_id, text_hash) 缓存分块摘要的产物，避免同篇论文重评时
+    重复付出 N 次分块摘要 LLM 调用（N≈全文长度/1500）。
+    访问一律 best-effort（表不存在/DB 异常时跳过缓存，不影响评审）。
+    """
+
+    __tablename__ = "depth_fulltext_cache"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    paper_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    text_hash: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    global_summary: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    chunk_summaries: Mapped[str] = mapped_column(
+        Text, default="[]", nullable=False
+    )  # JSON 字符串列表
+    verbatim_chunks: Mapped[str] = mapped_column(
+        Text, default="[]", nullable=False
+    )  # JSON 列表 [{index,text,signal}]
+    n_chunks: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (Index("ix_depth_fulltext_paper_hash", "paper_id", "text_hash", unique=True),)
+
+
 class PaperEmbedding(Base):
     """论文向量嵌入表 —— 存储「标题+摘要」的向量表示（384 维，BAAI/bge-small-en-v1.5）。
 

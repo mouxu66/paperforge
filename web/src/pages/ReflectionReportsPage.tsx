@@ -21,8 +21,16 @@ export default function ReflectionReportsPage() {
   const [refreshKey, setRefreshKey] = useState(0);
 
   return (
-    <div style={{ maxWidth: 1200, margin: "0 auto", padding: "24px 16px" }}>
+    <div
+      style={{
+        width: "100%",
+        maxWidth: 1680,
+        margin: "0 auto",
+        padding: "24px 16px",
+      }}
+    >
       <PageHeader
+        className="pf-reflection-page-header"
         title={t("reflection.page.title", "感悟报告分析")}
         description={t(
           "reflection.page.subtitle",

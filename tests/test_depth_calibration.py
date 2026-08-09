@@ -111,15 +111,16 @@ class TestApplyTopTierCap:
 @pytest.mark.critical
 class TestResolveContextOffset:
     def _tbl(self):
-        return {"default": -0.09, "peerread": 0.18, "arxiv:2021": 0.0}
+        # peerread=0.0 与 2026-08-09 生产表一致（0.6 阈值重扫结论，旧 0.18 已移除）
+        return {"default": -0.09, "peerread": 0.0, "arxiv:2021": 0.0}
 
     def test_exact_source_year_match(self):
         """'arxiv:2021' 精确命中。"""
         assert dc.resolve_context_offset("arxiv", 2021, table=self._tbl()) == 0.0
 
     def test_peerread_legacy_year(self):
-        """peerread + 2010(legacy) → 命中 'peerread'=0.18。"""
-        assert dc.resolve_context_offset("peerread", 2010, table=self._tbl()) == 0.18
+        """peerread + 2010(legacy) → 命中 'peerread'=0.0。"""
+        assert dc.resolve_context_offset("peerread", 2010, table=self._tbl()) == 0.0
 
     def test_modern_default_fallback(self):
         """arxiv + 2022(modern) 无具体键 → 命中 'default'=-0.09。"""
@@ -127,7 +128,7 @@ class TestResolveContextOffset:
 
     def test_explicit_src_only_match(self):
         """仅 source（无 year）→ 命中 'peerread'。"""
-        assert dc.resolve_context_offset("peerread", None, table=self._tbl()) == 0.18
+        assert dc.resolve_context_offset("peerread", None, table=self._tbl()) == 0.0
 
     def test_unmatched_table_returns_none(self):
         """自定义表无匹配键 → 返回 None（调用方回退全局偏移）。"""
@@ -142,8 +143,8 @@ class TestResolveContextOffset:
         assert dc.resolve_context_offset("arxiv", 2024) == -0.09
 
     def test_default_table_peerread(self):
-        """默认表：peerread 命中 0.18。"""
-        assert dc.resolve_context_offset("peerread", 2010) == 0.18
+        """默认表（P0 生产生效）：peerread 已按 0.6 阈值重扫为 0.0（旧 0.18 移除）。"""
+        assert dc.resolve_context_offset("peerread", 2010) == 0.0
 
 
 # ===========================================================================
@@ -156,9 +157,9 @@ class TestCorrectFinalScore:
         assert dc.correct_final_score(0.5, offset=-0.09, paper=None) == pytest.approx(0.41)
 
     def test_paper_peerread_uses_tiered_offset(self):
-        """paper=peerread/2010 → 解析偏移 0.18（正向，原样叠加）。"""
+        """paper=peerread/2010 → 解析偏移 0.0（2026-08-09 重扫结论，原样返回）。"""
         paper = {"source": "peerread", "year": 2010}
-        assert dc.correct_final_score(0.5, paper=paper) == pytest.approx(0.68)
+        assert dc.correct_final_score(0.5, paper=paper) == pytest.approx(0.5)
 
     def test_paper_modern_uses_default_offset(self):
         """paper=arxiv/2024 → 解析偏移 -0.09（中段封顶生效）。"""
@@ -178,7 +179,7 @@ class TestCorrectFinalScore:
             source = "peerread"
             year = 2010
 
-        assert dc.correct_final_score(0.5, paper=P()) == pytest.approx(0.68)
+        assert dc.correct_final_score(0.5, paper=P()) == pytest.approx(0.5)
 
 
 # ===========================================================================

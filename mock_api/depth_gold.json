@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "note": "DEPTH 人工金标（ADR-014 · P3）。⚠️ 当前为占位示例（合成数据，仅用于跑通回归测试骨架）。请替换为真实人工盲评金标后再启用 PAPERFORGE_GOLD_OFFSET_PATH。calibrated_score 与 verdict 已按偏移后阈值（accept≥0.80 / minor≥0.70 / major≥0.50 / reject<0.50）对齐。",
+  "note": "DEPTH 人工金标（ADR-014 · P3）。⚠️ 本文件当前为占位示例（合成数据，仅用于跑通回归测试骨架），**不作为校准依据**。生产级真实金标已就位：deliverables/gold/peerread_verdict_gold.json（N=198，PeerRead 真实人类 accept/reject 标签，由 scripts/gold/build_peerread_gold.py 生成）——真正的偏移/阈值校准与回归请使用该文件，回归测试见 tests/test_peerread_gold_regression.py。calibrated_score 与 verdict 已按偏移后阈值（accept≥0.80 / minor≥0.70 / major≥0.50 / reject<0.50）对齐。",
   "source": "PLACEHOLDER_SYNTHETIC",
   "samples": [
     {

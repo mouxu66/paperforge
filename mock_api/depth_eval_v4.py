@@ -1257,6 +1257,36 @@ class DepthReviewer:
         except TypeError:
             return self._llm(prompt)
 
+    # ── ADR-014 P9：全文覆盖层（漏洞 C 软件解法）──────────────────
+    def _build_fulltext_supplement(self, paper_id: str, full_text: str) -> str:
+        """构建全文覆盖补充文本（全局摘要 + 采样原文块）。
+
+        默认关闭（PAPERFORGE_DEPTH_FULLTEXT_ENABLED=1 才开）；任何失败返回 ''
+        （fail-open，零行为变化）。分块摘要产物按 (paper_id, text_hash) 缓存，
+        重评不重复付 LLM 成本。
+        """
+        try:
+            if not paper_id or not full_text:
+                return ""
+            from .depth_fulltext import build_fulltext_context, format_supplement
+
+            ctx = build_fulltext_context(paper_id, full_text, llm_func=self._llm)
+            return format_supplement(ctx)
+        except Exception as e:  # noqa: BLE001 - fail-open
+            logger.warning("全文覆盖补充构建失败（降级无补充）: %s", e)
+            return ""
+
+    def _paper_view(self, text: str, ctx: PaperContext, max_chars: int) -> str:
+        """论文视图 + 全文覆盖补充（ADR-014 P9）。
+
+        默认 fulltext_supplement='' → 与旧行为完全一致（零开销）。
+        """
+        base = text[:max_chars]
+        supp = (ctx.fulltext_supplement or "").strip()
+        if not supp:
+            return base
+        return f"{base}\n\n{supp}"
+
     # ── v4.3 NodeOutput helpers ────────────────────────────────────
     def _wrap_failed(self, node_id: str, error: str) -> NodeOutput:
         """Return a failed NodeOutput, triggering DAG-level error handling."""
@@ -1601,7 +1631,7 @@ class DepthReviewer:
     # ------------------------------------------------------------------
     def _run_qe(self, ctx: PaperContext) -> NodeOutput[tuple[QEResult, str]]:
         text = ctx.paper_full_text
-        prompt = PROMPT_QE.format(paper=text[:MAX_CHARS_FULL])
+        prompt = PROMPT_QE.format(paper=self._paper_view(text, ctx, MAX_CHARS_FULL))
         self._log("[QE] 开始调用 LLM（纯文本模式）...")
         # v4.2 温度锁定：显式传 temperature（此前裸调 self._llm(prompt)，
         # 依赖下游默认值，复跑一致性无保障）
@@ -1667,7 +1697,7 @@ class DepthReviewer:
         valid_ids = list(evidence_pool.keys())
 
         prompt = PROMPT_Q2.format(
-            paper=text[:MAX_CHARS_SHORT],
+            paper=self._paper_view(text, ctx, MAX_CHARS_SHORT),
             paper_type=q1_type,
             hotspots=hotspots_str,
             evidence_pool_text=evidence_text,
@@ -1740,7 +1770,7 @@ class DepthReviewer:
         valid_ids = list(evidence_pool.keys())
 
         prompt = prompt_template.format(
-            paper=text[:MAX_CHARS_SHORT],
+            paper=self._paper_view(text, ctx, MAX_CHARS_SHORT),
             paper_type=q1_type,
             secondary_type_info=secondary_info,
             secondary_checklist=secondary_checklist,
@@ -1827,7 +1857,9 @@ class DepthReviewer:
         evidence_text = _format_evidence_pool_text(evidence_pool)
         valid_ids = list(evidence_pool.keys())
 
-        prompt = PROMPT_Q4.format(paper=text[:MAX_CHARS_SHORT], evidence_pool_text=evidence_text)
+        prompt = PROMPT_Q4.format(
+            paper=self._paper_view(text, ctx, MAX_CHARS_SHORT), evidence_pool_text=evidence_text
+        )
         self._log(f"[Q4] 开始调用 LLM（纯文本模式, max_tokens={self._max_tokens}）...")
 
         def _parse_q4(raw: str) -> tuple[dict[str, Any], dict[str, float]]:
@@ -1961,7 +1993,7 @@ class DepthReviewer:
         rigor_guide = Q234_RIGOR_GUIDE.get(q1.type, Q234_RIGOR_GUIDE["B"])
 
         prompt = PROMPT_Q234.format(
-            paper=text[:MAX_CHARS_SHORT],
+            paper=self._paper_view(text, ctx, MAX_CHARS_SHORT),
             paper_type=q1.type,
             secondary_type_info=secondary_info,
             rigor_guide=rigor_guide,
@@ -3453,6 +3485,11 @@ class DepthReviewer:
             objective_score = objective_features.weighted_score(OIM_FEATURE_WEIGHTS)
             self._log(f"OIM 特征: {objective_features}, objective_score={objective_score:.3f}")
 
+        # 1.5 ADR-014 P9：全文覆盖补充（默认关，fail-open）
+        fulltext_supplement = self._build_fulltext_supplement(paper_id, full_text)
+        if fulltext_supplement:
+            self._log(f"[全文覆盖] 已注入补充文本 {len(fulltext_supplement)}c")
+
         # 2. 串行节点链（Q0→Q1→QE→Q234/Q2Q3Q4→QF→Q5a→Q5b→Q5c）
         ctx = PaperContext(
             paper_id=paper_id,
@@ -3463,6 +3500,7 @@ class DepthReviewer:
             paper_full_text=pa_full,
             paper_abstract_conclusion=pa_concl,
             hotspots=hotspots,
+            fulltext_supplement=fulltext_supplement,
         )
         results = DAGOutputs()
 
@@ -3632,6 +3670,11 @@ class DepthReviewer:
             f"文本分段完成: intro={len(pa_intro)}c, full={len(pa_full)}c, concl={len(pa_concl)}c"
         )
 
+        # 1.5 ADR-014 P9：全文覆盖补充（默认关，fail-open）
+        fulltext_supplement = self._build_fulltext_supplement(paper_id, full_text)
+        if fulltext_supplement:
+            self._log(f"[全文覆盖] 已注入补充文本 {len(fulltext_supplement)}c")
+
         # 2. 构建 PaperContext（v4.2 泛型擦除：统一传递类型化上下文）
         ctx = PaperContext(
             paper_id=paper_id,
@@ -3643,6 +3686,7 @@ class DepthReviewer:
             paper_abstract_conclusion=pa_concl,
             paper_meta=paper_meta or {},
             hotspots=hotspots,
+            fulltext_supplement=fulltext_supplement,
         )
 
         # P0-1: 提前抽取客观特征（v4.2 修复：DAG 路径此前漏算 OIM，与串行不一致）

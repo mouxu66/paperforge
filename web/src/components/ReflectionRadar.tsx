@@ -33,6 +33,12 @@ interface Props {
   size?: number;
   /** hover tooltip 是否显示明细数值 */
   showDetail?: boolean;
+  /**
+   * 是否显示雷达下方的占位行（均分百分比文本）。
+   * 表格场景与详情页"均分"列重复时设为 false，可让行高压回雷达自身高度。
+   * 默认 true 保留向后兼容（详情页 / 旧调用方不会突然消失）。
+   */
+  showFooter?: boolean;
 }
 
 /** 类型守卫：禁止论文评分对象（DepthScore）误入报告雷达。 */
@@ -47,7 +53,12 @@ function isReflectionScores(value: unknown): value is ReflectionScores {
   );
 }
 
-export default function ReflectionRadar({ scores, size = 120, showDetail = true }: Props) {
+export default function ReflectionRadar({
+  scores,
+  size = 120,
+  showDetail = true,
+  showFooter = true,
+}: Props) {
   const { t } = useTranslation();
 
   if (scores != null && !isReflectionScores(scores)) {
@@ -111,7 +122,15 @@ export default function ReflectionRadar({ scores, size = 120, showDetail = true 
   const avgPct = Math.round(Number(safe.average ?? 0) * 100);
 
   const radar = (
-    <div style={{ display: "inline-block", textAlign: "center", lineHeight: 1.25 }}>
+    <div
+      style={{
+        display: "inline-block",
+        textAlign: "center",
+        lineHeight: 1.25,
+        // 表格场景关闭 footer 时整体只在雷达自身高度外加 4px 余量；与同列背景对齐。
+        paddingBottom: showFooter ? 0 : 4,
+      }}
+    >
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
         {/* 4 圈同心环 (25/50/75/100%) */}
         {[0.25, 0.5, 0.75, 1].map((ratio) => (
@@ -173,10 +192,19 @@ export default function ReflectionRadar({ scores, size = 120, showDetail = true 
           );
         })}
       </svg>
-      <div style={{ marginTop: 2, fontSize: 11, color: "var(--pf-text-muted)" }}>
-        <span style={{ fontWeight: 700, fontSize: 13, color: "#4338ca" }}>{avgPct}%</span>
-        <span style={{ marginLeft: 4 }}>{t("reflection.dimsAvg")}</span>
-      </div>
+      {showFooter && (
+        <div
+          style={{
+            // footer 仅展示均分补字，与表格"平均分"列信息冗余时可通过 prop 关闭。
+            marginTop: 2,
+            fontSize: 11,
+            color: "var(--pf-text-muted)",
+          }}
+        >
+          <span style={{ fontWeight: 700, fontSize: 13, color: "#4338ca" }}>{avgPct}%</span>
+          <span style={{ marginLeft: 4 }}>{t("reflection.dimsAvg")}</span>
+        </div>
+      )}
     </div>
   );
 

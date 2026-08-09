@@ -150,7 +150,7 @@ box(2000, 1020, 320, 120, C_LLM, "Qwen3-VL-4B (8082)", ["视觉多模态", "Q4_K
 layer_bg(40, 1140, 2320, 240, "⑤ 支撑与治理层")
 box(100, 1190, 360, 170, C_SUP, "VRAMScheduler", ["vram_scheduler.py", "IDLE/QWEN/OCR 状态机", "request_qwen/request_ocr", "互斥切换 + autostart"], font_lbl, font_small)
 box(500, 1190, 360, 170, C_SUP, "LlamaServerManager", ["llama_server_manager.py", "端口预检 + /health", "冷启动宽限", "taskkill /F /T 释放"], font_lbl, font_small)
-box(900, 1190, 360, 170, C_SUP, "depth_calibration", ["三层校准", "① 全局偏移 -0.09", "② 分档表 peerread=+0.18", "③ 校准集回归"], font_lbl, font_small)
+box(900, 1190, 360, 170, C_SUP, "depth_calibration", ["三层校准", "① 全局偏移 -0.09", "② 分档表 peerread=0.0（0.6 阈值重扫）", "③ 校准集回归"], font_lbl, font_small)
 box(1300, 1190, 360, 170, C_SUP, "Verdict 阈值", ["accept=0.6 / reject=0.5", "FATAL_VETO_MIN=2", "FATAL_VETO_FLOOR=0.9", "delta[-0.25,+0.25]"], font_lbl, font_small)
 box(1700, 1190, 360, 170, C_SUP, "circuit_breaker", ["+ retry_utils", "tenacity 指数退避", "3 次 (1s/2s/4s)", "熔断保护"], font_lbl, font_small)
 box(2100, 1190, 220, 170, C_SUP, "SQLite + FTS5", ["paperforge_mock.db", "papers", "depth_reviews_v4", "+ 384d 向量"], font_lbl, font_small)

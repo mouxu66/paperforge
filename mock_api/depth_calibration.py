@@ -101,15 +101,18 @@ SCORE_OFFSET = get_score_offset()
 
 
 # ── 分档偏移表（按 import 源 / 年代自适应） ──
-# PeerRead 校准实证（peerread_calibration_2026-07-24）：DEPTH 绝对分标定**不跨语料鲁棒**
+# PeerRead 校准实证：DEPTH 绝对分标定**不跨语料鲁棒**
 #   - 库内 2020–2026 现代 arXiv 论文：DEPTH 相对人工盲评系统性偏高 ~+0.09 → 需 -0.09（default）。
-#   - PeerRead 2007–2017（4 会场）N=198 大规模：DEPTH 分整体偏低，+0.18 修复最优
-#     （固定 0.80 阈值 κ 从 0.020 升至 0.414 天花板；注意 N=40 小样本曾误估 +0.34 过度）。
+#   - PeerRead 2007–2017（4 会场）N=198 真实人类金标重扫（2026-08-09，
+#     deliverables/gold/peerread_offset_scan_t06.json）：**生产阈值 accept≥0.6** 下
+#     最优偏移 -0.02（κ=0.414 / 一致率 70.7%），采纳稳健圆整值 0.0（κ=0.364 / 68.2%）。
 # 单一全局偏移被证伪；改为按 (source, year) 分档查表。
 #
 # 【生产规则 P0】DEFAULT_OFFSET_TABLE 已内置为生产生效值（无需 env 即可应用）：
 #   "default"  : -0.09   # 库内现代论文校准（保持）
-#   "peerread" :  0.18   # 基于 N=198 大规模估计；若未来对 arXiv.cs 旧论文单独处理可复用此值
+#   "peerread" :  0.00   # 2026-08-09 重扫：旧值 +0.18 是 0.80 阈值时代（历史扫描
+#                        # 建议在 0.8 阈值下 κ 最优）的产物；阈值降到 0.6 后未再验证，
+#                        # 实测 +0.18 在 0.6 阈值下过度接受（56.6%），故移除。
 # 任何新来源（SNOR / ARR-DC / 其他）必须单独跑基线 + 偏移扫描，禁止复用上述任一值。
 #
 # key 解析优先级（高→低）：
@@ -121,7 +124,7 @@ _LEGACY_YEAR_CUTOFF = int(os.getenv("PAPERFORGE_DEPTH_LEGACY_YEAR_CUTOFF", "2018
 # 生产生效的默认分档偏移表（P0 规则：无需 env 即应用）
 DEFAULT_OFFSET_TABLE: dict[str, float] = {
     "default": -0.09,
-    "peerread": 0.18,
+    "peerread": 0.0,
 }
 
 

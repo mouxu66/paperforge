@@ -258,6 +258,14 @@ def run_depth_review_sync(
             "figure_coverage": result_dict.get("figure_coverage", "disabled"),
             "qf_reasoning": result_dict.get("qf_reasoning", ""),
         }
+        # ── ADR-014 可复核性字段：评分如何产生、把握多大、可复现参数 ──
+        # 这些字段来自 DepthV4Result（仅当对应 env 门控开启时非空），
+        # 原样透传到 final_verdict JSON，前端「评审依据」面板展示。
+        record.final_verdict["score_uncertainty"] = result_dict.get("score_uncertainty", {}) or {}
+        record.final_verdict["llm_params_snapshot"] = (
+            result_dict.get("llm_params_snapshot", {}) or {}
+        )
+        record.final_verdict["citation_integrity"] = result_dict.get("citation_integrity", {}) or {}
         # ── 有效性闸口：防止 LLM 超时/空响应被静默标为 completed ──
         # 若证据池为空 + critique_points 为空 → 整个流水线未真正执行（LLM 全超时/返回空）
         # 此时标 failed 而非 completed，避免前端拿到空评审且无失败信号。
@@ -299,6 +307,25 @@ def run_depth_review_sync(
                 )
                 return record_id
             raise DepthReviewInvalidError(record.error_message)
+
+        # ── ADR-014 P8：双模型交叉复核（仅 PAPERFORGE_SECOND_OPINION=1 且
+        #    配置了第二模型时执行；全程 fail-open，绝不改变主评审结论）──
+        # 放在有效性闸口之后：被闸口判死的评审（证据池空 + 全默认分）不值得
+        # 再花一次云端 API 调用做复核。
+        try:
+            from .second_opinion import run_second_opinion
+
+            _so = run_second_opinion(
+                (paper.abstract or "") + "\n\n" + (paper.full_text or ""),
+                primary_score=result_dict.get("calibrated_score"),
+                primary_verdict=result_dict.get("final_verdict"),
+                kind="paper",
+                db=db,  # 复用调用方 session，避免独立 session 的 close() 副作用（见 find_second_provider）
+            )
+            if _so.get("enabled"):
+                record.final_verdict["cross_check"] = _so
+        except Exception as _so_err:  # noqa: BLE001 - 第二评审异常不影响主评审
+            logger.warning("DEPTH v4.2 双模型复核失败（非致命）: %s", _so_err)
 
         record.status = "completed"
         record.completed_at = datetime.now()
@@ -567,6 +594,36 @@ def run_depth_reflection_sync(paper_id: str) -> str:
                         paper.source_paper_id,
                         fidelity_err,
                     )
+            # ── ADR-014 可复核性：LLM 参数快照 + 双模型交叉复核（fail-open）──
+            rr = record.reflection_result or {}
+            try:
+                from .llm.reproducibility import get_llm_params_snapshot
+
+                rr.setdefault("llm_params_snapshot", get_llm_params_snapshot())
+            except Exception as _snap_err:  # noqa: BLE001 - 快照仅为存档
+                logger.warning("reflection LLM 参数快照失败（非致命）: %s", _snap_err)
+            try:
+                from .second_opinion import run_second_opinion
+
+                # 显式 is not None 判断：analysis_v2.average 优先，缺失才回退顶层 average。
+                # 不能用 or 链——average=0.0 是合法分值，会被 or 误吞成 None 导致
+                # 第二评审缺失 primary_score，分歧判定退化。
+                _avg = (rr.get("analysis_v2") or {}).get("average")
+                if _avg is None:
+                    _avg = rr.get("average")
+                _so = run_second_opinion(
+                    paper.full_text or "",
+                    primary_score=_avg,
+                    primary_verdict=rr.get("verdict"),
+                    kind="report",
+                    db=db,  # 复用调用方 session（同上）
+                )
+                if _so.get("enabled"):
+                    rr["cross_check"] = _so
+            except Exception as _so_err:  # noqa: BLE001 - 第二评审异常不影响主评审
+                logger.warning("reflection 双模型复核失败（非致命）: %s", _so_err)
+            if rr is not record.reflection_result:
+                record.reflection_result = rr
             record.status = "completed"
         record.completed_at = datetime.now()
         db.commit()

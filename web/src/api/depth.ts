@@ -58,6 +58,49 @@ export interface FinalVerdictV4 {
   qf_reasoning?: string;
   // M0 矢量渲染开关：由服务端 /api/depth/v4/result/{paper_id} 注入
   m0_active?: boolean;
+  // ── 评审依据（审计）字段：ADR-014，随 final_verdict JSON 持久化 ──
+  /** 分数不确定性（bootstrap 95% CI；PAPERFORGE_UNCERTAINTY_GATE=1 时非空） */
+  score_uncertainty?: {
+    score?: number | null;
+    ci_low?: number | null;
+    ci_high?: number | null;
+    ci_width?: number | null;
+    status?: string;
+    note?: string;
+  };
+  /** LLM 参数快照（seed / 温度 / 模型），供复现 */
+  llm_params_snapshot?: {
+    seed?: number;
+    temperature?: number;
+    max_tokens?: number;
+    model?: string;
+    provider?: string;
+    base_url?: string;
+    [key: string]: unknown;
+  };
+  /** 引用真值校验报告（PAPERFORGE_CITATION_VERIFY=1 时非空） */
+  citation_integrity?: {
+    integrity_flag?: string;
+    checked?: number;
+    fabricated?: number;
+    inconsistent?: number;
+    [key: string]: unknown;
+  } | null;
+  /** 双模型交叉复核（分歧 → 建议人工复核） */
+  cross_check?: {
+    enabled: boolean;
+    flag?: string;
+    note?: string;
+    second_provider?: string | null;
+    second_model?: string | null;
+    second_score?: number | null;
+    second_verdict?: string | null;
+    second_reason?: string;
+    score_delta?: number | null;
+    verdict_agree?: boolean | null;
+    skipped?: string;
+    error?: string;
+  };
 }
 
 export interface DepthReviewV4Result {
@@ -112,6 +155,11 @@ export interface DepthReviewV4Result {
   final_score: number | null;
   /** 各节点采样标准差（key 示例：Q2:novelty_score / Q5c） */
   node_score_stds: Record<string, number>;
+  /** 评审依据（审计）字段：冗余透传 final_verdict 下的 score_uncertainty / llm_params_snapshot / cross_check，便于组件直接读取 */
+  score_uncertainty?: FinalVerdictV4["score_uncertainty"];
+  llm_params_snapshot?: FinalVerdictV4["llm_params_snapshot"];
+  citation_integrity?: FinalVerdictV4["citation_integrity"];
+  cross_check?: FinalVerdictV4["cross_check"];
   error_message: string | null;
   created_at: string | null;
   completed_at: string | null;

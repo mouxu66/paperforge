@@ -1,0 +1,155 @@
+/* 感悟报告评审记录：表格操作区与展开控件
+ *
+ * 体积调整记录（2026-08-03，拥挤问题修复）：
+ *   - 行高 108 → 78 / 64：操作列改为图标按钮后不再需要 108 的高度。
+ *   - 按钮 min-widths 全删：之前是为了"图标+文字"撑住点击区，现在纯图标
+ *     ≈28 px 即可，Tooltip 补回 hover 提示。
+ *   - 列总宽 1775 → 1240：在 1366 viewport 下不再需要表格内部横向滚动
+ *     （保留 sticky 左/右列兜底小屏体验）。
+ */
+.pf-reflection-table {
+  --pf-row-height: 78px;
+  --pf-row-height-compact: 64px;
+}
+
+.pf-reflection-table .ant-table-container {
+  border: 1px solid var(--pf-border-light);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.pf-reflection-table .ant-table-thead > tr > th {
+  height: 50px;
+  padding-block: 10px;
+  color: var(--pf-text-primary);
+  background: var(--pf-bg-tertiary);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pf-reflection-table .ant-table-tbody > tr > td {
+  height: var(--pf-row-height);
+  vertical-align: middle;
+  padding-block: 10px;
+}
+
+.pf-reflection-table .ant-table-tbody > tr:hover > td {
+  background: color-mix(in srgb, var(--pf-primary-soft) 42%, var(--pf-bg-primary));
+}
+
+/* 论文标题 sticky：滚动到右侧时仍能看到是哪条记录；保留 1 行 ellipsis */
+.pf-reflection-title {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 操作列：图标按钮 row，去掉 min-width 让列自然紧凑 */
+.pf-reflection-table .pf-reflection-actions {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  width: max-content;
+  justify-content: center;
+}
+
+.pf-reflection-table .pf-reflection-actions .ant-btn {
+  flex: 0 0 auto;
+  width: 30px;
+  min-width: 0;
+  height: 30px;
+  padding: 0;
+  border-radius: 7px;
+}
+
+.pf-reflection-table .pf-reflection-actions .ant-btn .lucide {
+  font-size: 16px;
+}
+
+/* hover 时图标显出主色，与 antd 的 type="text" hover 默认色区分；
+   危险按钮仍走 antd 默认 danger hover。 */
+.pf-reflection-table .pf-reflection-actions .pf-reflection-action-view:hover {
+  background: var(--pf-primary-soft);
+  color: var(--pf-primary);
+}
+
+.pf-reflection-table .pf-reflection-actions .pf-reflection-action-integrity:hover {
+  background: var(--pf-primary-soft);
+  color: var(--pf-primary);
+}
+
+.pf-reflection-table .pf-reflection-actions .pf-reflection-action-restart:not([disabled]):hover {
+  background: var(--pf-primary-soft);
+  color: var(--pf-primary);
+}
+
+.pf-reflection-table .pf-reflection-actions .pf-reflection-action-restart[disabled] {
+  color: var(--pf-text-placeholder);
+}
+
+/* 展开按钮（行首 + 行内根据需要） */
+.pf-reflection-expand-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--pf-border-light);
+  border-radius: 7px;
+  color: var(--pf-text-secondary);
+  background: var(--pf-bg-primary);
+  cursor: pointer;
+  transition:
+    color 0.18s ease,
+    border-color 0.18s ease,
+    background 0.18s ease,
+    transform 0.18s ease;
+}
+
+.pf-reflection-expand-button:hover {
+  border-color: var(--pf-primary);
+  color: var(--pf-primary);
+  background: var(--pf-primary-soft);
+  transform: translateY(-1px);
+}
+
+.pf-reflection-expand-button:focus-visible {
+  outline: 2px solid var(--pf-primary);
+  outline-offset: 2px;
+}
+
+.pf-reflection-expand-button svg {
+  width: 15px;
+  height: 15px;
+}
+
+.pf-reflection-expand-placeholder {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+}
+
+/* 表格内水平滚动条在 Mac/Linux 上往往不可见，这里强制一下让用户感知到
+   列是否真的全展。antd 默认走浏览器原生滚动条。 */
+.pf-reflection-table .ant-table-body::-webkit-scrollbar {
+  height: 8px;
+}
+
+.pf-reflection-table .ant-table-body::-webkit-scrollbar-thumb {
+  background: var(--pf-scrollbar, #cbd5e1);
+  border-radius: 4px;
+}
+
+/* 紧凑模式（HomePage 内嵌、桌面过窄时）— 用 token 一键切换 */
+@media (max-width: 1280px) {
+  .pf-reflection-table {
+    --pf-row-height: var(--pf-row-height-compact);
+  }
+
+  .pf-reflection-table .ant-table-tbody > tr > td {
+    padding-block: 6px;
+  }
+}

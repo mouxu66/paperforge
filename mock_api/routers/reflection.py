@@ -760,6 +760,22 @@ async def reflection_list(
                     if llm_failed
                     else scores.get("innovative_insights"),
                     "evidence_support": None if llm_failed else scores.get("evidence_support"),
+                    # 修复：列表雷达按 6 维渲染，旧记录 scores 里自带 fidelity/coverage，
+                    # 新记录在 analysis_v2（展开 scores）里；两处都要兜底，否则前端两轴恒为 0。
+                    "fidelity": None
+                    if llm_failed
+                    else (
+                        analysis.get("fidelity")
+                        if analysis.get("fidelity") is not None
+                        else scores.get("fidelity")
+                    ),
+                    "coverage": None
+                    if llm_failed
+                    else (
+                        analysis.get("coverage")
+                        if analysis.get("coverage") is not None
+                        else scores.get("coverage")
+                    ),
                     "average": None
                     if llm_failed
                     else (

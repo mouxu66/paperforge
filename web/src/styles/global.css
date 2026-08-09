@@ -2,6 +2,39 @@
 @import "./card.css";
 @import "./layout.css";
 @import "./markdown.css";
+@import "./reflection.css";
+
+/* 评审记录页头部：标题与提交入口保持同一横向区块，窄屏时自然换行 */
+.pf-reflection-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  min-width: 0;
+}
+
+.pf-reflection-page-header .pf-page-header-copy {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pf-reflection-page-header .pf-page-header-actions {
+  flex: 0 0 auto;
+  margin-top: 0;
+  white-space: nowrap;
+}
+
+@media (max-width: 767px) {
+  .pf-reflection-page-header {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .pf-reflection-page-header .pf-page-header-actions {
+    align-self: flex-start;
+  }
+}
 
 :root {
   /* 语义底色（浅色） */

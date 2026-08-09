@@ -99,6 +99,10 @@ class PaperContext(BaseModel):
     # cached figures (populated by QE wrapper if DEPTH_FIGURE_EVIDENCE_ENABLED)
     figures: list[dict[str, Any]] = Field(default_factory=list)
 
+    # ADR-014 P9: 全文覆盖层补充文本（全局摘要 + 采样原文块），默认空串零开销。
+    # 由 review/review_async_dag 在分段后注入，供 QE/Q234 等节点追加到 {paper} 视图。
+    fulltext_supplement: str = ""
+
     model_config = {"frozen": True}  # nodes should not mutate the context
 
 

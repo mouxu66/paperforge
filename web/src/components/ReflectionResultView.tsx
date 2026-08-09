@@ -717,6 +717,231 @@ export default function ReflectionResultView() {
             </Card>
           )}
 
+          {/* 评审依据（可复核性）：分数从哪来、把握多大、是否经双模型交叉印证 */}
+          <Collapse
+            style={{ marginBottom: 16 }}
+            items={[
+              {
+                key: "audit",
+                label: (
+                  <Space>
+                    <BadgeCheck />
+                    评审依据（可复核性）
+                  </Space>
+                ),
+                children: (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                    {/* 双模型交叉复核 */}
+                    {(() => {
+                      const cc = r.cross_check;
+                      if (!cc?.enabled) return null;
+                      const disagree = cc.flag === "disagreement";
+                      return (
+                        <Alert
+                          type={disagree ? "warning" : "success"}
+                          showIcon
+                          icon={disagree ? <TriangleAlert /> : <BadgeCheck />}
+                          title={
+                            disagree ? (
+                              "双模型分歧：建议人工复核"
+                            ) : (
+                              "双模型交叉印证一致"
+                            )
+                          }
+                          description={
+                            <Space orientation="vertical" size={4} style={{ width: "100%" }}>
+                              <div>
+                                第二评审员：{cc.second_model || cc.second_provider || "-"}
+                                {cc.second_score != null && (
+                                  <span style={{ marginLeft: 8 }}>
+                                    次评分：{(Number(cc.second_score) * 100).toFixed(0)}%
+                                  </span>
+                                )}
+                                {cc.second_verdict && (
+                                  <Tag
+                                    style={{ marginLeft: 8 }}
+                                    color={disagree ? "orange" : "green"}
+                                  >
+                                    {cc.second_verdict}
+                                  </Tag>
+                                )}
+                                {cc.score_delta != null && (
+                                  <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                                    |Δ|={Number(cc.score_delta).toFixed(2)}
+                                  </Text>
+                                )}
+                              </div>
+                              {cc.second_reason && (
+                                <Text type="secondary" style={{ fontSize: 12 }}>
+                                  {cc.second_reason}
+                                </Text>
+                              )}
+                              {cc.note && (
+                                <Text type="secondary" style={{ fontSize: 12 }}>
+                                  {cc.note}
+                                </Text>
+                              )}
+                            </Space>
+                          }
+                        />
+                      );
+                    })()}
+
+                    {/* 分数不确定性（bootstrap CI） */}
+                    {(() => {
+                      const unc = r.analysis_v2?.score_uncertainty;
+                      if (!unc || unc.ci_low == null) return null;
+                      const humanReview = unc.status === "needs_human_review";
+                      return (
+                        <div>
+                          <Space wrap>
+                            <Text strong>分数置信区间（95%）</Text>
+                            <Tag color={humanReview ? "volcano" : "blue"}>
+                              {(Number(unc.ci_low) * 100).toFixed(0)}% ~{" "}
+                              {(Number(unc.ci_high) * 100).toFixed(0)}%
+                            </Tag>
+                            {humanReview && <Tag color="red">建议人工复核</Tag>}
+                          </Space>
+                          {unc.note && (
+                            <div
+                              style={{ fontSize: 12, color: "var(--pf-text-muted)", marginTop: 4 }}
+                            >
+                              {unc.note}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* 硬编码规则覆盖记录（分数为何被压制/降级） */}
+                    {(() => {
+                      const overrides = r.hardcoded_overrides ?? r.analysis_v2?.hardcoded_overrides;
+                      if (!overrides || overrides.length === 0) return null;
+                      return (
+                        <div>
+                          <Text strong>硬编码规则覆盖记录（{overrides.length} 条）</Text>
+                          <div
+                            style={{
+                              marginTop: 6,
+                              background: "var(--pf-bg-tertiary)",
+                              borderRadius: 6,
+                              padding: "8px 12px",
+                            }}
+                          >
+                            {overrides.map((o, i) => (
+                              <div
+                                key={i}
+                                style={{ fontSize: 12, color: "var(--pf-text-secondary)", marginBottom: 4 }}
+                              >
+                                {o}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* 引用真值校验 */}
+                    {(() => {
+                      const ci =
+                        r.citation_integrity ?? r.analysis_v2?.citation_integrity;
+                      const reason =
+                        r.citation_override_reason ?? r.analysis_v2?.citation_override_reason;
+                      if (!ci && !reason) return null;
+                      const flag: string | undefined =
+                        typeof ci === "object" && ci
+                          ? String((ci as Record<string, unknown>).integrity_flag ?? "") || undefined
+                          : undefined;
+                      return (
+                        <div>
+                          <Space wrap>
+                            <Text strong>引用真值校验</Text>
+                            {flag && (
+                              <Tag
+                                color={
+                                  flag === "fabricated_suspected"
+                                    ? "red"
+                                    : flag === "inconsistent"
+                                      ? "orange"
+                                      : "green"
+                                }
+                              >
+                                {flag === "fabricated_suspected"
+                                  ? "疑似编造"
+                                  : flag === "inconsistent"
+                                    ? "引用不一致"
+                                    : flag === "ok"
+                                      ? "通过"
+                                      : flag}
+                              </Tag>
+                            )}
+                          </Space>
+                          {reason && (
+                            <div style={{ fontSize: 12, color: "var(--pf-text-muted)", marginTop: 4 }}>
+                              {reason}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* 照抄检测 / AI 疑似度 / 证据诊断 */}
+                    <Descriptions size="small" column={2}>
+                      {r.copy_ratio != null && (
+                        <Descriptions.Item label="照抄比率">
+                          <Tag color={r.copy_crushed ? "red" : r.copy_ratio >= 0.3 ? "orange" : "green"}>
+                            {Math.round(Number(r.copy_ratio) * 100)}%
+                            {r.copy_crushed ? "（已封杀向量分）" : ""}
+                          </Tag>
+                        </Descriptions.Item>
+                      )}
+                      {r.ai_likelihood != null && (
+                        <Descriptions.Item label="AI 生成疑似度">
+                          <Text>{Math.round(Number(r.ai_likelihood) * 100)}%</Text>
+                          {r.ai_likelihood_tier && (
+                            <Tag style={{ marginLeft: 4 }}>{r.ai_likelihood_tier}</Tag>
+                          )}
+                        </Descriptions.Item>
+                      )}
+                      {r.effective_evidence_count != null && (
+                        <Descriptions.Item label="有效证据数">
+                          {r.effective_evidence_count}
+                          {(() => {
+                            const rej = r.evidence_rejections;
+                            if (!rej || Object.keys(rej).length === 0) return null;
+                            return (
+                              <Text type="secondary" style={{ fontSize: 11, marginLeft: 6 }}>
+                                （ok={rej.ok ?? 0} from_paper={rej.from_paper ?? 0} not_found={rej.not_found ?? 0}）
+                              </Text>
+                            );
+                          })()}
+                        </Descriptions.Item>
+                      )}
+                      {r.llm_calls != null && (
+                        <Descriptions.Item label="LLM 调用诊断">
+                          {r.llm_calls} 次调用
+                          {r.llm_empty ? `（${r.llm_empty} 次空返回）` : ""}
+                          {r.truncated ? " · 报告过长已截断" : ""}
+                        </Descriptions.Item>
+                      )}
+                    </Descriptions>
+
+                    {/* LLM 参数快照（可复现性） */}
+                    {r.llm_params_snapshot &&
+                      Object.keys(r.llm_params_snapshot).length > 0 && (
+                        <div>
+                          <Text strong style={{ fontSize: 12 }}>评审参数（可复现）</Text>
+                          <div style={{ fontSize: 12, color: "var(--pf-text-muted)", marginTop: 2 }}>
+                            {JSON.stringify(r.llm_params_snapshot)}
+                          </div>
+                        </div>
+                      )}
+                  </div>
+                ),
+              },
+            ]}
+          />
+
           {/* 元信息 */}
           <Card title="元信息" size="small">
             <Descriptions size="small" column={2}>

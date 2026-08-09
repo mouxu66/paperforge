@@ -863,12 +863,63 @@ export interface ReflectionResult {
   /** 评审失败诊断：存在时不得展示 scores/average */
   llm_failed?: boolean;
   parse_failed?: boolean;
+  // ── 评审依据（审计）字段 ──
+  /** 双模型交叉复核（分歧 → 建议人工复核） */
+  cross_check?: CrossCheck | null;
+  /** LLM 参数快照（seed / 温度 / max_tokens），供复现 */
+  llm_params_snapshot?: {
+    seed?: number;
+    temperature?: number;
+    max_tokens?: number;
+    model?: string;
+    provider?: string;
+    base_url?: string;
+    [key: string]: unknown;
+  };
+  effective_evidence_count?: number | null;
+  hardcoded_overrides?: string[];
+  evidence_rejections?: Record<string, number>;
+  citation_integrity?: Record<string, unknown> | null;
+  citation_override_reason?: string;
+  copy_ratio?: number | null;
+  copy_crushed?: boolean;
+  ai_likelihood?: number | null;
+  ai_likelihood_tier?: string;
+  llm_calls?: number;
+  llm_empty?: number;
+  truncated?: boolean;
 }
 
 /** 忠实度锚点句：报告中的句子 vs 原论文相似度 */
 export interface FidelityAnchor {
   sentence: string;
   sim: number;
+}
+
+/** 分数不确定性（bootstrap 95% CI；PAPERFORGE_UNCERTAINTY_GATE=1 时后端填充） */
+export interface ScoreUncertainty {
+  score: number | null;
+  ci_low: number | null;
+  ci_high: number | null;
+  ci_width: number | null;
+  status: "ok" | "needs_human_review" | "no_data" | "error" | string;
+  note: string;
+}
+
+/** 双模型交叉复核结果（PAPERFORGE_SECOND_OPINION_ENABLED=1 且配置第二模型时后端填充） */
+export interface CrossCheck {
+  enabled: boolean;
+  flag: "agree" | "disagreement" | "no_data";
+  note?: string;
+  second_provider?: string | null;
+  second_model?: string | null;
+  second_score?: number | null;
+  second_verdict?: string | null;
+  second_reason?: string;
+  score_delta?: number | null;
+  verdict_agree?: boolean | null;
+  skipped?: string;
+  error?: string;
 }
 
 /** 6 维加权评分（能力 4 维 + 交叉评价 2 维 fidelity/coverage） */
@@ -881,6 +932,35 @@ export interface AnalysisV2 {
   coverage: number | null;
   average: number | null;
   llm_failed?: boolean;
+  // ── 评审依据（审计）字段：后端 reflection_pipeline 写入，前端「评审依据」面板展示 ──
+  /** 分数不确定性（bootstrap CI） */
+  score_uncertainty?: ScoreUncertainty | null;
+  /** 硬编码规则覆盖记录（R1-R7 触发日志，解释分数为何被压制/降级） */
+  hardcoded_overrides?: string[];
+  effective_evidence_count?: number | null;
+  /** 证据被判无效的原因分布 {ok, from_paper, not_found} */
+  evidence_rejections?: Record<string, number>;
+  /** 引用真值校验结果（PAPERFORGE_CITATION_VERIFY=1 时非空） */
+  citation_integrity?: {
+    integrity_flag?: string;
+    checked?: number;
+    fabricated?: number;
+    inconsistent?: number;
+    [key: string]: unknown;
+  } | null;
+  citation_override_reason?: string;
+  /** AI 生成疑似度（advisory only，不影响分数） */
+  ai_likelihood?: number | null;
+  ai_likelihood_tier?: string;
+  /** 照抄比率与封杀标记 */
+  copy_ratio?: number | null;
+  copy_crushed?: boolean;
+  /** LLM 调用诊断（区分系统故障与报告质量问题） */
+  llm_calls?: number;
+  llm_empty?: number;
+  parse_failed?: boolean;
+  truncated?: boolean;
+  weights?: Record<string, number>;
 }
 
 /** Reflection list 项（GET /api/depth/reflection/list） */

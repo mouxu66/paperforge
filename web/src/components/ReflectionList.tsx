@@ -11,6 +11,8 @@ import {
   TriangleAlert,
   ShieldCheck,
   Download,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 /**
  * ReflectionList 组件：分页列出 reflection 报告评审记录。
@@ -292,10 +294,14 @@ export default function ReflectionList({
       title: "报告",
       dataIndex: "paper_title",
       key: "paper_title",
+      width: 280,
+      fixed: "left" as const,
       ellipsis: true,
       render: (t: string, record: ReflectionListItem) => (
         <Space size={4} orientation="vertical">
-          <span>{t || "(未命名)"}</span>
+          <Tooltip title={t || "(未命名)"}>
+            <span className="pf-reflection-title">{t || "(未命名)"}</span>
+          </Tooltip>
           <Text type="secondary" style={{ fontSize: 11 }} copyable={{ text: record.paper_id }}>
             {record.paper_id}
           </Text>
@@ -306,7 +312,7 @@ export default function ReflectionList({
       title: "状态",
       dataIndex: "status",
       key: "status",
-      width: 100,
+      width: 96,
       render: (s: string) => (
         <Tag icon={STATUS_ICONS[s]} color={STATUS_COLORS[s]}>
           {STATUS_LABELS[s] || s}
@@ -316,17 +322,24 @@ export default function ReflectionList({
     {
       title: t("reflection.list.scoresColumn"),
       key: "scores",
-      width: 150,
+      width: 134,
       align: "center" as const,
       render: (_: unknown, record: ReflectionListItem) => (
-        <ReflectionRadar scores={record.llm_failed ? null : record.scores} size={110} />
+        // 表格中隐藏雷达下方的均分 text：避免与右侧"平均分"列信息重复，
+        // 同时让行高从 ~138 收紧到 ~88。
+        <ReflectionRadar
+          showDetail={false}
+          showFooter={false}
+          scores={record.llm_failed ? null : record.scores}
+          size={80}
+        />
       ),
     },
     {
       title: "平均分",
       dataIndex: ["scores", "average"],
       key: "average",
-      width: 120,
+      width: 110,
       sorter: false,
       render: (avg: number | null, record: ReflectionListItem) => {
         if (record.llm_failed || record.verdict === "llm_failed") {
@@ -402,7 +415,7 @@ export default function ReflectionList({
       title: "判决",
       dataIndex: "verdict",
       key: "verdict",
-      width: 110,
+      width: 96,
       render: (v: string | null, record: ReflectionListItem) => {
         if (!v) return <Text type="secondary">-</Text>;
         return (
@@ -415,7 +428,7 @@ export default function ReflectionList({
     {
       title: "证据/观点",
       key: "evidence",
-      width: 100,
+      width: 84,
       align: "center" as const,
       render: (_: unknown, record: ReflectionListItem) => (
         <Tooltip
@@ -435,38 +448,46 @@ export default function ReflectionList({
     {
       title: "完成时间",
       dataIndex: "completed_at",
-      width: 150,
+      width: 132,
       render: (t: string | null) => (t ? new Date(t).toLocaleString() : "-"),
     },
     {
       title: "操作",
       key: "actions",
-      width: compact ? 170 : 300,
+      width: compact ? 156 : 196,
       fixed: "right" as const,
+      align: "center" as const,
       render: (_: unknown, record: ReflectionListItem) => {
         const isActive = ACTIVE_STATUSES.has(record.status);
         const isRestarting = restartingIds.has(record.paper_id);
+        // 操作列改纯图标 + Tooltip（aria-label 兜底）以把列宽从 520 字节收到
+        // ~196 px：这是解「拥挤」的主开关。Tooltip 同时承担原"按钮 + 文字"
+        // 的提示职责（鼠标 hover / 触屏 tap 都能看到）。
         return (
-          <Space size={4}>
-            <Button
-              size="small"
-              icon={<Eye />}
-              onClick={() => navigate(`/reflection/result/${record.paper_id}`)}
-            >
-              查看
-            </Button>
+          <Space size={6} className="pf-reflection-actions" onClick={(e) => e.stopPropagation()}>
+            <Tooltip title="查看报告评审详情">
+              <Button
+                size="small"
+                type="text"
+                className="pf-reflection-action-view"
+                icon={<Eye />}
+                aria-label="查看"
+                onClick={() => navigate(`/reflection/result/${record.paper_id}`)}
+              />
+            </Tooltip>
             {!compact && (
-              <Tooltip title="查看「AI 使用声明 + 真实性报告」一页纸并导出归档">
+              <Tooltip title="查看 AI 使用声明 + 真实性报告（一页纸，可导出归档）">
                 <Button
                   size="small"
+                  type="text"
+                  className="pf-reflection-action-integrity"
                   icon={<ShieldCheck />}
+                  aria-label="诚信报告"
                   onClick={(e) => {
                     e.stopPropagation();
                     setIntegrityPaperId(record.paper_id);
                   }}
-                >
-                  诚信报告
-                </Button>
+                />
               </Tooltip>
             )}
             <Tooltip
@@ -478,13 +499,14 @@ export default function ReflectionList({
             >
               <Button
                 size="small"
+                type="text"
+                className="pf-reflection-action-restart"
                 icon={<Zap />}
                 loading={isRestarting}
                 disabled={isActive}
+                aria-label="重评"
                 onClick={() => handleRestart(record.paper_id)}
-              >
-                重评
-              </Button>
+              />
             </Tooltip>
             <Popconfirm
               title="确定删除该评审记录？"
@@ -498,9 +520,17 @@ export default function ReflectionList({
               cancelText="取消"
               okButtonProps={{ danger: true }}
             >
-              <Button size="small" danger icon={<Trash2 />} onClick={(e) => e.stopPropagation()}>
-                删除
-              </Button>
+              <Tooltip title="删除该条评审记录">
+                <Button
+                  size="small"
+                  type="text"
+                  className="pf-reflection-action-delete"
+                  danger
+                  icon={<Trash2 />}
+                  aria-label="删除"
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </Tooltip>
             </Popconfirm>
           </Space>
         );
@@ -618,7 +648,11 @@ export default function ReflectionList({
         dataSource={data}
         rowKey="id"
         loading={loading}
-        scroll={{ x: 1100 }}
+        className="pf-reflection-table"
+        tableLayout="fixed"
+        size="middle"
+        virtual
+        scroll={{ x: 1240, y: 640 }}
         rowSelection={{
           selectedRowKeys: selectedIds,
           onChange: (keys: React.Key[]) => setSelectedIds(keys.map(String)),
@@ -642,6 +676,22 @@ export default function ReflectionList({
         })}
         columns={columns}
         expandable={{
+          expandIcon: ({ expanded, expandable, onExpand, record }) =>
+            expandable ? (
+              <button
+                type="button"
+                className="pf-reflection-expand-button"
+                aria-label={expanded ? "收起评审依据" : "展开评审依据"}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onExpand(record, event);
+                }}
+              >
+                {expanded ? <ChevronDown /> : <ChevronRight />}
+              </button>
+            ) : (
+              <span className="pf-reflection-expand-placeholder" aria-hidden="true" />
+            ),
           rowExpandable: (record) =>
             record.status === "failed" ||
             record.status === "timed_out" ||

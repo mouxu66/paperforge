@@ -1,7 +1,16 @@
 # ADR-011: DEPTH 校准偏移决策（SCORE_OFFSET / DEPTH_AUTO_OFFSET / DEFAULT_OFFSET_TABLE）
 
-**状态**: Accepted
+**状态**: Accepted（2026-08-09 修订：peerread 分档值已重扫，见文末修订记录）
 **日期**: 2026-07-24（校准决策拍板日）
+
+> **修订记录（2026-08-09）**：`"peerread"` 分档偏移从 `+0.18` 改为 `0.0`。
+> 原因：`+0.18` 是在 **0.8 阈值**上扫出的（历史 `peerread_offset_scan.json`
+> fix_threshold=0.8）；生产 accept 阈值降到 **0.6** 后两者从未一起验证，
+> 实测 `+0.18` 在 0.6 阈值下过度接受（一致率 56.6%，FP=82）。用真实人工金标
+> （`deliverables/gold/peerread_verdict_gold.json`，N=198）在 0.6 阈值下重扫
+> （`scripts/calibration/offset_scan.py`，产物 `deliverables/gold/peerread_offset_scan_t06.json`）：
+> 数据最优 −0.02（κ=0.414 / 70.7%），采纳稳健值 0.0（κ=0.364 / 68.2%）。
+> 详见 `docs/improving-review-rigor.md` §三。
 
 ## 背景（Context）
 - 校准实测（`blind_review_comparison_2026-07-24`）：DEPTH 相对人工盲评系统性偏高 +0.09~+0.12，导致 verdict 与人工判断错位。
