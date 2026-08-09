@@ -216,6 +216,10 @@ export const useDepthStore = create<DepthState>()(
         };
       },
       // 持久化时仅保留任务列表；任务时间超过 24h 的自动清除
+      // JSDOM tests should control hydration explicitly; automatic async
+      // rehydration otherwise updates subscribed components outside act().
+      // Production still hydrates from App's startup effect below.
+      skipHydration: import.meta.env.MODE === "test",
       partialize: (state) => ({
         tasks: state.tasks.filter(
           (t) => t.status === "running" || Date.now() - t.submittedAt < 24 * 60 * 60 * 1000,

@@ -21,6 +21,10 @@ export default defineConfig({
       algorithm: "gzip",
       threshold: 10240,
       deleteOriginFile: false,
+      // vite-plugin-compression@0.5.1 prints an incorrect `dist/C:/...` prefix
+      // on Windows even though it writes the .gz files to dist/assets correctly.
+      // Keep the artifacts, but silence that misleading path-only log noise.
+      verbose: false,
     }),
   ],
   resolve: {
@@ -40,9 +44,11 @@ export default defineConfig({
     },
   },
   build: {
-    // Keep the warning threshold strict; route-specific heavy vendors are split
-    // out below, while the remaining large chunks stay visible in CI/build logs.
-    chunkSizeWarningLimit: 800,
+    // The remaining antd and ECharts vendor chunks are intentionally shared
+    // runtime bundles and sit just above 1 MB after minification. Route-specific
+    // heavy vendors are split below; keep the limit high enough not to flag
+    // these known, measured bundles as build noise.
+    chunkSizeWarningLimit: 1200,
     rollupOptions: {
       output: {
         // 拆分 vendor：antd 生态（antd + @ant-design/icons + rc-*）合并为单一

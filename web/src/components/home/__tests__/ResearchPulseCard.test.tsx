@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useLocation } from "react-router-dom";
 
@@ -61,7 +61,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  useDepthStore.setState({ tasks: [] });
+  act(() => {
+    useDepthStore.setState({ tasks: [] });
+  });
 });
 
 describe("ResearchPulseCard", () => {

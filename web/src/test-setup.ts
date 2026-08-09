@@ -1,11 +1,33 @@
 import "@testing-library/jest-dom/vitest";
 
+// React 19 reports a warning when an async store hydration finishes after a
+// test assertion. The affected components are intentionally covered by the
+// tests; keep genuine errors visible while filtering only this known harness
+// warning (the production console remains untouched).
+const originalConsoleError = console.error;
+vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+  if (
+    typeof args[0] === "string" &&
+    args[0].includes("inside a test was not wrapped in act(")
+  ) {
+    return;
+  }
+  originalConsoleError(...args);
+});
+
 // Mock window.getComputedStyle for Ant Design / JSDOM compatibility
 const mockGetComputedStyle = vi.fn().mockImplementation(() => {
   const style: Record<string, string> = {};
   return {
     getPropertyValue: vi.fn((prop: string) => {
       if (prop === "scrollbar-color") return "auto";
+      if (prop === "box-sizing") return style[prop] ?? "border-box";
+      // rc-textarea parses padding/border values numerically while JSDOM
+      // returns an empty string for them. Returning 0px prevents its autoSize
+      // calculation from producing `height: NaN` in tests.
+      if (/^(padding|border)-(top|right|bottom|left)(-width)?$/.test(prop)) {
+        return style[prop] ?? "0px";
+      }
       return style[prop] ?? "";
     }),
     setProperty: vi.fn((prop: string, value: string) => {

@@ -1,10 +1,17 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { CATEGORY_LABELS, formatLabel } from "@/components/SideBar.utils";
 import SideBar from "@/components/SideBar";
 import { usePaperStore } from "@/store/usePaperStore";
 import type { LibraryStats } from "@/api/types";
+
+// SideBar renders without a live API in unit tests. Keep the tag hydration
+// deterministic so jsdom does not attempt an XHR to /api/papers/tags.
+vi.mock("@/api/papers", async () => ({
+  ...(await vi.importActual<typeof import("@/api/papers")>("@/api/papers")),
+  fetchAllTags: vi.fn().mockResolvedValue([]),
+}));
 
 // ---------------------------------------------------------------------------
 // 测试 1: CATEGORY_LABELS 映射表
@@ -113,7 +120,8 @@ describe("SideBar 组件 — 点击分类", () => {
 
   beforeEach(() => {
     // 重置 store
-    usePaperStore.setState({
+    act(() => {
+      usePaperStore.setState({
       category: "all",
       page: 1,
       stats: mockStats,
@@ -123,7 +131,8 @@ describe("SideBar 组件 — 点击分类", () => {
       keyword: "",
       sort: "year_desc",
       source: "all",
-      semantic: false,
+        semantic: false,
+      });
     });
   });
 
