@@ -475,6 +475,7 @@ def create_app() -> FastAPI:
     from .routers.compute import router as compute_router
     from .routers.depth import router as depth_router
     from .routers.depth_settings import router as depth_settings_router
+    from .routers.experiment_audit import router as experiment_audit_router
     from .routers.figures import router as figures_admin_router
     from .routers.models import router as models_router
     from .routers.papers import router as papers_router
@@ -501,5 +502,6 @@ def create_app() -> FastAPI:
     app.include_router(reflection_router)
     app.include_router(writing_router)
     app.include_router(figures_admin_router)
+    app.include_router(experiment_audit_router)
 
     return app

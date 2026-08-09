@@ -40,6 +40,45 @@ export async function fetchPapers(q: PaperQuery): Promise<PageResult<Paper>> {
   return data;
 }
 
+/**
+ * 全量拉取论文列表（下拉选择器用）。
+ * 后端 page_size 上限 50 且参数名为 snake_case，故逐页拉取直到 total 满足；
+ * maxPages 为安全上限（默认 20 页 = 1000 篇）。
+ *
+ * 返回 truncated 标志：达到页数上限或中途某页失败而未取全时置为 true，
+ * 调用方应提示用户（避免静默给出残缺列表）。
+ */
+export interface FetchAllPapersResult {
+  items: Paper[];
+  /** 是否因页数上限或中途失败而未取全 */
+  truncated: boolean;
+}
+
+export async function fetchAllPapers(maxPages = 20): Promise<FetchAllPapersResult> {
+  const all: Paper[] = [];
+  let truncated = false;
+  let page = 1;
+  for (; page <= maxPages; page++) {
+    try {
+      const { data } = await http.get<PageResult<Paper>>("/papers", {
+        params: { page, page_size: 50, sort: "year_desc" },
+        skipErrorToast: true,
+      });
+      all.push(...data.items);
+      if (all.length >= data.total || data.items.length === 0) break;
+    } catch {
+      // 单页失败不拖垮整体：保留已成功页的数据，终止翻页并标记截断
+      truncated = true;
+      break;
+    }
+  }
+  if (page > maxPages) {
+    // 拉满 maxPages 页仍未取完 → 截断
+    truncated = true;
+  }
+  return { items: all, truncated };
+}
+
 /** 论文详情 */
 export async function fetchPaperById(id: string): Promise<Paper | null> {
   const { data } = await http.get<Paper | null>(`/papers/${id}`);

@@ -1,4 +1,4 @@
-import { Home, Star, Github, BookOpen, HelpCircle, Pencil, Zap, Globe, Settings, Loader, Radar, Image, Moon, Sun, Monitor, Copy, Table, Puzzle, Menu as MenuIcon } from "lucide-react";
+import { Home, Star, Github, BookOpen, HelpCircle, Pencil, Zap, Globe, Settings, Loader, Radar, Image, Moon, Sun, Monitor, Copy, Table, Puzzle, ScanSearch, Menu as MenuIcon } from "lucide-react";
 import { Layout, Menu, Badge, Tooltip, Button, Tag, Dropdown } from "antd";
 
 import { Link, useLocation } from "react-router-dom";
@@ -23,6 +23,7 @@ const ROUTE_MAP = [
   { prefix: "/write", key: "/write" },
   { prefix: "/depth-v4", key: "/depth" },
   { prefix: "/depth", key: "/depth" },
+  { prefix: "/experiment-audit", key: "/experiment-audit" },
   { prefix: "/ask", key: "/ask" },
   { prefix: "/generate", key: "/generate" },
   { prefix: "/models", key: "/models" },
@@ -227,6 +228,11 @@ export default function TopNav({ onToggleNav }: { onToggleNav?: () => void }) {
                     ) : null}
                   </Link>
                 ),
+              },
+              {
+                key: "/experiment-audit",
+                icon: <ScanSearch />,
+                label: <Link to="/experiment-audit">{t("nav.experimentAudit", "实验审计")}</Link>,
               },
             ],
           },

@@ -40,12 +40,16 @@ def test_app_creatable():
     app = create_app()
     assert app is not None
     # fastapi 0.141+ 把 include_router 改为惰性 _IncludedRouter 包装（app.routes 不再展开），
-    # 用 effective_candidates() 展开后再计数，兼容新旧两代 fastapi。
-    from fastapi.routing import _IncludedRouter
+    # 用 effective_candidates() 展开后再计数；旧版（< 0.141）直接在 app.routes 展开。
+    # _IncludedRouter 是私有 API，不同版本可能改名/删除，需容错导入。
+    try:
+        from fastapi.routing import _IncludedRouter  # type: ignore[attr-defined]
+    except ImportError:
+        _IncludedRouter = None
 
     route_count = 0
     for route in app.routes:
-        if isinstance(route, _IncludedRouter):
+        if _IncludedRouter is not None and isinstance(route, _IncludedRouter):
             route_count += len(route.effective_candidates())
         else:
             route_count += 1
@@ -55,7 +59,9 @@ def test_app_creatable():
     #   POST /api/reports/{paper_id}/integrity/export）→ 155 → 157。
     # 2026-08-05: +3 条全班批量导出端点（POST export-batch、
     #   GET export-batch/{task_id}/progress、GET export-batch/{task_id}/download）→ 157 → 160。
-    expected = 160
+    # 2026-08-08: +6 条实验审计端点（experiment-audit：run/result/list/
+    #   report/leakage/finding-types）→ 160 → 166。
+    expected = 166
     assert route_count == expected, (
         f"app 路由数量变化：{route_count} != {expected}。"
         "如果本项失败，检查是否新增/删除路由或 include_router 遗漏。"

@@ -772,6 +772,41 @@ class ApiKey(Base):
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
 
 
+class ExperimentAudit(Base):
+    """论文实验审计记录表（CS Paper Experiment Auditor P0）。
+
+    每次审计生成一条记录，同一篇论文可多次审计（保留历史，同 DepthReviewV4）。
+    - findings: JSON 数组，每条 Finding 严格遵循
+      experiment_audit/schemas.py 的 Finding schema（finding_id/type/severity/
+      title/page/bbox/claim/computed/tolerance/method/evidence_sources/
+      normal_explanation/needs_human_review）。
+    - checks_run: JSON 数组，各检测项运行摘要（check 名 / status / 耗时 /
+      跳过原因），单项检测失败不拖垮整体（fail-open）。
+    - source_pdf_hash: 审计时刻 PDF 的 SHA-256，用于证据固定。
+    """
+
+    __tablename__ = "experiment_audits"
+
+    id = mapped_column(String(36), primary_key=True, default=_gen_uuid)
+    paper_id = mapped_column(
+        String,
+        ForeignKey("papers.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    source_pdf_hash: Mapped[str] = mapped_column(String(64), default="", nullable=False)
+    findings: Mapped[Any] = mapped_column(JSON, default=list, nullable=False)
+    checks_run: Mapped[Any] = mapped_column(JSON, default=list, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String, default="pending", nullable=False
+    )  # pending/running/completed/failed
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(), nullable=False
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class ApiCallLog(Base):
     """API 调用审计日志（Layer 2：调用计量与异常分析）。
 

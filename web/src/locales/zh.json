@@ -10,6 +10,7 @@
     "generate": "生成综述",
     "write": "写作",
     "depth": "DEPTH 评估",
+    "experimentAudit": "实验审计",
     "figures": "图检索",
     "models": "模型管理",
     "favorites": "收藏",
