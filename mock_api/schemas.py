@@ -22,6 +22,9 @@ Source = Literal[
     "google_scholar",
     "web_clipper",
     "zotero",
+    # PeerRead 校准语料（depth_calibration 回填）；缺失时 paper_to_schema 会
+    # Pydantic 校验失败导致含该来源记录的分页接口整体 500。
+    "peerread",
 ]
 
 
