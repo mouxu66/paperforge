@@ -1,0 +1,77 @@
+.stats {
+  display: flex;
+}
+.stat {
+  flex: 1;
+  text-align: center;
+}
+.stat-num {
+  font-size: 44rpx;
+  font-weight: 700;
+  color: #2b6cff;
+}
+.stat-label {
+  font-size: 24rpx;
+  color: #8a9099;
+  margin-top: 6rpx;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24rpx 4rpx;
+  font-size: 28rpx;
+  border-bottom: 1rpx solid #f0f2f5;
+}
+.menu-item:last-child {
+  border-bottom: none;
+}
+.arrow {
+  color: #c8ccd2;
+  font-size: 36rpx;
+}
+
+.tip-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  margin-bottom: 12rpx;
+}
+.tip-line {
+  font-size: 24rpx;
+  color: #5a6068;
+  line-height: 1.7;
+}
+
+/* 弹窗 */
+.mask {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.dialog {
+  width: 600rpx;
+  background: #fff;
+  border-radius: 20rpx;
+  padding: 36rpx 32rpx;
+}
+.dialog-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  margin-bottom: 20rpx;
+}
+.about-body {
+  font-size: 26rpx;
+  color: #5a6068;
+  line-height: 1.7;
+}
+.dialog-btn {
+  margin-top: 28rpx;
+}

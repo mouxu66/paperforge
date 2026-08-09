@@ -1,0 +1,6 @@
+.paper {
+  position: relative;
+}
+.tags {
+  margin-top: 6rpx;
+}

@@ -1,0 +1,76 @@
+.search-clear {
+  color: #b0b5bd;
+  font-size: 28rpx;
+  padding-left: 16rpx;
+}
+
+.cat-import {
+  background: #eef3ff;
+  color: #2b6cff;
+  margin-left: auto;
+}
+
+.paper {
+  position: relative;
+}
+.paper-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+.fav {
+  font-size: 40rpx;
+  color: #c8ccd2;
+  padding-left: 16rpx;
+  line-height: 1.2;
+}
+.fav-on {
+  color: #ffb400;
+}
+.tags {
+  margin-top: 6rpx;
+}
+
+/* 弹窗 */
+.mask {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.dialog {
+  width: 600rpx;
+  background: #fff;
+  border-radius: 20rpx;
+  padding: 36rpx 32rpx;
+}
+.dialog-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  margin-bottom: 24rpx;
+}
+.dialog-input {
+  background: #f5f6f8;
+  border-radius: 12rpx;
+  padding: 20rpx;
+  font-size: 28rpx;
+}
+.dialog-tip {
+  font-size: 22rpx;
+  margin: 14rpx 0 28rpx;
+  line-height: 1.5;
+}
+.dialog-actions {
+  display: flex;
+  gap: 20rpx;
+}
+.dialog-btn {
+  flex: 1;
+  margin: 0;
+}

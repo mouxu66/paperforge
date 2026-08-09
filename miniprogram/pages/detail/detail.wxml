@@ -1,0 +1,85 @@
+<view class="container" wx:if="{{paper}}">
+  <view class="card">
+    <view class="d-title">{{paper.title}}</view>
+    <view class="sub">
+      {{paper.authors.length ? paper.authors.join(', ') : '未知作者'}}
+    </view>
+    <view class="sub">
+      <text wx:if="{{paper.year}}">{{paper.year}} · </text>
+      <text wx:if="{{paper.journal}}">{{paper.journal}} · </text>
+      <text wx:if="{{paper.citations}}">被引 {{paper.citations}}</text>
+    </view>
+    <view wx:if="{{paper.doi}}" class="sub">DOI: {{paper.doi}}</view>
+
+    <view class="tags">
+      <text wx:for="{{paper.tags}}" wx:for-item="t" wx:key="*this" class="tag">{{t}}</text>
+    </view>
+
+    <view class="actions">
+      <button class="btn-ghost act" bindtap="onFavTap">{{paper.favorite ? '★ 已收藏' : '☆ 收藏'}}</button>
+      <button class="btn-ghost act" bindtap="onTagTap">+ 标签</button>
+      <button class="btn-ghost act" bindtap="onNoteTap">+ 笔记</button>
+    </view>
+    <view class="actions">
+      <button class="btn-ghost act" bindtap="goCompare">对比</button>
+      <button class="btn-primary act" bindtap="onCheckTap">引用核验</button>
+    </view>
+  </view>
+
+  <!-- 摘要 -->
+  <view class="card" wx:if="{{paper.abstract}}">
+    {{paper.abstract}}
+  </view>
+
+  <!-- 笔记 -->
+  <view class="card" wx:if="{{paper.notes.length}}">
+    <view class="sec-title">笔记 ({{paper.notes.length}})</view>
+    <view wx:for="{{paper.notes}}" wx:key="noteId" class="note">
+      <view>{{item.content}}</view>
+      <view class="sub">{{item.createdAt}}</view>
+    </view>
+  </view>
+
+  <!-- 引用核验结果 -->
+  <view class="card" wx:if="{{checkResult}}">
+    <view class="sec-title">引用核验</view>
+    <view class="verdict {{checkResult.found ? (checkResult.titleMatch ? 'ok' : 'bad') : 'bad'}}">
+      {{checkResult.message}}
+    </view>
+    <block wx:if="{{checkResult.found}}">
+      <view class="kv"><text class="k">Crossref 标题</text><text class="v">{{checkResult.crossref.title}}</text></view>
+      <view class="kv"><text class="k">作者</text><text class="v">{{checkResult.crossref.authors.join(', ')}}</text></view>
+      <view class="kv"><text class="k">年份</text><text class="v">{{checkResult.crossref.year}}</text></view>
+      <view class="kv"><text class="k">期刊/出处</text><text class="v">{{checkResult.crossref.journal}}</text></view>
+      <view class="kv"><text class="k">DOI</text><text class="v">{{checkResult.crossref.doi}}</text></view>
+    </block>
+  </view>
+
+  <button wx:if="{{paper.url}}" class="btn-ghost link" bindtap="noop" data-url="{{paper.url}}">在浏览器打开原文</button>
+</view>
+
+<view wx:if="{{loading}}" class="center muted">加载中…</view>
+
+<!-- 加标签弹窗 -->
+<view wx:if="{{showTag}}" class="mask" bindtap="onTagCancel">
+  <view class="dialog" catchtap="noop">
+    <view class="dialog-title">添加标签</view>
+    <input class="dialog-input" placeholder="如：待读 / 方法论 / 实验" value="{{tagInput}}" bindinput="onTagInput" />
+    <view class="dialog-actions">
+      <button class="btn-ghost dialog-btn" bindtap="onTagCancel">取消</button>
+      <button class="btn-primary dialog-btn" bindtap="onTagConfirm">确定</button>
+    </view>
+  </view>
+</view>
+
+<!-- 加笔记弹窗 -->
+<view wx:if="{{showNote}}" class="mask" bindtap="onNoteCancel">
+  <view class="dialog" catchtap="noop">
+    <view class="dialog-title">添加笔记</view>
+    <textarea class="dialog-area" placeholder="写下你的想法…" value="{{noteInput}}" bindinput="onNoteInput" />
+    <view class="dialog-actions">
+      <button class="btn-ghost dialog-btn" bindtap="onNoteCancel">取消</button>
+      <button class="btn-primary dialog-btn" bindtap="onNoteConfirm">保存</button>
+    </view>
+  </view>
+</view>

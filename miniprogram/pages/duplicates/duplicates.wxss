@@ -1,0 +1,37 @@
+.head {
+  margin-bottom: 18rpx;
+}
+.head .sub {
+  margin-bottom: 14rpx;
+  line-height: 1.5;
+}
+.rerun {
+  margin: 0;
+  font-size: 26rpx;
+}
+.grp-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  line-height: 1.4;
+  margin-bottom: 6rpx;
+}
+.dup-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16rpx 0;
+  border-bottom: 1rpx solid #f0f2f5;
+}
+.dup-meta {
+  flex: 1;
+  padding-right: 20rpx;
+}
+.dup-name {
+  font-size: 26rpx;
+  color: #1f2329;
+}
+.dup-del {
+  color: #d4380d;
+  font-size: 26rpx;
+  padding: 8rpx 20rpx;
+}

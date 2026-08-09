@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">PaperForge 学术写作助手</title>
+  <desc id="desc">PaperForge 的重力阶梯标志，象征将大量研究资料沉淀为清晰结论。</desc>
+
+  <!-- Brand field: one calm, distinctive turquoise. -->
+  <rect width="1024" height="1024" rx="224" fill="#2EA0B9"/>
+
+  <!-- Selected gravity-steps mark, optically lifted to leave room for the project name. -->
+  <g transform="translate(0 -42)">
+    <path d="M174 228H850V386H174Z" fill="#F4F0E8"/>
+    <path d="M254 432H850V590H254Z" fill="#D9D0C2"/>
+    <path d="M334 636H850V794H334Z" fill="#B7AA98"/>
+    <path d="M476 228L604 228L534 432H446Z" fill="#2EA0B9"/>
+    <path d="M446 432L534 432L604 636H516Z" fill="#2EA0B9"/>
+  </g>
+
+  <!-- The only visible project information: a quiet wordmark, no tagline or clutter. -->
+  <text x="512" y="914" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="54" font-weight="700" letter-spacing="5" fill="#F4F0E8">PaperForge</text>
+</svg>

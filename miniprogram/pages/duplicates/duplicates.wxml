@@ -1,0 +1,33 @@
+<view class="container">
+  <view class="head">
+    <view class="sub">基于标题归一化（去标点/大小写）检测库内重复论文，零 AI 规则匹配</view>
+    <button class="btn-primary rerun" loading="{{checking}}" bindtap="runCheck">重新检测</button>
+  </view>
+
+  <view wx:if="{{checking}}" class="center muted">检测中…</view>
+
+  <view wx:elif="{{checked && groups.length === 0}}" class="center muted">
+    未检测到重复论文 🎉
+  </view>
+
+  <block wx:for="{{groups}}" wx:for-item="group" wx:for-index="gi" wx:key="gi">
+    <view class="card">
+      <view class="grp-title">{{group[0].title}}</view>
+      <view class="sub">共 {{group.length}} 条重复</view>
+      <view
+        wx:for="{{group}}"
+        wx:for-item="p"
+        wx:key="_id"
+        class="dup-item"
+        data-id="{{p._id}}"
+        bindtap="goDetail"
+      >
+        <view class="dup-meta">
+          <text class="dup-name">{{p.title}}</text>
+          <text class="sub">{{p.year || '年份未知'}}</text>
+        </view>
+        <text class="dup-del" catchtap="onDelete" data-gid="{{gi}}" data-id="{{p._id}}">删除</text>
+      </view>
+    </view>
+  </block>
+</view>

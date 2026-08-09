@@ -1,0 +1,25 @@
+<view class="container">
+  <view wx:if="{{list.length === 0 && !loading}}" class="center muted">
+    还没有收藏的论文，去论文库点 ☆ 收藏吧
+  </view>
+
+  <view
+    wx:for="{{list}}"
+    wx:key="_id"
+    class="card paper"
+    data-id="{{item._id}}"
+    bindtap="goDetail"
+  >
+    <view class="title">{{item.title}}</view>
+    <view class="sub">
+      {{item.authors.length ? item.authors.join(', ') : '未知作者'}}
+      <text wx:if="{{item.year}}"> · {{item.year}}</text>
+    </view>
+    <view wx:if="{{item.tags.length}}" class="tags">
+      <text wx:for="{{item.tags}}" wx:for-item="t" wx:key="*this" class="tag">{{t}}</text>
+    </view>
+  </view>
+
+  <view wx:if="{{loading}}" class="center muted">加载中…</view>
+  <view wx:if="{{!hasMore && list.length}}" class="center muted">— 没有更多了 —</view>
+</view>

@@ -1,0 +1,44 @@
+<view class="container">
+  <!-- 统计 -->
+  <view class="card stats">
+    <view class="stat">
+      <view class="stat-num">{{loading ? '…' : total}}</view>
+      <view class="stat-label">论文总数</view>
+    </view>
+    <view class="stat">
+      <view class="stat-num">{{loading ? '…' : favorites}}</view>
+      <view class="stat-label">已收藏</view>
+    </view>
+  </view>
+
+  <!-- 功能入口 -->
+  <view class="card menu">
+    <view class="menu-item" bindtap="goDuplicates">
+      <text>重复检测</text><text class="arrow">›</text>
+    </view>
+    <view class="menu-item" bindtap="toggleAbout">
+      <text>关于 / 数据说明</text><text class="arrow">›</text>
+    </view>
+  </view>
+
+  <view class="card tip">
+    <view class="tip-title">使用说明</view>
+    <view class="tip-line">· 论文通过 OpenAlex 检索导入，只存元数据（标题/作者/摘要/DOI），不含 PDF。</view>
+    <view class="tip-line">· 数据存放在你自己的腾讯云云开发环境，不是微信服务器；手机仅保留约 10MB 缓存。</view>
+    <view class="tip-line">· 「引用核验」用 Crossref 权威库核对 DOI / 标题是否对得上，纯规则、零 AI。</view>
+    <view class="tip-line">· 全部功能为工具类，不调用任何大模型。</view>
+  </view>
+</view>
+
+<!-- 关于弹窗 -->
+<view wx:if="{{showAbout}}" class="mask" bindtap="toggleAbout">
+  <view class="dialog" catchtap="noop">
+    <view class="dialog-title">关于 PaperForge</view>
+    <view class="about-body">
+      PaperForge 小程序版是一个零 AI 的论文管理工具：导入、收藏、标签、笔记、对比、重复检测、引用核验。
+      <view class="divider"></view>
+      数据均存储于开发者自己的腾讯云云开发（CloudBase）环境，论文版权归属于原作者，本工具仅做元数据管理，不提供论文全文下载。
+    </view>
+    <button class="btn-primary dialog-btn" bindtap="toggleAbout">知道了</button>
+  </view>
+</view>

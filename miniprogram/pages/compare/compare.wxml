@@ -1,0 +1,74 @@
+<view class="container" wx:if="{{a}}">
+  <view class="hint">对比两篇论文的标题、作者、年份、摘要与被引情况</view>
+
+  <view class="cmp">
+    <view class="cmp-col">
+      <view class="cmp-head">论文 A</view>
+      <view class="cmp-title">{{a.title}}</view>
+    </view>
+    <view class="cmp-col">
+      <view class="cmp-head">论文 B</view>
+      <view wx:if="{{b}}" class="cmp-title">{{b.title}}</view>
+      <button wx:else class="btn-primary pick" bindtap="onPickTap">选择论文 B</button>
+    </view>
+  </view>
+
+  <block wx:if="{{b}}">
+    <view class="row"><text class="rl">作者</text></view>
+    <view class="cmp">
+      <view class="cmp-col">{{a.authors.join(', ') || '—'}}</view>
+      <view class="cmp-col">{{b.authors.join(', ') || '—'}}</view>
+    </view>
+
+    <view class="row"><text class="rl">年份</text></view>
+    <view class="cmp">
+      <view class="cmp-col">{{a.year || '—'}}</view>
+      <view class="cmp-col">{{b.year || '—'}}</view>
+    </view>
+
+    <view class="row"><text class="rl">期刊/出处</text></view>
+    <view class="cmp">
+      <view class="cmp-col">{{a.journal || '—'}}</view>
+      <view class="cmp-col">{{b.journal || '—'}}</view>
+    </view>
+
+    <view class="row"><text class="rl">被引次数</text></view>
+    <view class="cmp">
+      <view class="cmp-col">{{a.citations || 0}}</view>
+      <view class="cmp-col">{{b.citations || 0}}</view>
+    </view>
+
+    <view class="row"><text class="rl">标签</text></view>
+    <view class="cmp">
+      <view class="cmp-col">{{a.tags.length ? a.tags.join(', ') : '—'}}</view>
+      <view class="cmp-col">{{b.tags.length ? b.tags.join(', ') : '—'}}</view>
+    </view>
+
+    <view class="row"><text class="rl">摘要</text></view>
+    <view class="cmp">
+      <view class="cmp-col abstract">{{a.abstract || '—'}}</view>
+      <view class="cmp-col abstract">{{b.abstract || '—'}}</view>
+    </view>
+  </block>
+</view>
+
+<!-- 选 B 弹窗 -->
+<view wx:if="{{showPicker}}" class="mask" bindtap="onClosePicker">
+  <view class="dialog" catchtap="noop">
+    <view class="dialog-title">选择论文 B</view>
+    <view class="search-bar">
+      <input class="search-input" placeholder="筛选标题" value="{{keyword}}" bindinput="onSearchInput" confirm-type="search" />
+    </view>
+    <scroll-view scroll-y class="picker-list">
+      <view
+        wx:for="{{candidates}}"
+        wx:key="_id"
+        class="picker-item"
+        data-id="{{item._id}}"
+        bindtap="onSelectB"
+      >{{item.title}}</view>
+      <view wx:if="{{!candidates.length}}" class="center muted">没有匹配的论文</view>
+    </scroll-view>
+    <button class="btn-ghost dialog-btn" bindtap="onClosePicker">关闭</button>
+  </view>
+</view>

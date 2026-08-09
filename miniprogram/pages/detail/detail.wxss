@@ -1,0 +1,116 @@
+.d-title {
+  font-size: 34rpx;
+  font-weight: 700;
+  line-height: 1.4;
+  color: #1f2329;
+}
+.tags {
+  margin-top: 12rpx;
+}
+.actions {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 22rpx;
+}
+.act {
+  flex: 1;
+  margin: 0;
+  font-size: 24rpx;
+  padding: 0 8rpx;
+}
+.sec-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  margin-bottom: 14rpx;
+}
+.note {
+  padding: 14rpx 0;
+  border-bottom: 1rpx solid #f0f2f5;
+}
+.note .sub {
+  margin-top: 4rpx;
+}
+.link {
+  margin-top: 24rpx;
+}
+
+.verdict {
+  font-size: 26rpx;
+  padding: 16rpx 20rpx;
+  border-radius: 12rpx;
+  margin-bottom: 14rpx;
+  line-height: 1.5;
+}
+.verdict.ok {
+  background: #e8f8ee;
+  color: #1a9c4d;
+}
+.verdict.bad {
+  background: #fdecec;
+  color: #d4380d;
+}
+.kv {
+  display: flex;
+  font-size: 24rpx;
+  padding: 8rpx 0;
+  border-bottom: 1rpx solid #f5f6f8;
+}
+.kv .k {
+  width: 180rpx;
+  color: #8a9099;
+  flex-shrink: 0;
+}
+.kv .v {
+  flex: 1;
+  color: #1f2329;
+  word-break: break-all;
+}
+
+/* 弹窗（与 index 通用） */
+.mask {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.dialog {
+  width: 600rpx;
+  background: #fff;
+  border-radius: 20rpx;
+  padding: 36rpx 32rpx;
+}
+.dialog-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  margin-bottom: 24rpx;
+}
+.dialog-input {
+  background: #f5f6f8;
+  border-radius: 12rpx;
+  padding: 20rpx;
+  font-size: 28rpx;
+}
+.dialog-area {
+  background: #f5f6f8;
+  border-radius: 12rpx;
+  padding: 20rpx;
+  font-size: 28rpx;
+  width: 100%;
+  height: 200rpx;
+  box-sizing: border-box;
+}
+.dialog-actions {
+  display: flex;
+  gap: 20rpx;
+  margin-top: 28rpx;
+}
+.dialog-btn {
+  flex: 1;
+  margin: 0;
+}

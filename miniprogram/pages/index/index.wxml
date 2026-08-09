@@ -1,0 +1,78 @@
+<view class="container">
+  <!-- 搜索栏 -->
+  <view class="search-bar">
+    <input
+      class="search-input"
+      placeholder="搜标题 / 摘要 / 作者"
+      value="{{keyword}}"
+      bindinput="onSearchInput"
+      bindconfirm="onSearchConfirm"
+      confirm-type="search"
+    />
+    <text wx:if="{{keyword}}" class="search-clear" bindtap="onClearKeyword">✕</text>
+  </view>
+
+  <!-- 分类筛选 -->
+  <view class="cats">
+    <view
+      wx:for="{{cats}}"
+      wx:key="key"
+      class="cat {{activeCat === item.key ? 'cat-on' : ''}}"
+      data-key="{{item.key}}"
+      bindtap="onCategoryTap"
+    >{{item.label}}</view>
+    <view class="cat cat-import" bindtap="onImportTap">+ 导入</view>
+  </view>
+
+  <!-- 列表 -->
+  <view wx:if="{{list.length === 0 && !loading}}" class="center muted">
+    还没有论文，点右上角「+ 导入」从 OpenAlex 检索导入
+  </view>
+
+  <view
+    wx:for="{{list}}"
+    wx:key="_id"
+    class="card paper"
+    data-id="{{item._id}}"
+    bindtap="goDetail"
+  >
+    <view class="paper-top">
+      <text class="title">{{item.title}}</text>
+      <text
+        class="fav {{item.favorite ? 'fav-on' : ''}}"
+        catchtap="onFavTap"
+        data-id="{{item._id}}"
+        data-idx="{{index}}"
+      >{{item.favorite ? '★' : '☆'}}</text>
+    </view>
+    <view class="sub">
+      {{item.authors.length ? item.authors.join(', ') : '未知作者'}}
+      <text wx:if="{{item.year}}"> · {{item.year}}</text>
+      <text wx:if="{{item.journal}}"> · {{item.journal}}</text>
+    </view>
+    <view wx:if="{{item.tags.length}}" class="tags">
+      <text wx:for="{{item.tags}}" wx:for-item="t" wx:key="*this" class="tag">{{t}}</text>
+    </view>
+  </view>
+
+  <view wx:if="{{loading}}" class="center muted">加载中…</view>
+  <view wx:if="{{!hasMore && list.length}}" class="center muted">— 没有更多了 —</view>
+</view>
+
+<!-- 导入弹窗 -->
+<view wx:if="{{showImport}}" class="mask" bindtap="onImportCancel">
+  <view class="dialog" catchtap="noop">
+    <view class="dialog-title">从 OpenAlex 导入</view>
+    <input
+      class="dialog-input"
+      placeholder="输入关键词，如：transformer attention"
+      value="{{importQuery}}"
+      bindinput="onImportInput"
+    />
+    <view class="dialog-tip muted">云端检索后写入你的论文库（仅元数据，不含 PDF）</view>
+    <view class="dialog-actions">
+      <button class="btn-ghost dialog-btn" bindtap="onImportCancel">取消</button>
+      <button class="btn-primary dialog-btn" loading="{{importing}}" bindtap="onImportConfirm">导入</button>
+    </view>
+  </view>
+</view>
