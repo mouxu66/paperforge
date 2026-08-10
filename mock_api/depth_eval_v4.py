@@ -366,6 +366,9 @@ class DepthV4Result(BaseModel):
     # ADR-014 P2：分数不确定性（bootstrap 95% CI + 不确定门控）。解决 W4：此前只有点估计。
     # 仅当 PAPERFORGE_UNCERTAINTY_GATE 开启时填充，默认空 dict（零开销、向后兼容）。
     score_uncertainty: dict = Field(default_factory=dict)
+    # 增量风险标记：当论文实验充分但创新信号弱、LLM 可能系统性高估时标记。
+    # 纯正则提取，零 LLM 成本。值：unknown / low / medium / high
+    incrementality_risk: str = "unknown"
 
 
 # v4.2: Rebuild DAGOutputs after all result types are defined.
@@ -887,10 +890,13 @@ def _detect_ablation_evidence(full_text: str) -> tuple[bool, list[str]]:
         return False, []
     matched: list[str] = []
     for pat in _ABLATION_PATTERNS:
-        m = pat.search(full_text)
-        if m:
+        for m in pat.finditer(full_text):
             matched.append(m.group(0)[:80])
-    # 至少命中 2 个不同模式才认为有消融证据（单模式可能误匹配）
+            if len(matched) >= 2:
+                break
+        if len(matched) >= 2:
+            break
+    # 至少命中 2 次才认为有消融证据（单次可能误匹配）
     found = len(matched) >= 2
     return found, matched
 
@@ -4082,7 +4088,114 @@ class DepthReviewer:
             llm_params_snapshot=_eval_params_snapshot(),
             citation_integrity=_citation_integrity_report(full_text),
             score_uncertainty=_score_uncertainty_report(q5c.calibrated_score, q2, q3, q4, q5c),
+            incrementality_risk=_incrementality_risk(full_text, q5c.calibrated_score),
         )
+
+
+def _incrementality_risk(full_text: str, calibrated_score: float) -> str:
+    """检测论文是否存在 LLM 系统性高估风险（实验充分但创新增量）。
+
+    纯正则提取，零 LLM 成本。返回 "low" / "medium" / "high" / "unknown"。
+    仅在高分段（≥0.75）时触发检测，低分段论文不需要此标记。
+    """
+    if not full_text or calibrated_score < 0.75:
+        return "low"
+    try:
+        intro = full_text[:8000].lower()
+
+        # ── 信号 1：野心声明密度 ──
+        _ambitious = [
+            r"\bfirst\b",
+            r"\bnovel\b",
+            r"\bbreakthrough",
+            r"new\s+paradigm",
+            r"state.of.the.art",
+            r"\bsota\b",
+            r"首次",
+            r"第一个",
+            r"突破",
+            r"新范式",
+        ]
+        amb_count = sum(len(re.findall(p, intro)) for p in _ambitious)
+
+        # ── 信号 2：谦逊/增量语言 ──
+        _hedging = [
+            r"\bincremental\b",
+            r"\bextension\b",
+            r"build(?:s|ing)?\s+(?:upon|on)\b",
+            r"\binspired\s+by\b",
+            r"\bbased\s+on\b",
+            r"\bsimilar\s+to\b",
+            r"\bextend(?:s|ing)?\b",
+            r"\bfollow(?:s|ing)?\b.*\bwork\b",
+            r"\bprior\s+work\b",
+            r"\bprevious\s+(?:work|method|approach)\b",
+        ]
+        hed_count = sum(len(re.findall(p, intro)) for p in _hedging)
+
+        # ── 信号 3：方法自创缩写名（大驼峰 + ≥3 大写字母 + 非通用词/非复数）──
+        _generic = {
+            "LLM",
+            "LLMs",
+            "NLP",
+            "GPU",
+            "CPU",
+            "SGD",
+            "Adam",
+            "BERT",
+            "GPT",
+            "CNN",
+            "RNN",
+            "LSTM",
+            "SVM",
+            "PCA",
+            "SVD",
+            "LoRA",
+            "SOTA",
+            "AI",
+            "ML",
+            "RL",
+            "LLOD",
+            "DARIAH",
+            "IEEE",
+            "INTRODUCTION",
+            "RELATED",
+            "METHOD",
+            "EXPERIMENT",
+            "RESULT",
+            "CONCLUSION",
+            "REFERENCE",
+            "APPENDIX",
+            "MedGemma",
+            "MNIST",
+            "TCGA",
+            "KIMIA",
+            "SPLICE",
+            "ARReST",
+        }
+        acronyms = set()
+        for m in re.finditer(r"\b([A-Z][a-z]*[A-Z][A-Za-z]{2,})\b", full_text[:4000]):
+            w = m.group(1)
+            if w not in _generic and sum(1 for c in w if c.isupper()) >= 2 and not w.endswith("s"):
+                acronyms.add(w)
+        has_acronym = len(acronyms) > 0
+
+        # ── 信号 4：实验强度（来自 OIM，零成本复用）──
+        has_ablation, _ = _detect_ablation_evidence(full_text)
+        has_code = _detect_code_release(full_text)
+        strong_experiments = has_ablation and has_code
+
+        # ── 风险评估 ──
+        low_ambition = amb_count <= 3
+        high_hedging = hed_count >= 5
+
+        if low_ambition and strong_experiments and has_acronym:
+            return "high"
+        if low_ambition or high_hedging:
+            return "medium"
+        return "low"
+    except Exception:  # noqa: BLE001
+        return "unknown"
 
 
 def _eval_params_snapshot() -> dict:
