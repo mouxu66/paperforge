@@ -2630,6 +2630,12 @@ class DepthReviewer:
         delta_lo, delta_hi = self._adaptive_delta_bounds(
             balanced_cp, default_delta_min, default_delta_max
         )
+        # 增量风险补偿：当论文实验充分但创新信号弱时，LLM 的 Q5b 辩护偏强，
+        # Q5c 也会系统性正偏。直接对 calibrated_score 施加 -0.05 后置扣分。
+        inc_risk = getattr(self, "_inc_risk", "unknown")
+        if inc_risk == "high":
+            delta_lo = max(DELTA_HARD_MIN, delta_lo - 0.08)
+            self._log(f"[Q5c] incrementality_risk=high, delta_lo 放宽 0.08 → {delta_lo:.2f}")
         if claim_severity_penalty:
             # 严重越界加剧负面 delta，轻微越界影响小；硬上限 DELTA_HARD_MIN
             claim_severity_factor = get_depth_q5c_claim_severity_factor()
@@ -3679,6 +3685,7 @@ class DepthReviewer:
         self._log(f"Q5b: {len(q5b.defense_points)} 条辩护, eid={q5b.evidence_id} v={q5b.verified}")
 
         base_score, final_base, weights = self._compute_dwm(q1, q2, q3, q4, objective_score, qf=qf)
+        self._inc_risk = _incrementality_risk(full_text, final_base)
         self._log(
             f"DWM: base_score={base_score:.3f}, final_base={final_base:.3f}, weights={weights}"
         )
@@ -3687,6 +3694,21 @@ class DepthReviewer:
             f"Q5c: delta={q5c.delta}, calibrated={q5c.calibrated_score:.3f}, "
             f"llm_v={q5c.llm_verdict}, delta_missing={q5c.delta_missing}"
         )
+
+        # 增量风险后置扣分：Q5c 系统性正偏时直接校正
+        inc_risk = getattr(self, "_inc_risk", "unknown")
+        if inc_risk == "high" and q5c.delta > 0:
+            penalty = 0.05
+            q5c = q5c.model_copy(
+                update={
+                    "calibrated_score": max(0.0, q5c.calibrated_score - penalty),
+                    "delta": q5c.delta - penalty,
+                }
+            )
+            self._log(
+                f"[Q5c] incrementality_risk=high, delta>0 → 后置扣分 {penalty:.2f}, "
+                f"calibrated {q5c.calibrated_score + penalty:.3f} → {q5c.calibrated_score:.3f}"
+            )
 
         figure_coverage = self._figure_coverage(qf)
         balanced_cp = self._apply_figure_corroboration(balanced_cp, qf)
@@ -3905,6 +3927,7 @@ class DepthReviewer:
                     base_score, final_base, weights = self._compute_dwm(
                         q1_res, q2_res, q3_res, q4_res, objective_score, qf=qf_res
                     )
+                    self._inc_risk = _incrementality_risk(full_text, final_base)
                     no = await asyncio.to_thread(self._run_q5c, ctx, results, final_base)
                     if no.status != "success":
                         raise ValueError(f"Q5c failed: {no.error}")
@@ -3963,7 +3986,22 @@ class DepthReviewer:
             self._log(f"  节点 {name}: {elapsed:.2f}s")
         self._log(f"总耗时: {pipeline_result.total_elapsed:.2f}s")
 
-        # 7. 应用硬性裁决并组装
+        # 7. 增量风险后置扣分（DAG 路径）
+        inc_risk = getattr(self, "_inc_risk", "unknown")
+        if inc_risk == "high" and q5c_res.delta > 0:
+            penalty = 0.05
+            q5c_res = q5c_res.model_copy(
+                update={
+                    "calibrated_score": max(0.0, q5c_res.calibrated_score - penalty),
+                    "delta": q5c_res.delta - penalty,
+                }
+            )
+            self._log(
+                f"[Q5c] incrementality_risk=high, delta>0 → 后置扣分 {penalty:.2f}, "
+                f"calibrated {q5c_res.calibrated_score + penalty:.3f} → {q5c_res.calibrated_score:.3f}"
+            )
+
+        # 8. 应用硬性裁决并组装
         figure_coverage = self._figure_coverage(qf_res)
         balanced_cp = self._apply_figure_corroboration(balanced_cp, qf_res)
         final = self._apply_hard_verdict(q5c_res, balanced_cp, figure_coverage=figure_coverage)
