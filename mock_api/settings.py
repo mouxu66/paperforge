@@ -499,16 +499,19 @@ class Settings(BaseSettings):
     # 本地 9B 模型 ctx≈8K token，segment_paper_text 只给摘要/引言/结论 + 正文开头
     # （max_chars_full），论文中段几乎不可见 → QE 证据池残缺。开启后对全文做
     # 分块摘要（map-reduce）生成全局摘要，并采样中段原文注入 QE/Q234 prompt。
-    # 默认关：任何失败降级为无补充（零行为变化）。详见 mock_api/depth_fulltext.py。
+    # 默认自动开启（论文超过阈值时生效）；设 PAPERFORGE_DEPTH_FULLTEXT_ENABLED=0
+    # 可强制关闭。短文（≤ 1.2×max_chars_full）自动跳过以省 LLM 成本。
+    # 全程 fail-open，失败自动降级。详见 mock_api/depth_fulltext.py。
     depth_fulltext_enabled: bool = Field(
-        default=False,
+        default=True,
         validation_alias=AliasChoices(
             "PAPERFORGE_DEPTH_FULLTEXT_ENABLED", "PAPERFORGE_DEPTH_FULLTEXT"
         ),
         description=(
-            "DEPTH 全文覆盖层开关（默认 False）。开启后评审前对全文做分块摘要 + "
-            "中段原文采样，让本地模型在 8K ctx 内「看到」论文全文梗概与真实段落，"
-            "缓解漏洞 C（ctx 只读头尾）。全程 fail-open，失败自动降级。"
+            "DEPTH 全文覆盖层开关（默认 True，自动开启）。"
+            "长论文评审前对全文做分块摘要 + 中段原文采样，"
+            "让本地模型在 8K ctx 内「看到」论文全文梗概与真实段落，"
+            "缓解漏洞 C（ctx 只读头尾）。设 0 可强制关闭。全程 fail-open。"
         ),
     )
     depth_fulltext_chunk_size: int = Field(

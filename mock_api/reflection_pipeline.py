@@ -4,6 +4,7 @@
 
     docx ──parse──▶ 学号/姓名 + 原论文题目 + 四段
          ──bind──▶ 自动匹配原论文 paper_id
+         ──fulltext──▶ 构建论文全文补充（全局摘要 + 关键句）
          ──fidelity──▶ 报告↔原论文 忠实度（reflection_fidelity）
          ──4维──▶ 复用现有 ReflectionReviewer（depth_eval_reflection）
          ──fusion──▶ 5 维均权 + verdict 扩展
@@ -13,6 +14,8 @@
     - 与 depth_eval_reflection.py 解耦：仅调用其 ReflectionReviewer.review
     - LLM 不可用时 4 维降级为结构启发式，fidelity 仍可算（退化模式）
     - 不强制写 DB；写库逻辑由调用端点负责
+    - ADR-014 P9：论文全文补充（build_fulltext_context）接入感悟报告评审，
+      让 LLM 看到的不只是论文前 N 字，而是全文摘要 + 关键句的丰富上下文。
 """
 
 from __future__ import annotations
@@ -185,6 +188,28 @@ def analyze_reflection_file(
     }
     # 开发自检开关：PAPERFORGE_BENCH_NO_LLM=1 时跳过 LLM，4 维用结构启发式（快速跑 fidelity）
     reviewer_verdict: str | None = None  # 评审器最终 verdict（含 crossval 加分），供 verdict 基线
+
+    # ADR-014 P9：构建论文全文补充（全局摘要 + 关键句），让 LLM 不只是看论文前 4000 字。
+    # fail-open：任何失败 → paper_supplement=''，与旧行为完全一致。
+    paper_supplement = ""
+    if full and bound and os.environ.get("PAPERFORGE_BENCH_NO_LLM") != "1":
+        try:
+            from .depth_eval_v4 import call_llm
+            from .depth_fulltext import (
+                build_fulltext_context,
+                extract_key_sentences,
+                format_supplement,
+            )
+
+            ctx = build_fulltext_context(bound, full, llm_func=call_llm, fast=True)
+            if ctx is not None:
+                default_supp = format_supplement(ctx)
+                key_sents = extract_key_sentences(full)
+                parts = [p for p in [default_supp, key_sents] if p.strip()]
+                paper_supplement = "\n\n".join(parts) if parts else ""
+        except Exception:  # noqa: BLE001 - fail-open，绝不影响主评审流程
+            paper_supplement = ""
+
     if os.environ.get("PAPERFORGE_BENCH_NO_LLM") == "1":
         four = _heuristic_four(parse.sections)
     else:
@@ -197,7 +222,8 @@ def analyze_reflection_file(
                 parse.paper_title or "报告",
                 parse.raw_text,
                 student_id=parse.student_id or "",
-                paper_text=full,  # 原论文全文（可选注入 prompt，对照核验理解准确性）
+                paper_text=full,  # 原论文全文（始终传入，用于 snippet 来源判断）
+                paper_supplement=paper_supplement,  # P9：全文补充（全局摘要 + 关键句）
             )
             four = res.scores
             # verdict 是结果对象的独立字段（不在 scores dict 里），单独取出作基线；

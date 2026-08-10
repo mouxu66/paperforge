@@ -16,8 +16,8 @@
   PaperContext.fulltext_supplement 注入 QE/Q234 的 {paper} 视图（默认空串 = 零开销）。
 
 设计约束：
-  - 默认关闭：PAPERFORGE_DEPTH_FULLTEXT_ENABLED 未设 → is_enabled()=False，
-    所有入口直接返回 None，与历史行为完全一致。
+  - 默认自动开启：论文超过阈值时自动启用全文覆盖；设 PAPERFORGE_DEPTH_FULLTEXT_ENABLED=0
+    可强制关闭。短文（≤ 1.2×max_chars_full）自动跳过以省 LLM 成本。
   - fail-open：任何一步（分块/摘要/合并/采样/DB）异常都只降级到无补充文本，
     绝不改变主评审流程与分数。
 """
@@ -35,8 +35,8 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 # ── 默认参数（可经 env 覆盖）────────────────────────────────────────────
-_DEFAULT_CHUNK_SIZE = int(os.getenv("PAPERFORGE_DEPTH_FULLTEXT_CHUNK_SIZE", "1500"))
-_DEFAULT_CHUNK_OVERLAP = int(os.getenv("PAPERFORGE_DEPTH_FULLTEXT_CHUNK_OVERLAP", "120"))
+_DEFAULT_CHUNK_SIZE = int(os.getenv("PAPERFORGE_DEPTH_FULLTEXT_CHUNK_SIZE", "3000"))
+_DEFAULT_CHUNK_OVERLAP = int(os.getenv("PAPERFORGE_DEPTH_FULLTEXT_CHUNK_OVERLAP", "200"))
 _DEFAULT_TOP_K = int(os.getenv("PAPERFORGE_DEPTH_FULLTEXT_TOP_K", "8"))
 _DEFAULT_MAX_WORKERS = int(os.getenv("PAPERFORGE_DEPTH_FULLTEXT_MAX_WORKERS", "3"))
 _SUMMARY_CHARS = 100  # 单块摘要目标长度（字）
@@ -69,7 +69,7 @@ _MERGE_PROMPT = """以下是同一篇论文各分段的摘要。合并成一篇�
 # 开关
 # ===========================================================================
 def is_enabled() -> bool:
-    """是否开启全文覆盖层（PAPERFORGE_DEPTH_FULLTEXT_ENABLED=1）。默认关闭。"""
+    """是否开启全文覆盖层。默认自动开启；设 PAPERFORGE_DEPTH_FULLTEXT_ENABLED=0 可强制关闭。"""
     try:
         from .settings import get_settings
 
@@ -81,8 +81,8 @@ def is_enabled() -> bool:
 def _chunk_config() -> tuple[int, int]:
     """返回 (chunk_size, chunk_overlap)，允许运行期 env 覆盖。"""
     try:
-        s = 1500
-        o = 120
+        s = 3000
+        o = 200
         from .settings import get_settings
 
         cfg = get_settings()
@@ -191,7 +191,13 @@ def merge_summaries(
     target_chars: int = _GLOBAL_SUMMARY_CHARS,
 ) -> str:
     """把块摘要合并为全局摘要（多轮 map-reduce）。失败返回空串。"""
-    valid = [s["summary"] for s in summaries if s.get("summary")]
+    # 类型守卫：确保 summaries 元素均为 dict（避免上游 mock/异常产出脏数据）
+    _dicts = [s for s in summaries if isinstance(s, dict)]
+    valid = [
+        s.get("summary", "")
+        for s in _dicts
+        if isinstance(s.get("summary"), str) and s["summary"].strip()
+    ]
     if not valid:
         return ""
     if len(valid) == 1:
@@ -363,10 +369,16 @@ def build_fulltext_context(
     full_text: str,
     llm_func: Any,
     db: Any = None,
+    *,
+    fast: bool = False,
 ) -> dict[str, Any] | None:
-    """构建全文覆盖上下文（摘要 + 采样块）。未开启/失败/文本过短 → None。
+    """构建全文覆盖上下文（摘要 + 采样块）。强制关闭/失败/文本过短 → None。
 
-    文本过短（≤ max_chars_full 的 1.2 倍）时现有头截断已足够，跳过（省 LLM 成本）。
+    默认自动开启；文本过短（≤ max_chars_full 的 1.2 倍）时现有头截断已足够，跳过省成本。
+    设 PAPERFORGE_DEPTH_FULLTEXT_ENABLED=0 可全局强制关闭。
+
+    fast=True 时跳过 LLM 摘要（summarize_chunks + merge_summaries），仅返回 verbatim_chunks
+    和空 global_summary。适用于零 LLM 成本的关键句驱动路径（extract_key_sentences 替代摘要）。
     """
     if not is_enabled():
         return None
@@ -378,12 +390,10 @@ def build_fulltext_context(
 
         max_full = int(get_compute_mode_config().get("max_chars_full", 32000))
         if len(t) <= max_full * 1.2:
-            # 现有头截断基本覆盖全文，无需分块摘要
             logger.debug("[depth_fulltext] 文本长度 %d ≤ 1.2×max_full=%d，跳过", len(t), max_full)
             return None
 
         h = _text_hash(t)
-        # 调用方未传 session 时自建并自关（只关自己的，绝不碰调用方 session）
         _own_db = None
         if db is None:
             try:
@@ -391,36 +401,58 @@ def build_fulltext_context(
 
                 _own_db = SessionLocal()
                 db = _own_db
-            except Exception:  # noqa: BLE001 - 无缓存可用即退化
+            except Exception:  # noqa: BLE001
                 db = None
         try:
-            cached = _cache_get(db, paper_id, h)
-            if cached is not None:
-                logger.info("[depth_fulltext] 命中缓存: paper=%s hash=%s", paper_id, h)
-                return cached
+            if not fast:
+                cached = _cache_get(db, paper_id, h)
+                if cached is not None:
+                    logger.info("[depth_fulltext] 命中缓存: paper=%s hash=%s", paper_id, h)
+                    return cached
 
             chunk_size, overlap = _chunk_config()
             chunks = split_chunks(t, chunk_size, overlap)
             if len(chunks) < 2:
                 return None
-            summaries = summarize_chunks(chunks, llm_func)
-            global_summary = merge_summaries(summaries, llm_func)
-            verbatim = pick_verbatim_chunks(chunks, summaries)
-            ctx: dict[str, Any] = {
-                "global_summary": global_summary,
-                "chunk_summaries": [s.get("summary", "") for s in summaries],
-                "verbatim_chunks": verbatim,
-                "n_chunks": len(chunks),
-                "cached": False,
-            }
-            _cache_set(db, paper_id, h, ctx)
-            logger.info(
-                "[depth_fulltext] 全文覆盖构建完成: paper=%s n_chunks=%d summary=%dc verbatim=%d",
-                paper_id,
-                len(chunks),
-                len(global_summary),
-                len(verbatim),
-            )
+
+            if fast:
+                # 零 LLM 路径：跳过 summarize_chunks + merge_summaries
+                verbatim = pick_verbatim_chunks(chunks)
+                ctx: dict[str, Any] = {
+                    "global_summary": "",
+                    "chunk_summaries": [],
+                    "verbatim_chunks": verbatim,
+                    "n_chunks": len(chunks),
+                    "cached": False,
+                    "fast": True,
+                }
+                logger.info(
+                    "[depth_fulltext] 全文覆盖构建完成（fast）: paper=%s n_chunks=%d verbatim=%d",
+                    paper_id,
+                    len(chunks),
+                    len(verbatim),
+                )
+            else:
+                summaries = summarize_chunks(chunks, llm_func)
+                global_summary = merge_summaries(summaries, llm_func)
+                verbatim = pick_verbatim_chunks(chunks, summaries)
+                ctx = {
+                    "global_summary": global_summary,
+                    "chunk_summaries": [
+                        s.get("summary", "") if isinstance(s, dict) else "" for s in summaries
+                    ],
+                    "verbatim_chunks": verbatim,
+                    "n_chunks": len(chunks),
+                    "cached": False,
+                }
+                _cache_set(db, paper_id, h, ctx)
+                logger.info(
+                    "[depth_fulltext] 全文覆盖构建完成: paper=%s n_chunks=%d summary=%dc verbatim=%d",
+                    paper_id,
+                    len(chunks),
+                    len(global_summary),
+                    len(verbatim),
+                )
             return ctx
         finally:
             if _own_db is not None:
@@ -431,3 +463,341 @@ def build_fulltext_context(
     except Exception as e:  # noqa: BLE001 - 全程 fail-open
         logger.warning("[depth_fulltext] 构建失败（降级为无补充）: %s", e)
         return None
+
+
+# ===========================================================================
+# 零 LLM 成本的关键句提取层（方案 2：纯正则，无额外 LLM 调用）
+# ===========================================================================
+
+# 关键句提取模式：按 DAG 节点需求分类
+_KEY_SENTENCE_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
+    # ── 含数字/百分比/指标 ──
+    (
+        "metric",
+        re.compile(
+            r"[^。！？.!?\n]{0,80}(?:\d+\.?\d*\s*%|\d+\.\d+|accuracy|precision|recall|f1|bleu|"
+            r"perplexity|error|loss|performance|准确率|精度|召回率|F1|指标|提高|降低|提升|下降|"
+            r"outperforms|beats|state-of-the-art|sota)[^。！？.!?\n]{0,80}",
+            re.I,
+        ),
+    ),
+    # ── 含贡献/声明 ──
+    (
+        "claim",
+        re.compile(
+            r"[^。！？.!?\n]{0,80}(?:we\s+(?:propose|present|introduce|develop|design)|our\s+(?:method|approach|model|framework|system|architecture|novel|new|contribution)|"
+            r"本文提出|我们提出|我们设计|我们开发|我们的方法|贡献|创新|首次|第一个)[^。！？.!?\n]{0,80}",
+            re.I,
+        ),
+    ),
+    # ── 含消融/可比性/严谨性 ──
+    (
+        "rigor",
+        re.compile(
+            r"[^。！？.!?\n]{0,80}(?:ablation|baseline|compare|compared|versus|vs\.?\s|p.?value|"
+            r"significant|significance|benchmark|baseline|消融|基线|对比|显著|p\s*值|"
+            r"without\s+the|w/o\s+the|removing|remove|去掉|移除)[^。！？.!?\n]{0,80}",
+            re.I,
+        ),
+    ),
+    # ── 含局限/未来工作/不足 ──
+    (
+        "limitation",
+        re.compile(
+            r"[^。！？.!?\n]{0,80}(?:limitation|future\s+work|however|we\s+do\s+not|our\s+method\s+(?:does|cannot|may|might|is\s+limited)|"
+            r"不足|局限|未来|后续|仍需|有待|尚未|未考虑|未涉及)[^。！？.!?\n]{0,80}",
+            re.I,
+        ),
+    ),
+    # ── 含代码/数据/开源 ──
+    (
+        "release",
+        re.compile(
+            r"[^。！？.!?\n]{0,80}(?:github\.com|huggingface\.co|gitlab\.com|open.?source|code.*(?:available|release|public)|"
+            r"开源|代码|公开|发布|可获取|download|checkpoint|model.?zoo|weight)[^。！？.!?\n]{0,80}",
+            re.I,
+        ),
+    ),
+    # ── 含表/图引用 ──
+    (
+        "figure",
+        re.compile(
+            r"[^。！？.!?\n]{0,80}(?:table\s+\d|fig(?:ure)?\.?\s*\d|表\s*\d|图\s*\d|as\s+shown|illustrated|depicted)[^。！？.!?\n]{0,80}",
+            re.I,
+        ),
+    ),
+]
+
+
+def extract_key_sentences(full_text: str, max_chars: int = 3000) -> str:
+    """从论文全文中提取高信息密度关键句（零 LLM 成本，纯正则）。
+
+    按类别（指标/声明/严谨性/局限/开源/图表）匹配句子，去重后按类别分组输出。
+    结果可直接注入各 DAG 节点的 prompt 作为「全文关键事实清单」。
+
+    设计约束：
+    - 零 LLM 调用，纯正则匹配。
+    - fail-open：任何异常返回空串，不影响主评审流程。
+    - 去重：同一句子（前 60 字）只出现一次，即使匹配多个模式。
+    """
+    try:
+        t = (full_text or "").strip()
+        if not t:
+            return ""
+        categorized: dict[str, list[str]] = {}
+        seen: set[str] = set()
+        for cat, pat in _KEY_SENTENCE_PATTERNS:
+            hits: list[str] = []
+            for m in pat.finditer(t):
+                sent = m.group(0).strip()
+                key = sent[:60]
+                if key in seen:
+                    continue
+                seen.add(key)
+                hits.append(sent[:200])
+            if hits:
+                categorized[cat] = hits
+        if not categorized:
+            return ""
+        # 组装文本块
+        cat_labels = {
+            "metric": "指标/数据",
+            "claim": "贡献/声明",
+            "rigor": "严谨性/对比",
+            "limitation": "局限/不足",
+            "release": "开源/复现",
+            "figure": "表图引用",
+        }
+        parts: list[str] = []
+        total = 0
+        for cat in ("claim", "metric", "rigor", "release", "limitation", "figure"):
+            hits = categorized.get(cat, [])
+            if not hits:
+                continue
+            label = cat_labels.get(cat, cat)
+            # 每类最多取 5 句，控制总长度
+            selected = hits[:5]
+            parts.append(f"【{label}】" + " | ".join(selected))
+            total += sum(len(s) for s in selected) + 10
+            if total > max_chars:
+                break
+        block = "【全文关键事实（零LLM提取，非摘要转述）】\n" + "\n".join(parts)
+        return block[:max_chars]
+    except Exception:  # noqa: BLE001 - fail-open
+        return ""
+
+
+# ===========================================================================
+# 按节点定向检索（方案 1：每个 DAG 节点拿到不同的补充文本）
+# ===========================================================================
+
+# 节点 → 检索关键词
+_NODE_KEYWORDS: dict[str, list[str]] = {
+    "QE": [
+        "propose",
+        "method",
+        "experiment",
+        "result",
+        "conclusion",
+        "achieve",
+        "提出",
+        "方法",
+        "实验",
+        "结果",
+        "结论",
+        "实现",
+        "达到",
+    ],
+    "Q234": [
+        "propose",
+        "novel",
+        "contribution",
+        "ablation",
+        "baseline",
+        "benchmark",
+        "outperform",
+        "state-of-the-art",
+        "limitation",
+        "提出",
+        "创新",
+        "贡献",
+        "消融",
+        "基线",
+        "开源",
+        "局限",
+    ],
+    "Q2": [
+        "propose",
+        "novel",
+        "first",
+        "contribution",
+        "new",
+        "introduce",
+        "提出",
+        "首次",
+        "创新",
+        "新",
+        "贡献",
+    ],
+    "Q3": [
+        "ablation",
+        "baseline",
+        "compare",
+        "significant",
+        "benchmark",
+        "p-value",
+        "experiment",
+        "evaluation",
+        "dataset",
+        "消融",
+        "基线",
+        "对比",
+        "显著",
+        "实验",
+        "评估",
+        "数据集",
+    ],
+    "Q4": [
+        "result",
+        "performance",
+        "outperform",
+        "state-of-the-art",
+        "github",
+        "open-source",
+        "release",
+        "benchmark",
+        "结果",
+        "性能",
+        "开源",
+        "发布",
+        "代码",
+    ],
+    "Q5a": [
+        "limitation",
+        "future work",
+        "however",
+        "we do not",
+        "caveat",
+        "assumption",
+        "不足",
+        "局限",
+        "未来",
+        "仍需",
+        "假设",
+        "有待",
+    ],
+    "Q5b": [
+        "propose",
+        "method",
+        "result",
+        "achieve",
+        "experiment",
+        "ablation",
+        "提出",
+        "方法",
+        "结果",
+        "实现",
+        "实验",
+    ],
+    "Q5c": [
+        "propose",
+        "result",
+        "achieve",
+        "limitation",
+        "conclusion",
+        "contribution",
+        "提出",
+        "结果",
+        "实现",
+        "局限",
+        "结论",
+        "贡献",
+    ],
+}
+
+
+def _keyword_signal(chunk: str, keywords: list[str]) -> int:
+    """计算 chunk 对给定关键词列表的命中数（不区分大小写）。"""
+    low = chunk.lower()
+    return sum(1 for kw in keywords if kw.lower() in low)
+
+
+def retrieve_for_node(
+    fulltext_ctx: dict[str, Any] | None,
+    node_name: str,
+    top_k: int = 3,
+) -> list[dict[str, Any]]:
+    """从已有的全文分块中按节点关键词检索最相关的原文块。
+
+    复用 build_fulltext_context 产出的分块结果（不额外调用 LLM）。
+    返回的块按关键词命中数降序排列。
+
+    Args:
+        fulltext_ctx: build_fulltext_context 的返回值（含 verbatim_chunks + chunks 信息）。
+        node_name: DAG 节点名（QE, Q234, Q2, Q3, Q4, Q5a, Q5b, Q5c 等）。
+        top_k: 返回的最相关块数量。
+
+    Returns:
+        按命中数降序的块列表 [{index, text, signal}]；fulltext_ctx 为空时返回 []。
+    """
+    try:
+        if not fulltext_ctx:
+            return []
+        verbatim = fulltext_ctx.get("verbatim_chunks") or []
+        if not verbatim:
+            return []
+        keywords = _NODE_KEYWORDS.get(node_name, _NODE_KEYWORDS.get("QE", []))
+        scored = [
+            {
+                "index": c.get("index", i),
+                "text": (c.get("text") or "")[:_VERBATIM_CHUNK_CHARS],
+                "signal": _keyword_signal(c.get("text", ""), keywords),
+            }
+            for i, c in enumerate(verbatim)
+        ]
+        scored.sort(key=lambda x: x["signal"], reverse=True)
+        return [c for c in scored[:top_k] if c["signal"] > 0]
+    except Exception:  # noqa: BLE001 - fail-open
+        return []
+
+
+# ===========================================================================
+# 统一组装：全局摘要 + 关键句 + 节点定向块
+# ===========================================================================
+def format_node_supplement(
+    fulltext_ctx: dict[str, Any] | None,
+    node_name: str,
+    key_sentences: str,
+) -> str:
+    """组装节点专属的 prompt 补充文本块。
+
+    组成：全局摘要 + 关键句清单 + 节点定向原文块。
+    全局摘要和关键句对所有节点一致（提供全局上下文），
+    节点定向块按检索关键词定制。
+
+    Args:
+        fulltext_ctx: build_fulltext_context 的返回值。
+        node_name: DAG 节点名。
+        key_sentences: extract_key_sentences 的返回值。
+
+    Returns:
+        组装后的文本块（≤ _MAX_INJECT_CHARS 字）；fulltext_ctx 为空时返回 ''。
+    """
+    if not fulltext_ctx:
+        return ""
+    parts: list[str] = []
+    # 1. 全局摘要（所有节点共享）
+    gs = (fulltext_ctx.get("global_summary") or "").strip()
+    if gs:
+        parts.append(f"【全文全局摘要】{gs}")
+    # 2. 零 LLM 关键句清单（所有节点共享）
+    ks = key_sentences.strip()
+    if ks:
+        parts.append(ks)
+    # 3. 节点定向原文块
+    node_chunks = retrieve_for_node(fulltext_ctx, node_name)
+    if node_chunks:
+        lines = [f"[{c['index']}] {c['text']}" for c in node_chunks]
+        parts.append("【节点定向补充段落】\n" + "\n\n".join(lines))
+    block = "\n\n".join(parts)
+    return block[:_MAX_INJECT_CHARS]

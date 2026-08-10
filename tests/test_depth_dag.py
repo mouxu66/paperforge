@@ -531,8 +531,8 @@ class TestReviewAsyncDAG:
         assert result.rigor_score > 0.82, f"expected rigor > 0.82, got {result.rigor_score}"
         assert result.influence_score == 0.85
 
-        # QF（无图表 → 中性）
-        assert result.figure_consistency_score == 0.5
+        # QF（无图表 → None 表示不适用）
+        assert result.figure_consistency_score is None
 
         # Q5a/Q5b/Q5c
         assert len(result.critique_points) == 2

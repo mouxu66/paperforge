@@ -198,7 +198,7 @@ class TestAnalyzeReflectionFile:
         # 注意：流水线现向 review() 传 student_id（交叉验证加分链路）
         monkeypatch.setattr(
             "mock_api.depth_eval_reflection.ReflectionReviewer",
-            lambda: Mock(review=lambda rid, title, raw, student_id="", paper_text="": _fake_review_result(0.78)),
+            lambda: Mock(review=lambda rid, title, raw, student_id="", paper_text="", **kwargs: _fake_review_result(0.78)),
         )
         # Mock _get_paper_text_emb
         monkeypatch.setattr(
@@ -254,7 +254,7 @@ class TestAnalyzeReflectionFile:
         monkeypatch.setattr(
             "mock_api.depth_eval_reflection.ReflectionReviewer",
             lambda: Mock(
-                review=lambda rid, title, raw, student_id="", paper_text="": (_ for _ in ()).throw(RuntimeError("LLM down"))
+                review=lambda rid, title, raw, student_id="", paper_text="", **kwargs: (_ for _ in ()).throw(RuntimeError("LLM down"))
             ),
         )
         monkeypatch.setattr(
@@ -301,7 +301,7 @@ class TestAnalyzeReflectionFile:
         monkeypatch.setattr(
             "mock_api.depth_eval_reflection.ReflectionReviewer",
             lambda: Mock(
-                review=lambda rid, title, raw, student_id="", paper_text="": _fake_review_result(0.78, "needs_evidence")
+                review=lambda rid, title, raw, student_id="", paper_text="", **kwargs: _fake_review_result(0.78, "needs_evidence")
             ),
         )
         monkeypatch.setattr(
@@ -346,7 +346,7 @@ class TestAnalyzeReflectionFile:
         )
         monkeypatch.setattr(
             "mock_api.depth_eval_reflection.ReflectionReviewer",
-            lambda: Mock(review=lambda rid, title, raw, paper_text="": _fake_review_result()),
+            lambda: Mock(review=lambda rid, title, raw, paper_text="", **kwargs: _fake_review_result()),
         )
         monkeypatch.setattr(
             "mock_api.reflection_pipeline._get_paper_text_emb",
@@ -387,7 +387,7 @@ class TestAnalyzeReflectionFile:
         )
         monkeypatch.setattr(
             "mock_api.depth_eval_reflection.ReflectionReviewer",
-            lambda: Mock(review=lambda rid, title, raw, paper_text="": _fake_review_result()),
+            lambda: Mock(review=lambda rid, title, raw, paper_text="", **kwargs: _fake_review_result()),
         )
         monkeypatch.setattr(
             "mock_api.reflection_pipeline._get_paper_text_emb",
@@ -429,7 +429,7 @@ class TestAnalyzeReflectionFile:
         monkeypatch.setattr(
             "mock_api.depth_eval_reflection.ReflectionReviewer",
             lambda: Mock(
-                review=lambda rid, title, raw, student_id="", paper_text="": _fake_review_result(verdict="needs_evidence")
+                review=lambda rid, title, raw, student_id="", paper_text="", **kwargs: _fake_review_result(verdict="needs_evidence")
             ),
         )
         monkeypatch.setattr(
@@ -474,7 +474,7 @@ class TestAnalyzeReflectionFile:
         )
         monkeypatch.setattr(
             "mock_api.depth_eval_reflection.ReflectionReviewer",
-            lambda: Mock(review=lambda rid, title, raw, student_id="", paper_text="": _fake_review_result()),
+            lambda: Mock(review=lambda rid, title, raw, student_id="", paper_text="", **kwargs: _fake_review_result()),
         )
         monkeypatch.setattr(
             "mock_api.reflection_pipeline._get_paper_text_emb",
@@ -523,7 +523,7 @@ class TestAnalyzeReflectionFile:
         )
         monkeypatch.setattr(
             "mock_api.depth_eval_reflection.ReflectionReviewer",
-            lambda: Mock(review=lambda rid, title, raw, student_id="", paper_text="": _fake_review_result()),
+            lambda: Mock(review=lambda rid, title, raw, student_id="", paper_text="", **kwargs: _fake_review_result()),
         )
         monkeypatch.setattr(
             "mock_api.reflection_pipeline._get_paper_text_emb",
@@ -570,7 +570,7 @@ class TestCitationIntegrityVerdict:
         monkeypatch.setattr(
             "mock_api.depth_eval_reflection.ReflectionReviewer",
             lambda: Mock(
-                review=lambda rid, title, raw, student_id="", paper_text="": _fake_review_result(
+                review=lambda rid, title, raw, student_id="", paper_text="", **kwargs: _fake_review_result(
                     0.78, llm_verdict
                 )
             ),
@@ -641,7 +641,7 @@ class TestCitationIntegrityVerdict:
         monkeypatch.setattr(
             "mock_api.depth_eval_reflection.ReflectionReviewer",
             lambda: Mock(
-                review=lambda rid, title, raw, student_id="", paper_text="": _fake_review_result(
+                review=lambda rid, title, raw, student_id="", paper_text="", **kwargs: _fake_review_result(
                     0.78, "well_done"
                 )
             ),
@@ -695,7 +695,7 @@ class TestCitationIntegrityVerdict:
 
         monkeypatch.setattr(
             "mock_api.depth_eval_reflection.ReflectionReviewer",
-            lambda: Mock(review=lambda rid, title, raw, student_id="", paper_text="": _ProdShapedResult()),
+            lambda: Mock(review=lambda rid, title, raw, student_id="", paper_text="", **kwargs: _ProdShapedResult()),
         )
         monkeypatch.setattr(
             "mock_api.reflection_pipeline._get_paper_text_emb",
@@ -737,7 +737,7 @@ class TestCitationIntegrityVerdict:
         monkeypatch.setattr(
             "mock_api.depth_eval_reflection.ReflectionReviewer",
             lambda: Mock(
-                review=lambda rid, title, raw, student_id="", paper_text="": _fake_review_result(
+                review=lambda rid, title, raw, student_id="", paper_text="", **kwargs: _fake_review_result(
                     0.78, "well_done"
                 )
             ),

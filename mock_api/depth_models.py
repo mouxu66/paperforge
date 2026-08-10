@@ -102,6 +102,10 @@ class PaperContext(BaseModel):
     # ADR-014 P9: 全文覆盖层补充文本（全局摘要 + 采样原文块），默认空串零开销。
     # 由 review/review_async_dag 在分段后注入，供 QE/Q234 等节点追加到 {paper} 视图。
     fulltext_supplement: str = ""
+    # P9 扩展：按节点名 → 专属补充文本。当 fulltext_supplement 非空时，
+    # _paper_view 优先取节点专属补充（若有），回退至 fulltext_supplement。
+    # 默认空 dict = 与旧行为完全一致。
+    fulltext_node_supplements: dict[str, str] = Field(default_factory=dict)
 
     model_config = {"frozen": True}  # nodes should not mutate the context
 

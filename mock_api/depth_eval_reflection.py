@@ -488,9 +488,12 @@ PROMPT_REFLECTION = """你是一位严谨的阅读笔记评审专家。请评审
 # 原论文参考区块（仅当 review() 收到 paper_text 时注入）：
 # 语义：论文仅作背景对照，用于判断报告理解是否准确、覆盖是否充分；
 #       evidence snippet 仍必须来自报告本身（硬校验在 R2 强制）。
+# paper_supplement：全文补充（全局摘要 + 关键句），由 reflection_pipeline 构建；
+#       非空时插入 paper_preview 前，提供论文全文高密度上下文。
 PAPER_SECTION_TEMPLATE = """【原论文参考内容】（⚠️ 只读背景材料，用于判断报告的理解是否准确、
 覆盖是否充分。**本区块的任何句子都不得作为 evidence snippet 引用**——
 它不是学生写的内容，引用它会被代码层判定为无效证据）：
+{paper_supplement}
 {paper_preview}
 """
 
@@ -911,6 +914,7 @@ class ReflectionReviewer:
         student_id: str = "",
         paper_text: str = "",
         *,
+        paper_supplement: str = "",
         override_section_count: int | None = None,
         override_reflection_length: int | None = None,
     ) -> ReflectionReviewResult:
@@ -923,6 +927,9 @@ class ReflectionReviewer:
                 （2026-08 实验 B：千问拿到论文后 understanding/evidence 判得更准，
                 但分数整体上浮——权重重构已把区分度不足维度降权以吸收该效应）。
                 不传时 prompt 与旧版完全一致。
+            paper_supplement: 论文全文补充文本（可选）。非空时插入【原论文参考内容】前，
+                包含全文全局摘要、关键句等（由 build_fulltext_context 产出）。
+                paper_text 仍用于 diagnose_evidence_rejections 的 snippet 来源判断。
             override_section_count: 预解析的段落数（来自 docx parser），
                 传 None 时 fallback 扫描 raw_text。
             override_reflection_length: 预解析的 reflection 段字数（来自 docx parser）。
@@ -955,12 +962,20 @@ class ReflectionReviewer:
             if truncated
             else ""
         )
-        # 原论文参考（可选注入）：取论文开头 MAX_PAPER_PREVIEW_CHARS 字符
+        # 原论文参考（可选注入）：取论文开头 MAX_PAPER_PREVIEW_CHARS 字符，
+        # 若有全文补充（paper_supplement）则缩减预览长度以控制 prompt 总长。
         # （实验 B 校准：摘要+引言足够判断理解准确性；snippet 仍强制来自报告）
         paper_section = ""
         if paper_text and paper_text.strip():
+            preview_chars = MAX_PAPER_PREVIEW_CHARS
+            supp = (paper_supplement or "").strip()
+            if supp:
+                preview_chars = min(MAX_PAPER_PREVIEW_CHARS, 2000)
+            else:
+                supp = ""
             paper_section = PAPER_SECTION_TEMPLATE.format(
-                paper_preview=paper_text[:MAX_PAPER_PREVIEW_CHARS]
+                paper_supplement=supp,
+                paper_preview=paper_text[:preview_chars],
             )
         base_prompt = PROMPT_REFLECTION.format(
             content=content,

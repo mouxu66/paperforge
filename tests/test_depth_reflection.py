@@ -692,7 +692,7 @@ class TestScoringAnchors:
         """锚点加在要求区后，JSON 输出模板仍可正常 format。"""
         from mock_api.depth_eval_reflection import PROMPT_REFLECTION, PAPER_SECTION_TEMPLATE, MAX_PAPER_PREVIEW_CHARS
 
-        ps = PAPER_SECTION_TEMPLATE.format(paper_preview="x" * 100)
+        ps = PAPER_SECTION_TEMPLATE.format(paper_supplement="", paper_preview="x" * 100)
         p1 = PROMPT_REFLECTION.format(content="报告内容", truncation_note="", paper_section=ps)
         p2 = PROMPT_REFLECTION.format(content="报告内容", truncation_note="", paper_section="")
         assert "【评分参照系】" in p1 and "【评分参照系】" in p2

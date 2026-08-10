@@ -267,7 +267,7 @@ def test_depth_tasks_schedules_figure_understanding_when_missing(monkeypatch, db
         "reproducibility_score": 0.5,
         "critique_points": [{"point": "test", "severity": "minor"}],
         "defense_points": [],
-        "figure_consistency_score": 0.5,
+        "figure_consistency_score": None,
         "figure_flags": [],
         "figure_evidence_count": 0,
         "figure_coverage": "missing",

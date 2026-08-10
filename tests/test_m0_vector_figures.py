@@ -159,4 +159,4 @@ def test_qf_node_returns_fallback_when_no_figures() -> None:
     )
 
     assert result.has_figures is False
-    assert result.figure_consistency_score == pytest.approx(0.5, abs=0.01)
+    assert result.figure_consistency_score is None

@@ -255,12 +255,12 @@ class Q5cResult(BaseModel):
 class QFResult(BaseModel):
     """QF 图文一致性审查结果（v4.2 新增节点）。
 
-    has_figures=False 时 figure_consistency_score 固定为中性 0.5，
+    has_figures=False 时 figure_consistency_score 为 None（表示不适用），
     _compute_dwm 的图文微调分支会跳过（不产生任何分数影响）。
     """
 
     reasoning: str = ""
-    figure_consistency_score: float = Field(default=0.5, ge=0.0, le=1.0)
+    figure_consistency_score: float | None = Field(default=None)
     inconsistency_flags: list[str] = Field(default_factory=list)
     has_figures: bool = False
     evidence_id: str = ""
@@ -331,8 +331,8 @@ class DepthV4Result(BaseModel):
     q4_reasoning: str = ""
     critique_points: list[CritiquePoint] = Field(default_factory=list)
     defense_points: list[str] = Field(default_factory=list)
-    # v4.2 QF 图文一致性（无图表 / 节点关闭时为中性默认值，不影响评分）
-    figure_consistency_score: float = 0.5
+    # v4.2 QF 图文一致性（无图表时为 None 表示不适用，不参与评分）
+    figure_consistency_score: float | None = None
     figure_flags: list[str] = Field(default_factory=list)
     figure_evidence_count: int = 0
     figure_coverage: str = "disabled"
@@ -1258,30 +1258,72 @@ class DepthReviewer:
             return self._llm(prompt)
 
     # ── ADR-014 P9：全文覆盖层（漏洞 C 软件解法）──────────────────
-    def _build_fulltext_supplement(self, paper_id: str, full_text: str) -> str:
-        """构建全文覆盖补充文本（全局摘要 + 采样原文块）。
+    def _build_fulltext_supplement(
+        self, paper_id: str, full_text: str
+    ) -> tuple[str, dict[str, str]]:
+        """构建全文覆盖补充文本（全局摘要 + 采样原文块 + 节点定向补充）。
 
-        默认关闭（PAPERFORGE_DEPTH_FULLTEXT_ENABLED=1 才开）；任何失败返回 ''
-        （fail-open，零行为变化）。分块摘要产物按 (paper_id, text_hash) 缓存，
-        重评不重复付 LLM 成本。
+        默认自动开启（论文超过阈值时生效）；设 PAPERFORGE_DEPTH_FULLTEXT_ENABLED=0
+        可强制关闭。任何失败返回 ('', {})（fail-open）。分块摘要产物按
+        (paper_id, text_hash) 缓存，重评不重复付 LLM 成本。
+
+        Returns:
+            (default_supplement, {node_name: node_supplement, ...})
         """
         try:
             if not paper_id or not full_text:
-                return ""
-            from .depth_fulltext import build_fulltext_context, format_supplement
+                return "", {}
+            from .depth_fulltext import (
+                build_fulltext_context,
+                extract_key_sentences,
+                format_node_supplement,
+                format_supplement,
+            )
 
-            ctx = build_fulltext_context(paper_id, full_text, llm_func=self._llm)
-            return format_supplement(ctx)
+            ctx = build_fulltext_context(paper_id, full_text, llm_func=self._llm, fast=True)
+            if ctx is None:
+                return "", {}
+            default_supp = format_supplement(ctx)
+            # 零 LLM 关键句提取（所有节点共享）
+            key_sents = extract_key_sentences(full_text)
+            # 为每个评分节点构建专属补充文本
+            node_supps: dict[str, str] = {}
+            for node_name in (
+                "Q0",
+                "Q1",
+                "QE",
+                "Q234",
+                "Q2",
+                "Q3",
+                "Q4",
+                "QF",
+                "Q5a",
+                "Q5b",
+                "Q5c",
+            ):
+                ns = format_node_supplement(ctx, node_name, key_sents)
+                if ns:
+                    node_supps[node_name] = ns
+            return default_supp, node_supps
         except Exception as e:  # noqa: BLE001 - fail-open
             logger.warning("全文覆盖补充构建失败（降级无补充）: %s", e)
-            return ""
+            return "", {}
 
-    def _paper_view(self, text: str, ctx: PaperContext, max_chars: int) -> str:
+    def _paper_view(
+        self, text: str, ctx: PaperContext, max_chars: int, node_name: str | None = None
+    ) -> str:
         """论文视图 + 全文覆盖补充（ADR-014 P9）。
 
-        默认 fulltext_supplement='' → 与旧行为完全一致（零开销）。
+        优先使用节点专属补充（ctx.fulltext_node_supplements[node_name]），
+        回退至默认补充（ctx.fulltext_supplement），都不存在时与旧行为一致。
         """
         base = text[:max_chars]
+        # 节点专属补充优先
+        if node_name:
+            supp = (ctx.fulltext_node_supplements.get(node_name) or "").strip()
+            if supp:
+                return f"{base}\n\n{supp}"
+        # 回退至默认补充
         supp = (ctx.fulltext_supplement or "").strip()
         if not supp:
             return base
@@ -1529,7 +1571,9 @@ class DepthReviewer:
     # ------------------------------------------------------------------
     def _run_q0(self, ctx: PaperContext) -> NodeOutput[Q0Result]:
         text = ctx.paper_abstract_intro
-        prompt = PROMPT_Q0.format(paper=text[:MAX_CHARS_SHORT])
+        prompt = PROMPT_Q0.format(
+            paper=self._paper_view(text, ctx, MAX_CHARS_SHORT, node_name="Q0")
+        )
         self._log(f"[Q0] 开始调用 LLM（纯文本模式, max_tokens={self._max_tokens}）...")
         grammar = q0_grammar() if _depth_grammar_enabled() else None
         # v4.2 DI 统一：走注入的 self._llm（测试可全 mock；生产默认即 call_llm）
@@ -1573,7 +1617,9 @@ class DepthReviewer:
     # ------------------------------------------------------------------
     def _run_q1(self, ctx: PaperContext) -> NodeOutput[Q1Result]:
         text = ctx.paper_abstract_intro
-        prompt = PROMPT_Q1.format(paper=text[:MAX_CHARS_SHORT])
+        prompt = PROMPT_Q1.format(
+            paper=self._paper_view(text, ctx, MAX_CHARS_SHORT, node_name="Q1")
+        )
         self._log(f"[Q1] 开始调用 LLM（纯文本模式, max_tokens={self._max_tokens}）...")
         grammar = q1_grammar() if _depth_grammar_enabled() else None
         # v4.2 DI 统一：走注入的 self._llm
@@ -1631,7 +1677,7 @@ class DepthReviewer:
     # ------------------------------------------------------------------
     def _run_qe(self, ctx: PaperContext) -> NodeOutput[tuple[QEResult, str]]:
         text = ctx.paper_full_text
-        prompt = PROMPT_QE.format(paper=self._paper_view(text, ctx, MAX_CHARS_FULL))
+        prompt = PROMPT_QE.format(paper=self._paper_view(text, ctx, MAX_CHARS_FULL, node_name="QE"))
         self._log("[QE] 开始调用 LLM（纯文本模式）...")
         # v4.2 温度锁定：显式传 temperature（此前裸调 self._llm(prompt)，
         # 依赖下游默认值，复跑一致性无保障）
@@ -1697,7 +1743,7 @@ class DepthReviewer:
         valid_ids = list(evidence_pool.keys())
 
         prompt = PROMPT_Q2.format(
-            paper=self._paper_view(text, ctx, MAX_CHARS_SHORT),
+            paper=self._paper_view(text, ctx, MAX_CHARS_SHORT, node_name="Q2"),
             paper_type=q1_type,
             hotspots=hotspots_str,
             evidence_pool_text=evidence_text,
@@ -1770,7 +1816,7 @@ class DepthReviewer:
         valid_ids = list(evidence_pool.keys())
 
         prompt = prompt_template.format(
-            paper=self._paper_view(text, ctx, MAX_CHARS_SHORT),
+            paper=self._paper_view(text, ctx, MAX_CHARS_SHORT, node_name="Q3"),
             paper_type=q1_type,
             secondary_type_info=secondary_info,
             secondary_checklist=secondary_checklist,
@@ -1858,7 +1904,8 @@ class DepthReviewer:
         valid_ids = list(evidence_pool.keys())
 
         prompt = PROMPT_Q4.format(
-            paper=self._paper_view(text, ctx, MAX_CHARS_SHORT), evidence_pool_text=evidence_text
+            paper=self._paper_view(text, ctx, MAX_CHARS_SHORT, node_name="Q4"),
+            evidence_pool_text=evidence_text,
         )
         self._log(f"[Q4] 开始调用 LLM（纯文本模式, max_tokens={self._max_tokens}）...")
 
@@ -1993,7 +2040,7 @@ class DepthReviewer:
         rigor_guide = Q234_RIGOR_GUIDE.get(q1.type, Q234_RIGOR_GUIDE["B"])
 
         prompt = PROMPT_Q234.format(
-            paper=self._paper_view(text, ctx, MAX_CHARS_SHORT),
+            paper=self._paper_view(text, ctx, MAX_CHARS_SHORT, node_name="Q234"),
             paper_type=q1.type,
             secondary_type_info=secondary_info,
             rigor_guide=rigor_guide,
@@ -2189,7 +2236,12 @@ class DepthReviewer:
             self._log("[QF] 无 PaperFigure，跳过已弃用的 P0-B 文本层一致性检查")
             self._node_stds["QF"] = {"figure_consistency_score": 0.0}
             return self._wrap_success(
-                "QF", QFResult(reasoning="无图表数据，未执行图文一致性审查", has_figures=False)
+                "QF",
+                QFResult(
+                    reasoning="无图表数据，未执行图文一致性审查",
+                    has_figures=False,
+                    figure_consistency_score=None,
+                ),
             )
 
         figure_lines: list[str] = []
@@ -2210,7 +2262,7 @@ class DepthReviewer:
         valid_ids = list(evidence_pool.keys())
 
         prompt = PROMPT_QF.format(
-            paper=text[:MAX_CHARS_SHORT],
+            paper=self._paper_view(text, ctx, MAX_CHARS_SHORT, node_name="QF"),
             figure_text=figure_text,
             evidence_pool_text=evidence_text,
         )
@@ -2258,21 +2310,31 @@ class DepthReviewer:
         )
 
         self._node_stds["QF"] = {"figure_consistency_score": 0.0}
-        score = _clamp_float(data.get("figure_consistency_score", 0.5))
+        raw_score = data.get("figure_consistency_score")
+        if raw_score is not None:
+            score = _clamp_float(float(raw_score))
+        else:
+            score = None
 
         # v4.2 #1: apply claim-validation penalty / bonus to figure_consistency_score
         penalty, penalty_flags, penalty_reasoning = self._compute_claim_validation_penalty(figures)
         bonus, bonus_reasoning = self._compute_claim_validation_bonus(figures)
-        if penalty > 0 or bonus > 0:
+        if score is not None and (penalty > 0 or bonus > 0):
             score = _clamp_float(score - penalty + bonus)
             flags.extend(penalty_flags)
             self._log(
                 f"[QF] claim-validation penalty={penalty:.3f}, bonus={bonus:.3f}, "
                 f"adjusted_score={score:.3f}"
             )
+        elif penalty > 0 or bonus > 0:
+            self._log(
+                f"[QF] claim-validation penalty={penalty:.3f}, bonus={bonus:.3f} "
+                f"(跳过：figure_consistency_score 缺失)"
+            )
 
+        score_str = f"{score:.3f}" if score is not None else "N/A"
         self._log(
-            f"[QF] figure_consistency_score={score:.3f}, claim_validation_penalty={penalty:.3f}, "
+            f"[QF] figure_consistency_score={score_str}, claim_validation_penalty={penalty:.3f}, "
             f"claim_validation_bonus={bonus:.3f}, flags={len(flags)}, eid={evidence_id}"
         )
         reasoning = str(data.get("reasoning", ""))
@@ -2314,17 +2376,20 @@ class DepthReviewer:
         qf = results.QF
         evidence_text = _format_evidence_pool_text(evidence_pool)
         valid_ids = list(evidence_pool.keys())
-        figure_consistency = qf.figure_consistency_score if qf is not None else 0.5
+        figure_consistency = qf.figure_consistency_score if qf is not None else None
+        figure_str = (
+            f"{figure_consistency:.2f}" if figure_consistency is not None else "N/A（无图表）"
+        )
 
         prompt = PROMPT_Q5A.format(
-            paper=text[:MAX_CHARS_SHORT],
+            paper=self._paper_view(text, ctx, MAX_CHARS_SHORT, node_name="Q5a"),
             paper_type=q1.type,
             novelty=f"{q2.novelty_score:.2f}",
             hotspot=f"{q2.hotspot_alignment_score:.2f}",
             rigor=f"{q3.rigor_score:.2f}",
             influence=f"{q4.influence_score:.2f}",
             reproducibility=f"{q4.reproducibility_score:.2f}",
-            figure_consistency=f"{figure_consistency:.2f}",
+            figure_consistency=figure_str,
             evidence_pool_text=evidence_text,
         )
         self._log(f"[Q5a] 开始调用 LLM（纯文本模式, max_tokens={self._max_tokens}）...")
@@ -2415,7 +2480,7 @@ class DepthReviewer:
         critique_str = "\n".join(critique_lines)
 
         prompt = PROMPT_Q5B.format(
-            paper=text[:MAX_CHARS_SHORT],
+            paper=self._paper_view(text, ctx, MAX_CHARS_SHORT, node_name="Q5b"),
             critique_points=critique_str,
             evidence_pool_text=evidence_text,
         )
@@ -2573,14 +2638,18 @@ class DepthReviewer:
             )
 
         prompt = PROMPT_Q5C.format(
-            paper_abstract_conclusion=text[:MAX_CHARS_SHORT],
+            paper_abstract_conclusion=self._paper_view(text, ctx, MAX_CHARS_SHORT, node_name="Q5c"),
             base_score=base_score,
             novelty=f"{q2.novelty_score:.2f}",
             hotspot=f"{q2.hotspot_alignment_score:.2f}",
             rigor=f"{q3.rigor_score:.2f}",
             influence=f"{q4.influence_score:.2f}",
             reproducibility=f"{q4.reproducibility_score:.2f}",
-            figure_consistency=f"{(qf.figure_consistency_score if qf is not None else 0.5):.2f}",
+            figure_consistency=(
+                f"{qf.figure_consistency_score:.2f}"
+                if qf is not None and qf.figure_consistency_score is not None
+                else "N/A（无图表）"
+            ),
             delta_min=f"{delta_lo:.2f}",
             delta_max=f"{delta_hi:.2f}",
             critique_points=critique_str,
@@ -3385,6 +3454,7 @@ class DepthReviewer:
         if (
             not qf
             or not qf.has_figures
+            or qf.figure_consistency_score is None
             or qf.figure_consistency_score >= 0.3
             or len(qf.inconsistency_flags) < 2
         ):
@@ -3425,7 +3495,7 @@ class DepthReviewer:
             q4_reasoning="fast 模式：未调用 LLM",
             critique_points=[],
             defense_points=[],
-            figure_consistency_score=0.5,
+            figure_consistency_score=None,
             figure_flags=[],
             figure_evidence_count=0,
             claim_validation_penalty=0.0,
@@ -3486,9 +3556,11 @@ class DepthReviewer:
             self._log(f"OIM 特征: {objective_features}, objective_score={objective_score:.3f}")
 
         # 1.5 ADR-014 P9：全文覆盖补充（默认关，fail-open）
-        fulltext_supplement = self._build_fulltext_supplement(paper_id, full_text)
+        fulltext_supplement, node_supplements = self._build_fulltext_supplement(paper_id, full_text)
         if fulltext_supplement:
             self._log(f"[全文覆盖] 已注入补充文本 {len(fulltext_supplement)}c")
+        if node_supplements:
+            self._log(f"[全文覆盖] 节点定向补充已就绪: {list(node_supplements.keys())}")
 
         # 2. 串行节点链（Q0→Q1→QE→Q234/Q2Q3Q4→QF→Q5a→Q5b→Q5c）
         ctx = PaperContext(
@@ -3501,6 +3573,7 @@ class DepthReviewer:
             paper_abstract_conclusion=pa_concl,
             hotspots=hotspots,
             fulltext_supplement=fulltext_supplement,
+            fulltext_node_supplements=node_supplements,
         )
         results = DAGOutputs()
 
@@ -3581,8 +3654,13 @@ class DepthReviewer:
         else:
             qf = QFResult()
         results.QF = qf
+        fc_str = (
+            f"{qf.figure_consistency_score:.3f}"
+            if qf.figure_consistency_score is not None
+            else "N/A"
+        )
         self._log(
-            f"QF: figure_consistency={qf.figure_consistency_score:.3f}, "
+            f"QF: figure_consistency={fc_str}, "
             f"has_figures={qf.has_figures}, flags={len(qf.inconsistency_flags)}"
         )
 
@@ -3671,9 +3749,11 @@ class DepthReviewer:
         )
 
         # 1.5 ADR-014 P9：全文覆盖补充（默认关，fail-open）
-        fulltext_supplement = self._build_fulltext_supplement(paper_id, full_text)
+        fulltext_supplement, node_supplements = self._build_fulltext_supplement(paper_id, full_text)
         if fulltext_supplement:
             self._log(f"[全文覆盖] 已注入补充文本 {len(fulltext_supplement)}c")
+        if node_supplements:
+            self._log(f"[全文覆盖] 节点定向补充已就绪: {list(node_supplements.keys())}")
 
         # 2. 构建 PaperContext（v4.2 泛型擦除：统一传递类型化上下文）
         ctx = PaperContext(
@@ -3687,6 +3767,7 @@ class DepthReviewer:
             paper_meta=paper_meta or {},
             hotspots=hotspots,
             fulltext_supplement=fulltext_supplement,
+            fulltext_node_supplements=node_supplements,
         )
 
         # P0-1: 提前抽取客观特征（v4.2 修复：DAG 路径此前漏算 OIM，与串行不一致）
@@ -3960,7 +4041,9 @@ class DepthReviewer:
             q4_reasoning=q4.reasoning,
             critique_points=q5a.critique_points,
             defense_points=q5b.defense_points,
-            figure_consistency_score=round(qf.figure_consistency_score, 4),
+            figure_consistency_score=round(qf.figure_consistency_score, 4)
+            if qf.figure_consistency_score is not None
+            else None,
             figure_flags=qf.inconsistency_flags,
             figure_evidence_count=figure_evidence_count,
             figure_coverage=self._figure_coverage(qf),

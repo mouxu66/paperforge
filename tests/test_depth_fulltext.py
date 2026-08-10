@@ -6,7 +6,7 @@
 - summarize_chunks：并行、单块失败 fail-open（summary=''）。
 - merge_summaries：确定性合并、单块直通。
 - format_supplement：空/有上下文。
-- is_enabled：默认关 + env 开启。
+- is_enabled：默认自动开启 + env 显式开关。
 - build_fulltext_context：门控、文本过短跳过、LLM 全挂仍返回采样块、DB 缓存命中。
 """
 
@@ -164,10 +164,18 @@ def test_format_supplement_with_ctx() -> None:
 # ── 开关与顶层入口 ─────────────────────────────────────────────────────
 
 
-def test_is_enabled_default_false(monkeypatch: pytest.MonkeyPatch) -> None:
-    # ⚠️ 不能只 delenv：pydantic-settings 还会从项目 .env 文件读取（本地
-    # .env 可能开着 PAPERFORGE_DEPTH_FULLTEXT_ENABLED=1），必须显式 setenv=0
-    # 压过 .env（环境变量优先级最高），保证任何环境都确定性通过。
+def test_is_enabled_default_true(monkeypatch: pytest.MonkeyPatch) -> None:
+    # 默认自动开启（无需设任何环境变量）。
+    monkeypatch.delenv("PAPERFORGE_DEPTH_FULLTEXT_ENABLED", raising=False)
+    monkeypatch.delenv("PAPERFORGE_DEPTH_FULLTEXT", raising=False)
+    from mock_api.settings import reset_settings
+
+    reset_settings()
+    assert is_enabled() is True
+
+
+def test_is_enabled_explicit_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    # 显式设 0 可强制关闭。
     monkeypatch.setenv("PAPERFORGE_DEPTH_FULLTEXT_ENABLED", "0")
     monkeypatch.delenv("PAPERFORGE_DEPTH_FULLTEXT", raising=False)
     from mock_api.settings import reset_settings
@@ -185,8 +193,7 @@ def test_is_enabled_env_on(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_build_gated_off_no_llm_calls(monkeypatch: pytest.MonkeyPatch) -> None:
-    # 同 test_is_enabled_default_false：显式 setenv=0 压过 .env 文件，避免本地
-    # .env 开着 FULLTEXT 时本测试误触发 LLM。
+    # 显式 setenv=0 强制关闭全文覆盖 → LLM 不应被调用
     monkeypatch.setenv("PAPERFORGE_DEPTH_FULLTEXT_ENABLED", "0")
     monkeypatch.delenv("PAPERFORGE_DEPTH_FULLTEXT", raising=False)
     from mock_api.settings import reset_settings
@@ -194,13 +201,15 @@ def test_build_gated_off_no_llm_calls(monkeypatch: pytest.MonkeyPatch) -> None:
     reset_settings()
 
     def _boom(prompt: str):
-        raise AssertionError("门控关闭时不应调用 LLM")
+        raise AssertionError("强制关闭时不应调用 LLM")
 
     assert build_fulltext_context("p1", "长文" * 20000, _boom) is None
 
 
 def test_build_short_text_skipped(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("PAPERFORGE_DEPTH_FULLTEXT_ENABLED", "1")
+    # 默认自动开启，但短文应被长度阈值跳过（不调 LLM）
+    monkeypatch.delenv("PAPERFORGE_DEPTH_FULLTEXT_ENABLED", raising=False)
+    monkeypatch.delenv("PAPERFORGE_DEPTH_FULLTEXT", raising=False)
     from mock_api.settings import reset_settings
 
     reset_settings()
@@ -211,7 +220,9 @@ def test_build_short_text_skipped(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_build_llm_all_fail_still_returns_verbatim(monkeypatch: pytest.MonkeyPatch) -> None:
     """摘要全挂时仍返回采样块（检索增强 fail-open，不给空手而归）。"""
-    monkeypatch.setenv("PAPERFORGE_DEPTH_FULLTEXT_ENABLED", "1")
+    # 默认自动开启，无需设 env
+    monkeypatch.delenv("PAPERFORGE_DEPTH_FULLTEXT_ENABLED", raising=False)
+    monkeypatch.delenv("PAPERFORGE_DEPTH_FULLTEXT", raising=False)
     from mock_api.settings import reset_settings
 
     reset_settings()
@@ -229,7 +240,9 @@ def test_build_llm_all_fail_still_returns_verbatim(monkeypatch: pytest.MonkeyPat
 
 def test_build_caches_second_call(monkeypatch: pytest.MonkeyPatch) -> None:
     """命中 DB 缓存时不再调 LLM。"""
-    monkeypatch.setenv("PAPERFORGE_DEPTH_FULLTEXT_ENABLED", "1")
+    # 默认自动开启，无需设 env
+    monkeypatch.delenv("PAPERFORGE_DEPTH_FULLTEXT_ENABLED", raising=False)
+    monkeypatch.delenv("PAPERFORGE_DEPTH_FULLTEXT", raising=False)
     from mock_api.settings import reset_settings
 
     reset_settings()

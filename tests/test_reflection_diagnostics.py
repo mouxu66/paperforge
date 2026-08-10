@@ -107,7 +107,7 @@ def _patch(monkeypatch, review_result) -> None:
     monkeypatch.setattr(
         "mock_api.depth_eval_reflection.ReflectionReviewer",
         lambda: Mock(
-            review=lambda rid, title, raw, student_id="", paper_text="": review_result
+            review=lambda rid, title, raw, student_id="", paper_text="", **kwargs: review_result
         ),
     )
 
