@@ -24,6 +24,7 @@ import hashlib
 import os
 
 from .ai_likelihood import compute_ai_likelihood
+from .depth_eval_v4 import _statistical_plausibility_check
 from .reflection_binding import match_paper_by_title
 from .reflection_docx_parser import parse_docx_from_bytes
 from .reflection_fidelity import (
@@ -78,6 +79,92 @@ def _get_paper_text_emb(db, paper_id: str | None):
     except Exception:  # noqa: BLE001 - reflection pipeline - 子任务异常隔离
         pass
     return full, emb
+
+
+def _get_paper_title_abstract(db, paper_id: str | None) -> str:
+    """取绑定原论文的「标题 + 摘要」参考文本（供 LLM 判断理解准确性）。
+
+    2026-08-12 实测：把论文全文/长补充喂给本机 9B 模型（Ornstein）会压扁打分
+    区分度（11 篇跨度 0.112 vs 标题+摘要 0.425，MAE 也更差）——模型把「论文质量」
+    和「报告质量」混为一谈。改为只注入标题+摘要：保留 UA 校验锚点（MAE 0.046），
+    又不触发论文美化效应。忠实度（fidelity/coverage）仍由嵌入层用全文独立保证。
+
+    fail-open：查询失败返回 ''（= 不注入论文参考，与旧行为一致）。
+    """
+    if not paper_id:
+        return ""
+    try:
+        from .models import Paper as PaperORM
+
+        p = db.query(PaperORM).filter(PaperORM.id == paper_id).first()
+        if p is None:
+            return ""
+        title = (getattr(p, "title", "") or "").strip()
+        abstract = (getattr(p, "abstract", "") or "").strip()
+        parts = [
+            x
+            for x in (
+                f"论文标题：{title}" if title else "",
+                f"论文摘要：{abstract}" if abstract else "",
+            )
+            if x
+        ]
+        return "\n\n".join(parts)
+    except Exception:  # noqa: BLE001 - fail-open，绝不影响主评审流程
+        return ""
+
+
+def _lookup_source_paper_id_by_docx(db, path: str) -> str | None:
+    """通过报告 docx 路径反查数据库里已绑定的源论文 ID。
+
+    上传时报告以 Paper 记录入库，reflection_docx_path 指向 docx 文件、
+    source_paper_id 指向原论文。若调用方未显式传 source_paper_id，
+    先按文件路径反查（比标题匹配可靠得多——很多报告没有「论文题目：」
+    标签，标题匹配会拿正文第一句去匹配而失败）。
+
+    fail-open：查询异常返回 None，不影响主流程（回退到标题匹配）。
+    """
+    if not path:
+        return None
+    try:
+        from .models import Paper as PaperORM
+
+        def _real_sid(row) -> str | None:
+            """只认真实字符串的 source_paper_id（测试 Mock 的任意属性会自建
+            truthy Mock，不能当绑定用）。"""
+            sid = getattr(row, "source_paper_id", None)
+            return sid if isinstance(sid, str) and sid else None
+
+        row = db.query(PaperORM).filter(PaperORM.reflection_docx_path == str(path)).first()
+        if row is not None:
+            sid = _real_sid(row)
+            if sid:
+                return sid
+        # 路径可能存在差异（绝对/相对），再按文件名尾部模糊匹配兜底
+        import os as _os
+
+        fname = _os.path.basename(str(path))
+        if fname:
+            rows = db.query(PaperORM).filter(PaperORM.reflection_docx_path.like(f"%{fname}")).all()
+            for row in rows:
+                sid = _real_sid(row)
+                if sid:
+                    return sid
+        # 最终兜底：按文件名中的学号匹配报告记录。上传目录文件名带
+        # reflection_NNN_ 前缀（reflection_004_999900000005-学生03.docx），
+        # 而 DB 存的 docx_path 是原始路径（...\999900000005-学生03.docx）——
+        # basename 匹配不上，但两者都含学号，报告 id = reflection_<学号>。
+        import re as _re
+
+        sid_match = _re.search(r"(20\d{10})", str(path))
+        if sid_match:
+            sid = sid_match.group(1)
+            row = db.query(PaperORM).filter(PaperORM.id == f"reflection_{sid}").first()
+            if row is not None:
+                return _real_sid(row)
+        return None
+    except Exception:  # noqa: BLE001 - reflection pipeline - 子任务异常隔离
+        return None
 
 
 def _heuristic_four(sections: dict) -> dict:
@@ -136,9 +223,13 @@ def analyze_reflection_file(
     with open(path, "rb") as f:
         parse = parse_docx_from_bytes(f.read(), filename=path)
 
-    # 1. 自动绑定原论文（表单 sourcePaperId 优先，否则按题目匹配）
-    bound = source_paper_id or (
-        match_paper_by_title(parse.paper_title, db) if parse.paper_title else None
+    # 1. 自动绑定原论文（表单 sourcePaperId 优先，否则按 docx 路径反查 DB，
+    #    最后才回退到题目匹配——很多报告没有「论文题目：」标签，标题匹配会
+    #    拿正文第一句去匹配而失败，但上传时已通过 source_paper_id 绑定过）
+    bound = (
+        source_paper_id
+        or _lookup_source_paper_id_by_docx(db, path)
+        or (match_paper_by_title(parse.paper_title, db) if parse.paper_title else None)
     )
     full, emb = _get_paper_text_emb(db, bound)
 
@@ -152,19 +243,23 @@ def analyze_reflection_file(
     ai = compute_ai_likelihood(parse.raw_text)
 
     # 2.6 引用真值校验（ADR-014 P4，解决 W8：感悟报告同样可能编造参考文献）
-    # 仅当 PAPERFORGE_CITATION_VERIFY 开启时执行；否则为空 dict（零开销、向后兼容）。
+    # 默认自动执行 offline 模式（本地 DOI 抽取 + 引用编号一致性）；
+    # PAPERFORGE_CITATION_VERIFY=0 可关闭；=1 开启 Crossref 在线核验。
     # 结果会在第 5 步被 verdict 硬校验层消费：fabricated_suspected → rewrite_required
     # （一票否决级，对齐论文侧 FATAL_VETO）；inconsistent → needs_evidence。
     # 校验本身 fail-open（网络/限流异常降级为 unknown，绝不误杀报告）。
     citation_integrity: dict = {}
     _cv_flag = os.environ.get("PAPERFORGE_CITATION_VERIFY")
-    if _cv_flag:
+    if _cv_flag is not None and _cv_flag.strip() == "0":
+        citation_integrity = {}
+    else:
         try:
             from .integrity.citation_verifier import assess_citation_integrity
 
             citation_integrity = assess_citation_integrity(
                 parse.raw_text,
-                verify_online=_cv_flag.strip().lower() in ("1", "true", "on", "yes"),
+                verify_online=_cv_flag is not None
+                and _cv_flag.strip().lower() in ("1", "true", "on", "yes"),
             )
         except Exception:  # noqa: BLE001 - 引用校验异常隔离，不影响主流程
             citation_integrity = {}
@@ -183,32 +278,19 @@ def analyze_reflection_file(
         "llm_empty": 0,
         "llm_failed": False,
         "four_truncated": False,
+        "paper_preview_chars": None,
         "evidence_rejections": {},
         "score_uncertainty": {},
     }
     # 开发自检开关：PAPERFORGE_BENCH_NO_LLM=1 时跳过 LLM，4 维用结构启发式（快速跑 fidelity）
     reviewer_verdict: str | None = None  # 评审器最终 verdict（含 crossval 加分），供 verdict 基线
 
-    # ADR-014 P9：构建论文全文补充（全局摘要 + 关键句），让 LLM 不只是看论文前 4000 字。
-    # fail-open：任何失败 → paper_supplement=''，与旧行为完全一致。
+    # ADR-014 P9 停用（2026-08-12 实测）：原论文全文补充（正文原文块 + 关键句，
+    # ≈5000 字）与全文预览一样会压扁本机 9B 模型的打分区分度——模型拿到大段论文
+    # 正文后把「论文质量」混为「报告质量」，11 篇同批实验：全文+补充跨度 0.112、
+    # 标题+摘要跨度 0.425、无论文 0.300，且标题+摘要的 UA 校验 MAE 仅 0.046。
+    # 忠实度（fidelity/coverage）由嵌入层用全文独立保证，不受影响。
     paper_supplement = ""
-    if full and bound and os.environ.get("PAPERFORGE_BENCH_NO_LLM") != "1":
-        try:
-            from .depth_eval_v4 import call_llm
-            from .depth_fulltext import (
-                build_fulltext_context,
-                extract_key_sentences,
-                format_supplement,
-            )
-
-            ctx = build_fulltext_context(bound, full, llm_func=call_llm, fast=True)
-            if ctx is not None:
-                default_supp = format_supplement(ctx)
-                key_sents = extract_key_sentences(full)
-                parts = [p for p in [default_supp, key_sents] if p.strip()]
-                paper_supplement = "\n\n".join(parts) if parts else ""
-        except Exception:  # noqa: BLE001 - fail-open，绝不影响主评审流程
-            paper_supplement = ""
 
     if os.environ.get("PAPERFORGE_BENCH_NO_LLM") == "1":
         four = _heuristic_four(parse.sections)
@@ -222,8 +304,10 @@ def analyze_reflection_file(
                 parse.paper_title or "报告",
                 parse.raw_text,
                 student_id=parse.student_id or "",
-                paper_text=full,  # 原论文全文（始终传入，用于 snippet 来源判断）
-                paper_supplement=paper_supplement,  # P9：全文补充（全局摘要 + 关键句）
+                # 2026-08-12：不再喂论文全文，只喂「标题+摘要」作为 UA 校验锚点
+                # （见 _get_paper_title_abstract）；fidelity/coverage 仍由嵌入层用全文独立保证。
+                paper_text=_get_paper_title_abstract(db, bound),
+                paper_supplement=paper_supplement,
             )
             four = res.scores
             # verdict 是结果对象的独立字段（不在 scores dict 里），单独取出作基线；
@@ -248,6 +332,9 @@ def analyze_reflection_file(
                     llm_calls=_safe_int(getattr(res, "llm_calls", 0)),
                     llm_empty=_safe_int(getattr(res, "llm_empty", 0)),
                     four_truncated=_safe_bool(getattr(res, "truncated", False)),
+                    paper_preview_chars=_safe_int(
+                        getattr(res, "paper_preview_chars", None), default=None
+                    ),
                     evidence_rejections=_safe_int_map(getattr(res, "evidence_rejections", None)),
                     # ADR-014 P2：不确定门控报告（bootstrap CI），透传给上层供复核/展示。
                     score_uncertainty=_safe_dict(getattr(res, "score_uncertainty", None)),
@@ -379,6 +466,8 @@ def analyze_reflection_file(
         # 每篇会平白多出约 10KB。只回字符数。
         "report_chars": len(parse.raw_text or ""),
         "paper_chars": len(full or ""),
+        # 本次评审实际注入 prompt 的原论文预览字数（动态预算后；LLM 失败时可能为 None）
+        "paper_preview_chars": diag["paper_preview_chars"],
         "scores": scores,
         "weights": dict(W),
         "average": round(avg, 4) if avg is not None else None,
@@ -417,4 +506,8 @@ def analyze_reflection_file(
         # —— 引用真值校验（ADR-014 P4，fabricated 已进 verdict 硬校验层）——
         "citation_integrity": citation_integrity,
         "citation_override_reason": citation_override_reason,
+        # —— 统计合理性检测（零 LLM，复用论文侧检测，对报告同样生效）——
+        "statistical_flags": _statistical_plausibility_check(parse.raw_text),
+        # —— 论文原文统计检测（检测学生引用的论文是否有数据篡改信号）——
+        "paper_statistical_flags": _statistical_plausibility_check(full or ""),
     }

@@ -19,7 +19,7 @@
       "backend": "cuda",
       "max_chars_full": 32000,
       "max_chars_short": 4000,
-      "temperature": 0.1,
+      "temperature": 0.2,
       "max_tokens": 512,
       "parallel": true
     },
@@ -41,7 +41,7 @@
       "backend": "cuda",
       "max_chars_full": 16000,
       "max_chars_short": 4000,
-      "temperature": 0.1,
+      "temperature": 0.2,
       "max_tokens": 512,
       "parallel": true
     },

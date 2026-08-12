@@ -884,10 +884,12 @@ export interface ReflectionResult {
   copy_ratio?: number | null;
   copy_crushed?: boolean;
   ai_likelihood?: number | null;
-  ai_likelihood_tier?: string;
-  llm_calls?: number;
+  ai_likelihood_tier?: string;  llm_calls?: number;
   llm_empty?: number;
+
   truncated?: boolean;
+  /** 本次评审实际读取的原论文预览字数（动态预算后；0/缺失 = 未注入论文参考） */
+  paper_preview_chars?: number | null;
 }
 
 /** 忠实度锚点句：报告中的句子 vs 原论文相似度 */
@@ -960,6 +962,12 @@ export interface AnalysisV2 {
   llm_empty?: number;
   parse_failed?: boolean;
   truncated?: boolean;
+  /** 本次评审实际读取的原论文预览字数（动态预算后；0/缺失 = 未注入论文参考） */
+  paper_preview_chars?: number | null;
+  /** 原论文全文总字数（完整 PDF 抽取，非预览） */
+  paper_chars?: number | null;
+  /** 感悟报告全文总字数 */
+  report_chars?: number | null;
   weights?: Record<string, number>;
 }
 

@@ -118,6 +118,10 @@ def safe_json_parse(text: str, logger_instance: logging.Logger | None = None) ->
             ctx,
         )
 
+    # 始终从第一个 '{' 开始解析（支持"文前 JSON 后"的自由推理格式）
+    first_brace = text.find("{")
+    if first_brace > 0:
+        text = text[first_brace:]
     MAX_PARSE_CHARS = 120_000
     if len(text) > MAX_PARSE_CHARS:
         log.warning(
@@ -125,9 +129,6 @@ def safe_json_parse(text: str, logger_instance: logging.Logger | None = None) ->
             len(text),
             MAX_PARSE_CHARS,
         )
-        first_brace = text.find("{")
-        if first_brace > 0:
-            text = text[first_brace:]
         if len(text) > MAX_PARSE_CHARS:
             head = text[:MAX_PARSE_CHARS]
             last_brace = head.rfind("}")

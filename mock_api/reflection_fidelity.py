@@ -273,22 +273,29 @@ def _load_local_onnx_embedder():
 
 # —— 多语言嵌入器（paraphrase-multilingual-MiniLM-L12-v2，仅 fidelity 链路）——
 def get_ml_embedder():
-    """懒加载多语言模型。优先 fastembed；若 HF API 不可达，退化为本地 ONNX。均失败返回 None。"""
+    """懒加载多语言模型。优先本地 ONNX；否则 fastembed；均失败返回 None。
+
+    2026-08-12 调整顺序：本地已下载模型（mock_api/_models/paraphrase-multilingual-onnx/
+    或 fastembed 缓存）时直接使用，避免每进程首次调用先白等 fastembed 的 HuggingFace
+    下载重试（本机网络下约 40 秒）。本地不可用时才尝试 fastembed 在线加载。
+    """
     global _ml_embedder, _ml_embedder_unavailable
     if _ml_embedder is not None:
         return _ml_embedder
     if _ml_embedder_unavailable:
         return None
-    if os.environ.get("PAPERFORGE_LOCAL_ML") == "1":
+
+    # 1) 本地 ONNX（优先，绕过 Hub API 握手与下载重试）
+    if os.environ.get("PAPERFORGE_LOCAL_ML") != "0":
         try:
             _ml_embedder = _load_local_onnx_embedder()
             if _ml_embedder is not None:
-                logger.info("多语言嵌入模型已加载(本地 ONNX 兜底)")
+                logger.info("多语言嵌入模型已加载(本地 ONNX)")
                 return _ml_embedder
         except Exception as e:  # noqa: BLE001
-            logger.warning("本地 ONNX 兜底加载失败：%s", e)
-        _ml_embedder_unavailable = True
-        return None
+            logger.warning("本地 ONNX 加载失败：%s", e)
+
+    # 2) fastembed 在线（本地没有时兜底）
     last_err = "all loaders failed"
     try:
         from fastembed import TextEmbedding
@@ -297,8 +304,10 @@ def get_ml_embedder():
         logger.info("多语言嵌入模型已加载(fastembed)：%s", ML_MODEL_NAME)
         return _ml_embedder
     except Exception as e:  # noqa: BLE001
-        logger.warning("fastembed 加载多语言模型失败：%s —— 尝试本地 ONNX 兜底", e)
+        logger.warning("fastembed 加载多语言模型失败：%s", e)
         last_err = e
+
+    # 3) 本地 ONNX 再试一次（fastembed 失败后的最终兜底）
     try:
         _ml_embedder = _load_local_onnx_embedder()
         if _ml_embedder is not None:

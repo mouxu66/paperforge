@@ -146,8 +146,161 @@ PAPERFORGE_DEPTH_GOLD_OFFSET_PATH=calib_papers/runs/gold_offset.json  # P5：金
   一致，改阈值必须双写，防魔数漂移。**未接入运行时 run_panel**（与论文侧一致——面板是独立
   模块；感悟侧是「单次 LLM + 硬门」的刻意设计，多评审员 × 每篇的成本不可接受，一致性由 P3
   对人工金标离线测）。
+- **原论文参考内容动态预算（2026-08-11 补；2026-08-12 默认改 0.0）**：报告通常远短于
+  16000 字截断上限，`depth_eval_reflection.review()` 可把报告「省下」的字数按比例补给
+  原论文预览（`PAPER_PREVIEW_BUDGET_RATIO`）。预览 = 基础 4000 字（有全文补充时 2000）
+  + 省下字数 × 比例，**硬上限 16000 字**（2026-08-11 晚调整：由 12000 上调，覆盖典型
+  2 万字论文的 80%；当时 A/B 实测 4000→12000 字让 avg +0.010、understanding_accuracy
+  +0.013）。
+
+  **⚠️ 2026-08-12 默认值回调为 0.0（区分度坍缩）**：本机 9B 模型（Ornstein）拿到
+  长论文预览后会把每篇报告都往高打（≥0.85），随后被 R1.5 硬帽统一钉到 0.85 → 不同
+  报告分数几乎相同。控制变量实测（同 4 篇报告、同温度 0.2，唯一变量 = 预览长度）：
+  16000 字预览平均分跨度 **0.057**、4000 字基础预览 **0.150**、无预览 **0.200**。
+  结论：长预览压死本机模型的判断力，区分度损失远大于 UA 校准收益。故默认不再补给，
+  仅注入基础预览（保留 UA 校准能力）；需要更高论文覆盖度时显式设
+  `PAPERFORGE_PAPER_PREVIEW_BUDGET_RATIO=1.0`。
+  可调环境变量：`PAPERFORGE_PAPER_PREVIEW_CHARS`（基础）、
+  `PAPERFORGE_PAPER_PREVIEW_BUDGET_RATIO`（补给比例，默认 0.0，1.0 全额补给）、
+  `PAPERFORGE_PAPER_PREVIEW_MAX`（硬上限）。每次评审日志记录实际注入的预览字数。
+
+  **显存预算表（8GB 卡，RTX 5060 Laptop）**：上下文上限与预览硬上限必须匹配，否则
+  llama.cpp 会**静默截断 prompt** → JSON 解析失败 → 4 维降级 0.3（2026-08-11 实测踩坑）。
+
+  | 配置 | ctx | KV（q4_0） | 总显存估算 | 最坏 prompt+输出 |
+  |---|---|---|---|---|
+  | 默认（settings.py） | 16384 | ~0.58 GB | ~5.8 GB | 预览 16000+报告 16000+模板 ≈10.8K tokens + 5K 输出 = 15.8K ✓ |
+  | 本机 .env 推荐 | **24576** | ~0.87 GB | ~6.5 GB | 同上 + 8.7K tokens 余量，任意组合不截断 ✓ |
+  | 旧配置（已弃用） | 8192 | ~0.29 GB | ~5.2 GB | 12000 字预览下 prompt ≈7.7K tokens，仅剩 ~0.5K 输出 → 截断 ✗ |
+
+  KV cache 用 q4_0 量化（f16 在 24576 ctx 需 3.2GB 会爆显存）。配套调整：
+  `PAPERFORGE_LLAMA_SERVER_CTX`（settings.py 默认 8192→16384，本机 .env 24576）、
+  `PAPERFORGE_REFLECTION_MAX_TOKENS`（默认 3000→5000，完整 JSON 需 3-5K tokens）。
+  b10357 官方构建无 DFlash CUDA 内核，投机草稿接受率仅 7% 纯拖累 → 已停用（.env 与
+  桌面启动器均移除 `--spec-type draft-dflash`），纯主模型 decode 41 tok/s、单篇评审 ~17s。
+
+### llama.cpp 运行时升级（2026-08-11 补：b10357 + 去投机 + 桌面入口修复）
+
+对比实验（41 篇 A/B）期间发现推理链路三层性能/正确性问题，全部修复后单篇评审
+200s → **~17s**（decode 7.7 → 41 tok/s）：
+
+1. **旧构建 GDN 层回退 CPU**：旧 `llama-dflash-win`（b9878 时代）缺 GDN CUDA 内核，
+   decode 时 CPU 100-116% 满载 + GPU 空转（功耗仅 38W/80W），只有 7.7-16 tok/s。
+2. **投机解码帮倒忙**：草稿接受率仅 7.2%（4280 候选只接受 308），每 token 都在做
+   低效候选-验证循环；b10357 官方 release 未编 DFlash CUDA 内核（`ggml-cuda.dll`
+   dflash 符号 = 0），草稿只能在 CPU 上跑。
+3. **8192 ctx 静默截断 prompt**：12000 字预览 + 报告全文 + 模板 ≈7.7K tokens，留给
+   JSON 输出只剩 ~470 tokens → 输出在数字中间硬断 → 解析失败 → 4 维降级 0.3
+   （解释了此前对比 CSV 里大量 0.3 假数据）。
+
+修复动作：
+- **升级构建**：官方 **b10357**（2026-08-11 发布，含完整 GDN CUDA 内核，
+  `ggml-cuda.dll` 141MB vs 旧 52MB）→ `D:\llama-b10357-win`。
+- **停用投机草稿**：`.env` 与桌面启动器移除 `--spec-type draft-dflash`（b10357 无
+  DFlash 内核，投机是纯负担）；纯主模型 decode 41 tok/s、单篇评审 ~17s。
+- **ctx 16384/24576 + max_tokens 5000**：见上方显存预算表；JSON 完整输出，截断消失。
+- **Flash Attention 显式 on**：Qwen3.5 是 GDN 混合架构，`-fa off` 会直接创建上下文失败
+  （2026-08-11 bench 实测），`auto` 在 CUDA 下等效 on 但显式 `-fa on` 更稳。已加入
+  `llama_server_manager` 拉起命令、桌面 bat 与 `.env`（`PAPERFORGE_LLAMA_SERVER_FLASH_ATTN=1`）。
+
+#### 性能优化基准（2026-08-11 补：llama-bench flag 矩阵）
+
+`scripts/bench_llama_flags.py` + `deliverables/llama_bench_matrix.md`（b10357、Q3_K_M、
+RTX 5060 Laptop 8GB、-p 2048/-n 128/-r 2）。**结论：flag 组合对吞吐无实质影响**
+（瓶颈是显存带宽 + 功耗墙，不是参数），真正提升来自拉高 GPU 功耗上限：
+
+| 组合 | decode (tok/s) | prompt_eval (tok/s) |
+|---|---|---|
+| 基线（auto fa, b2048/ub512） | 55.9 | 1870 |
+| **fa=on, b2048/ub512（选定）** | **56.4** | 1892 |
+| fa=on, b512/ub512 | 56.5 | 1879 |
+| fa=on, b1024/ub1024 | 56.4 | 1899 |
+| fa=on, ub256 | 56.4 | 1813 |
+| fa=on, threads=16 | 56.3 | 1879 |
+
+- 狂暴/高性能电源模式把 decode 从 41 → **56 tok/s**（+37%）；nvidia-smi 无法改功耗上限
+  （笔记本 OEM 限制，max 115W），需厂商工具拉高。
+- `fa=off` 无法创建上下文（GDN 必需 FA）——保持默认即最优。
+- 评审场景实测：5400 tok prompt + 200 tok 输出 6.8s/次，纯 decode 53.8 tok/s。
+
+桌面入口修复（用户双击入口指向已删除脚本）：
+- `llama-server.lnk` 原指向 `start-llama-with-orchestrator.bat`（已删，仅剩 .bak）→
+  重指到 `start-llama-dflash-wsl.bat`（native Windows 启动器：b10357 + `-c 16384` +
+  `-ngl 99` + `--n-cpu-moe 24` + `--parallel 1` + 无投机；自带 watchdog：8080
+  占用时仅监视、崩溃自动拉起、
+  冷启动 300s 宽限避让 CUDA 内核编译）。
+- `PaperForge.lnk` 指向 `start_paperforge.bat`，检测 8080 空闲时按 `.env`
+  （b10357 + 24576）拉起，两条入口配置一致。
+- 备份：桌面 `start-llama-dflash-wsl.bat.bak`（旧 dflash 配置）、`start-llama-with-orchestrator.bat.bak`。
+
+### GLM-4.7-Flash IQ2_XXS 全量金标对比（2026-08-12 补：替换 Qwen3.5-9B 的评审模型升级）
+
+**动机**：Qwen3.5-9B dense（Q3_K_M, 55 tok/s）虽快但
+9B 级智能相对受限。
+GLM-4.7-Flash 是 30B MoE（仅激活 ~3.6B 参数），TQ1_0（7.76 GB, 49 tok/s）
+在 4 篇抽样中 JSON 崩溃（1/4）+ 打分虚高（+0.1）；
+换 IQ2_XXS（9.79 GB, ~30 tok/s）后全量 41 篇金标实测。
+
+**硬件与配置**（`deliverables/glm_iq2_calibration.json`）：
+
+| 参数 | 值 | 备注 |
+|---|---|---|
+| 模型 | GLM-4.7-Flash-UD-IQ2_XXS.gguf, 9.79 GB | unsloth IQ2 量化 |
+| 服务 | b10357 + `-ngl 99 -c 16384 --n-cpu-moe 24 -fa on --parallel 1` | 8 GB RTX 5060 Laptop |
+| decode 速度 | ~30 tok/s | 批量评审 21.5 s/篇（中位 18.4 s） |
+| prompt eval | ~1150 tok/s | 6000 token 论文预读 ~5 s |
+| 显存占用 | ~7248 MiB / 8151 MiB | KV cache q4_0, 余 ~900 MiB |
+
+**41 篇人工金标 vs GLM IQ2 分数（`deliverables/glm_iq2_vs_human_full.csv`）**：
+
+| 维度 | 人工均值 | GLM 均值 | 偏差 | MAE | 校正偏移 |
+|---|---|---|---|---|---|
+| understanding_accuracy | 0.869 | 0.804 | -0.065 | 0.070 | +0.065 |
+| analysis_depth | 0.827 | 0.695 | -0.132 | 0.133 | +0.132 |
+| innovative_insights | 0.620 | 0.595 | -0.025 | 0.097 | +0.025 |
+| evidence_support | 0.868 | 0.784 | -0.083 | 0.085 | +0.083 |
+| **总分** | **0.754** | **0.720** | **-0.034** | **0.064** | **+0.034** |
+
+**关键发现**：
+- **系统性偏低而非虚高**：GLM 比人工严格 0.034（总分），与 TQ1_0 的虚高 +0.1
+  相反；analysis_depth 最严（-0.132），innovative_insights 最准（-0.025）。
+- **无 JSON 崩溃**：41/41 篇输出完整有效（vs TQ1_0 崩溃 1/4）；2105 篇（报告最
+  长 7138 字）在 8192 ctx 下被截断 → 0.3，提升到 16384 ctx 后恢复正常 0.700。
+- **偏差 ≤0.1 的有 34/41 篇**（83%），中位偏差 -0.038。
+- **校正**（`deliverables/glm_iq2_calibration.json`）：按各维偏移做线性校正可消除
+  系统偏差，但相关系数仅 0.387（总分），校正不改排名质量。
+
+**决策**：正式切换 GLM IQ2 为 PaperForge 默认评审模型（替换 Qwen3.5-9B），生产
+配置已写入 `.env` + 桌面 bat：`-m GLM-4.7-Flash-UD-IQ2_XXS.gguf -ngl 99 -c 16384 --n-cpu-moe 24 -fa on --parallel 1`。
+校正偏移暂不自动应用（相关系数弱），标注在 `calibration.json` 中供参考。
 
 ### 待用户后续投入（非代码）
 - **人类金标扩样**（可选）：现有 `calib_my_review.json` 为 20 篇 LLM 盲评；若要对外承诺绝对值，可在子集上招募人类审稿人复核，扩充金标后再跑 `recompute_gold_offset.py` 更新 `gold_offset.json`。
 - 全流水线一致性回归：`PAPERFORGE_GOLD_RUN=1 pytest tests/test_depth_gold_regression.py::test_full_pipeline_regression`（默认 skip，不误触发 LLM）。
 - 启动多评审面板时需可用 LLM（`run_panel(use_llm=True)`），一致性 κ/α 低时告警。
+
+### R4.5 原创标记收紧（2026-08-12 补：II 系统性高估修复）
+
+**问题**：41 篇全量中 innovative_insights 系统性高估（vs 人工金标 bias **+0.104**，
+MAE **0.143**，是其余三维的 3-4 倍）。逐篇诊断发现 II 高估最重的 10 篇**全部命中旧
+R4.5 标记词表**——因为表里混有大量描述性套话词（"不足/缺点/应该/进一步/未来"），
+纯复述论文的报告在描述论文贡献时自然出现这些词，单命中一个就绕过 R4.5 封顶。
+
+**尝试过的方案（均有数据）**：
+- **prompt II 专项锚点**（v1 严格版 / v2 微调版）：13 篇 A/B 中 v1 曾把 bias 拉到
+  +0.028，但同锚点全量重跑暴露 **9B 量化模型对 prompt 措辞的响应噪声极大**——同一
+  篇 2109 两次运行 II 从 0.75 跳到 0.25，锚点效果被采样噪声淹没；且误伤有真见解的
+  2120/2127（人工 0.70 被打到 0.2）。**已回退**。
+- **R4.5 强词表**（强=0 即封顶）：II MAE 0.143→0.118、bias +0.104→+0.021，但误伤
+  2116/2140（人工 0.75/0.70，真见解但无强词）。**放弃**。
+
+**落地**：R4.5 从"无任何标记 → 封顶 0.5"收紧为 **"强标记=0 且总标记<2 → 封顶
+0.5"**。词表拆分为 `_STRONG_ORIGINALITY_MARKERS`（个人立场/批判/质疑/对比/改进，
+27 词）与 `_WEAK_ORIGINALITY_MARKERS`（描述性套话，9 词）。确定性规则、零 LLM
+成本、离线模拟即精确结果：II MAE **0.143→0.129**、bias **+0.104→+0.070**，仅改
+5 篇（2106/2109/2139/2145/2148，全部从 0.75-0.8 下调至 0.5），不误伤有真见解的
+报告（2120/2127/2116/2140 均有强标记或 ≥2 标记）。
+
+**遗留**：II 残余 +0.070 的偏差需要更强信号（更强模型或人工扩样）才能进一步收敛；
+R1.5 硬帽（UA/ES =0.85 各占 36/41、34/41）仍在压平分数，但已被 coverage 与 II 的
+区分度覆盖。

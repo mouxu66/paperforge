@@ -459,6 +459,22 @@ export default function ReflectionResultView() {
                     6 维均权综合分：{Math.round((r.analysis_v2.average ?? 0) * 100)}%（含有据性与覆盖度）
                   </Text>
                 </div>
+                {/* 分析依据：本次评审实际读取的原论文预览字数（动态预算后） */}
+                {(() => {
+                  const previewChars = r.analysis_v2?.paper_preview_chars ?? r.paper_preview_chars;
+                  if (!previewChars || previewChars <= 0) return null;
+                  const paperChars = r.analysis_v2?.paper_chars;
+                  const reportChars = r.analysis_v2?.report_chars;
+                  return (
+                    <div style={{ textAlign: "center", marginTop: 6 }}>
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        分析依据：读取原论文前 {previewChars.toLocaleString()} 字
+                        {paperChars ? `（全文 ${paperChars.toLocaleString()} 字）` : ""}
+                        {reportChars ? ` · 报告 ${reportChars.toLocaleString()} 字` : ""}
+                      </Text>
+                    </div>
+                  );
+                })()}
               </>
             )}
           </Card>

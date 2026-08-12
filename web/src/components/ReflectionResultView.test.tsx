@@ -57,6 +57,9 @@ const completedResult = {
       fidelity: 0.72,
       coverage: 0.55,
       average: 0.69,
+      paper_preview_chars: 11650,
+      paper_chars: 20000,
+      report_chars: 720,
     },
     summary: "报告准确总结了方法，并提出了一个可验证的批评点。",
     verdict: "needs_evidence",
@@ -87,6 +90,16 @@ describe("ReflectionResultView", () => {
     expect(screen.getByText("论文要点覆盖度")).toBeInTheDocument();
     expect(screen.getByText("消融实验")).toBeInTheDocument();
     expect(screen.getByText("报告覆盖了多少原论文核心内容")).toBeInTheDocument();
+  });
+
+  it("shows how much of the original paper the review actually read", async () => {
+    render(<ReflectionResultView />);
+
+    await waitFor(() => expect(getReflectionResult).toHaveBeenCalledWith("report-1"));
+
+    expect(screen.getByText(/分析依据：读取原论文前 11,650 字/)).toBeInTheDocument();
+    expect(screen.getByText(/全文 20,000 字/)).toBeInTheDocument();
+    expect(screen.getByText(/报告 720 字/)).toBeInTheDocument();
   });
 
   it("filters the evidence chain when a claim is selected", async () => {

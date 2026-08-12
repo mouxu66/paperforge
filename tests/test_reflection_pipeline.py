@@ -615,13 +615,13 @@ class TestCitationIntegrityVerdict:
         assert result["verdict"] == "well_done"
 
     def test_verify_off_by_default_no_citation_field(self, tmp_path, monkeypatch):
-        """默认开关关闭：不调用校验器，citation_integrity 为空、不影响 verdict。"""
+        """PAPERFORGE_CITATION_VERIFY=0 显式关闭：不调用校验器，citation_integrity 为空。"""
         from mock_api.reflection_pipeline import analyze_reflection_file
 
         test_file = tmp_path / "report.docx"
         test_file.write_bytes(b"fake docx bytes")
 
-        monkeypatch.delenv("PAPERFORGE_CITATION_VERIFY", raising=False)
+        monkeypatch.setenv("PAPERFORGE_CITATION_VERIFY", "0")
         monkeypatch.setattr(
             "mock_api.reflection_pipeline.parse_docx_from_bytes",
             lambda data, filename="": _fake_parse(),
@@ -655,6 +655,59 @@ class TestCitationIntegrityVerdict:
         assert result["citation_integrity"] == {}
         assert result["citation_override_reason"] == ""
         assert result["verdict"] == "well_done"  # 完全向后兼容
+
+    def test_citation_verify_default_auto_triggers_verifier(self, tmp_path, monkeypatch):
+        """默认未设 PAPERFORGE_CITATION_VERIFY：应自动跑 offline 引用校验（≠旧版默认关闭）。
+
+        回归防护：reflection_pipeline 默认从「跳过」改为「自动 offline 校验」，
+        必须保证未显式置 0 时校验器被实际调用（且为 offline，不触网）。
+        """
+        from mock_api.reflection_pipeline import analyze_reflection_file
+
+        called = []
+
+        test_file = tmp_path / "report.docx"
+        test_file.write_bytes(b"fake docx bytes")
+
+        monkeypatch.delenv("PAPERFORGE_CITATION_VERIFY", raising=False)
+        monkeypatch.setattr(
+            "mock_api.reflection_pipeline.parse_docx_from_bytes",
+            lambda data, filename="": _fake_parse(),
+        )
+        monkeypatch.setattr(
+            "mock_api.reflection_pipeline.match_paper_by_title",
+            lambda title, db: "paper001",
+        )
+        monkeypatch.setattr(
+            "mock_api.reflection_pipeline.compute_fidelity",
+            lambda sections, full, emb: _fake_fidelity(0.65),
+        )
+        monkeypatch.setattr(
+            "mock_api.reflection_pipeline.compute_ai_likelihood",
+            lambda text: _fake_ai(),
+        )
+        monkeypatch.setattr(
+            "mock_api.depth_eval_reflection.ReflectionReviewer",
+            lambda: Mock(
+                review=lambda rid, title, raw, student_id="", paper_text="", **kwargs: _fake_review_result(
+                    0.78, "well_done"
+                )
+            ),
+        )
+        monkeypatch.setattr(
+            "mock_api.reflection_pipeline._get_paper_text_emb",
+            lambda db, pid: ("full paper text", None),
+        )
+        monkeypatch.setattr(
+            "mock_api.integrity.citation_verifier.assess_citation_integrity",
+            lambda text, verify_online=False: called.append((text, verify_online)) or {"integrity_flag": "ok"},
+        )
+
+        result = analyze_reflection_file(str(test_file), Mock())
+        assert called, "默认未设 PAPERFORGE_CITATION_VERIFY 时应自动执行引用校验"
+        assert result["citation_integrity"] == {"integrity_flag": "ok"}
+        # 默认必须为 offline（不触网），仅显式 1/true/on 才触网
+        assert called[0][1] is False
 
     def test_inconsistent_uses_reviewer_top_level_verdict(self, tmp_path, monkeypatch):
         """生产形态：verdict 是结果对象顶层字段（不在 scores dict 里），

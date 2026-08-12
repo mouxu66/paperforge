@@ -126,8 +126,11 @@ class Settings(BaseSettings):
         gt=0,
     )
     reflection_max_tokens: int = Field(
-        default=3000,
-        description="Reflection 评审 max_tokens 下限。",
+        default=5000,
+        description=(
+            "Reflection 评审 max_tokens 下限（长 prompt + 16000 字论文预览下，完整"
+            "JSON claims+evidence+4 维+评语需 3-5K tokens；低于 3000 会被截断降级）。"
+        ),
         gt=0,
     )
     depth_grammar_enabled: bool = Field(
@@ -645,9 +648,14 @@ class Settings(BaseSettings):
         description="草稿模型卸载 GPU 层数。",
     )
     llama_server_ctx: int = Field(
-        default=8192,
+        default=16384,
         validation_alias=AliasChoices("PAPERFORGE_LLAMA_SERVER_CTX", "LLAMA_SERVER_CTX"),
-        description="上下文窗口大小。",
+        description=(
+            "上下文窗口大小。感悟评审（论文预览 ≤16000 字 + 报告全文 + 模板）最坏"
+            "≈10.8K tokens，加 5000 token 输出共 ~15.8K，故默认 16384 保底（低于此值会"
+            "静默截断 prompt → JSON 解析失败降级 0.3）。8GB 卡 + q4_0 KV 可到 24576"
+            "（KV 约 0.9GB、总显存 ~6.5GB），见 ADR-014。"
+        ),
         gt=0,
     )
     llama_server_parallel: int = Field(
@@ -655,6 +663,29 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("PAPERFORGE_LLAMA_SERVER_PARALLEL", "LLAMA_SERVER_PARALLEL"),
         description="llama-server 并发槽数（--parallel）。单卡 8GB 上限 2。默认 1 向后兼容。",
         ge=1,
+    )
+    llama_server_flash_attn: bool = Field(
+        default=True,
+        validation_alias=AliasChoices(
+            "PAPERFORGE_LLAMA_SERVER_FLASH_ATTN", "LLAMA_SERVER_FLASH_ATTN"
+        ),
+        description=(
+            "Flash Attention（--flash-attn on）。Qwen3.5 是 GDN 混合架构，fa=off 会直接"
+            "创建上下文失败（2026-08-11 bench 实测），必须保持 on；auto 在 CUDA 下等效 on，"
+            "显式 on 更稳。bench 矩阵：fa on/off 与 batch 组合 decode 均 ≈56 tok/s，差异 <1%。"
+        ),
+    )
+    llama_server_n_cpu_moe: int = Field(
+        default=0,
+        validation_alias=AliasChoices(
+            "PAPERFORGE_LLAMA_SERVER_N_CPU_MOE", "LLAMA_SERVER_N_CPU_MOE"
+        ),
+        description=(
+            "MoE 专家层卸载到 CPU 的数量（--n-cpu-moe）。仅当模型 > 显存时生效。"
+            "GLM-4.7-Flash IQ2_XXS（9.79 GB）在 8 GB RTX 5060 上推荐 24。"
+            "取值越大，CPU 卸载越多（decode 越慢但 GPU 显存越安全）。"
+        ),
+        ge=0,
     )
     llama_server_draft_n_max: int = Field(
         default=15,

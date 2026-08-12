@@ -140,23 +140,25 @@ _QWEN_CALIBRATION_SHORT_CHARS = 1200  # R7：短篇阈值
 _QWEN_CALIBRATION_SHORT_CAP = 0.70  # R7：短篇且 avg > 0.70 → 全维封顶
 
 # 原创性标记词表。千问不看论文容易给照抄报告也打高创新分，
-# 若全文无一命中则无论千问打多高分都封顶 0.5——真正的独立思考不可能一句标记都没有。
-_ORIGINALITY_MARKERS = [
+# 若全文独立思考痕迹不足则无论千问打多高分都封顶 0.5——
+# 真正的独立思考不可能一句批判/个人判断都没有。
+# 2026-08-12 收紧：拆分为「强标记」与「弱标记」。
+# 强标记 = 表达个人立场/批判/质疑/对比/改进建议的词；
+# 弱标记 = 描述性套话词（复述论文内容时也会自然出现，如"不足/缺点/应该/进一步"）。
+# 旧规则"命中任一弱词即放行"会被复述式报告绕过（实测 41 篇中 II 高估最重的
+# 10 篇全部命中弱词），故改为：强标记≥1 或 总标记≥2 才算独立思考痕迹充分。
+_STRONG_ORIGINALITY_MARKERS = [
     "值得商榷",
     "有待改进",
     "值得怀疑",
     "不一定",
     "局限",
-    "不足",
-    "缺点",
     "我认为",
     "我觉得",
     "在我看来",
     "我个人",
     "我的看法",
     "可以改进",
-    "建议",
-    "应该",
     "可以考虑",
     "不妨",
     "不同于",
@@ -169,26 +171,41 @@ _ORIGINALITY_MARKERS = [
     "令人惊讶",
     "意外",
     "没想到",
-    "进一步",
-    "后续",
-    "未来",
-    "下一步",
-    "接下来",
     "不认同",
     "不同意",
     "质疑",
     "商榷",
 ]
 
+_WEAK_ORIGINALITY_MARKERS = [
+    "不足",
+    "缺点",
+    "建议",
+    "应该",
+    "进一步",
+    "后续",
+    "未来",
+    "下一步",
+    "接下来",
+]
+
+# 兼容旧引用：全量词表 = 强 + 弱
+_ORIGINALITY_MARKERS = _STRONG_ORIGINALITY_MARKERS + _WEAK_ORIGINALITY_MARKERS
+
 
 def _has_originality_markers(full_text: str) -> bool:
-    """报告全文是否包含至少一个原创性/批判性标记。
+    """报告全文的独立思考痕迹是否充分（强标记≥1 或 总标记≥2）。
 
-    返回 False 表示全文纯复述/总结，没有任何独立思考的痕迹
+    返回 False 表示全文纯复述/总结，仅靠描述性套话词（不足/缺点/应该/进一步）
     ——此时不应允许千问的 validates_confidence 偏差把创新分推高。
+    2026-08-12 收紧：旧版"任一弱词即放行"被复述式报告绕过（II 高估篇全命中弱词）。
     """
     t = (full_text or "").lower()
-    return any(m in t for m in _ORIGINALITY_MARKERS)
+    n_strong = sum(1 for m in _STRONG_ORIGINALITY_MARKERS if m in t)
+    if n_strong >= 1:
+        return True
+    n_total = sum(1 for m in _ORIGINALITY_MARKERS if m in t)
+    return n_total >= 2
 
 
 _SECTION_MARKERS_CN = ["一、", "二、", "三、", "四、"]
@@ -247,9 +264,9 @@ MAX_CHARS_CLAIMS = 4000
 
 # 原论文参考内容预览长度（2026-08 实验 B 校准口径：取论文开头 4000 字符，
 # 通常含摘要+引言，足够判断报告理解是否准确、覆盖是否充分；对齐 exp_b_qwen_full.py）。
-# 原论文参考内容预览长度。默认 4000（实验 B 校准口径）；
-# 可通过 PAPERFORGE_PAPER_PREVIEW_CHARS 调小以缩短 4 维打分 prompt、
-# 避免本机 LLM 在大论文上触发 watchdog 超时（重跑长论文批次时用 1500~2000 即可）。
+# 默认 4000（实验 B 校准口径）；可通过 PAPERFORGE_PAPER_PREVIEW_CHARS 调小以缩短
+# 4 维打分 prompt、避免本机 LLM 在大论文上触发 watchdog 超时（重跑长论文批次时用
+# 1500~2000 即可）。
 def _env_int(name: str, default: int, *, minimum: int = 1) -> int:
     """读取正整数环境变量；非法配置回退默认值，避免导入阶段崩溃。"""
     try:
@@ -259,7 +276,39 @@ def _env_int(name: str, default: int, *, minimum: int = 1) -> int:
         return default
 
 
+def _env_ratio(name: str, default: float) -> float:
+    """读取 [0,1] 比例环境变量；非法配置回退默认值。"""
+    try:
+        v = float(os.getenv(name, str(default)))
+        return v if 0.0 <= v <= 1.0 else default
+    except (TypeError, ValueError):
+        logger.warning("忽略非法环境变量 %s，使用默认值 %s", name, default)
+        return default
+
+
 MAX_PAPER_PREVIEW_CHARS = _env_int("PAPERFORGE_PAPER_PREVIEW_CHARS", 4000)
+
+# 动态预览预算（2026-08-11 用户需求）：感悟报告通常远短于截断上限
+# （MAX_CHARS_HEAD + MAX_CHARS_TAIL = 16000 字），把报告「省下」的字数按比例
+# 补给原论文预览，让 LLM 看到更多论文正文，从而更准确地判断报告的理解准确性与
+# 核心要点覆盖（对论文读得越精 → 感悟报告打分越可信）。
+#   - PAPERFORGE_PAPER_PREVIEW_BUDGET_RATIO：报告省下字数的补给比例
+#     （默认 0.0 = 不补给，仅注入基础预览；设 0.5 可保守减半，1.0 = 全额补给）
+#   - PAPERFORGE_PAPER_PREVIEW_MAX：补给后的预览硬上限（默认 16000 字，覆盖
+#     一篇典型 2 万字论文的 80%）。上限须与 LLAMA_SERVER_CTX 匹配：预览+报告全文
+#     +模板最坏 ≈ 25.6K 字符 ≈ 10.8K tokens，加 5000 token 输出共 ~15.8K tokens，
+#     因此 ctx 默认 16384 保底；8GB 卡 + q4_0 KV 可到 24576（KV 约 0.9GB，余量充足）。
+#
+# 【默认 0.0 的原因（2026-08-12 实测）】本机 9B 模型（Ornstein）拿到长论文预览后
+# 会把每篇报告都往高打（≥0.85），随后被 R1.5 硬帽统一钉到 0.85 → 不同报告分数几乎
+# 相同，区分度坍缩：同 4 篇报告、同温度 0.2 下，16000 字预览跨度 0.057、4000 字
+# 基础预览跨度 0.150、无预览跨度 0.200。默认不再补给，仅注入基础 4000 字（保留
+# UA 校准能力）；需要更高论文覆盖度时显式设 PAPERFORGE_PAPER_PREVIEW_BUDGET_RATIO=1.0。
+MAX_REPORT_BUDGET_CHARS = MAX_CHARS_HEAD + MAX_CHARS_TAIL
+PAPER_PREVIEW_BUDGET_RATIO = _env_ratio("PAPERFORGE_PAPER_PREVIEW_BUDGET_RATIO", 0.0)
+PAPER_PREVIEW_MAX_CHARS = _env_int(
+    "PAPERFORGE_PAPER_PREVIEW_MAX", 16000, minimum=MAX_PAPER_PREVIEW_CHARS
+)
 
 
 def _truncate_head_tail(
@@ -342,6 +391,9 @@ class ReflectionReviewResult(BaseModel):
     # 免得 SSE 永远不发出终结事件前端陷入「卡在这里」。
     parse_failed: bool = False
     truncated: bool = False  # 报告超过输入上限，LLM 只看到头+尾
+    # 本次评审实际注入 prompt 的原论文预览字数（动态预算后；0 = 未注入论文参考）。
+    # 用于前端展示「分析依据了多少原文」与事后审计。
+    paper_preview_chars: int = 0
     # 【可观测性】区分「LLM 故障」与「学生报告真没证据」——两者都会走到
     # R1 把四维压 0.3，但前者是系统问题、绝不能当成学生的分数。
     llm_calls: int = 0  # 实际发起的 LLM 调用次数
@@ -409,79 +461,58 @@ def _reflection_uncertainty_report(scores: dict) -> dict:
 # Prompt 模板
 # ===========================================================================
 
-PROMPT_REFLECTION = """你是一位严谨的阅读笔记评审专家。请评审以下"读后感/感悟/复现报告"，
-识别其核心观点，并从报告本体内提取原文片段作为支撑证据，按 4 维度严格打分。
+PROMPT_REFLECTION = """你是一位资深学术评审人（ICLR/NeurIPS 级别），现需评审一篇学生撰写的论文感悟报告。
+请像真人评审一样：先通读、形成整体印象、逐维度分析优劣，再给出分数。
 
-报告类型判断标准：
-- 用户对某篇论文的读后感 / 复现实验的感悟 / 批判性思考（**非完整论文**）。
+报告类型：学生对某篇论文的读后感 / 复现实验的感悟 / 批判性思考（**非完整论文**）。
 
 {paper_section}
 报告全文：
 {content}
 {truncation_note}
 
-【要求】
+【评审步骤】
 
-1. **核心观点 claims**：提取 3-5 个最核心的观点（如果有的话）。每个 claim 必须有支撑片段。
-   每项结构：{{"id": "C1", "text": "观点陈述，不超过80字", "evidence_id": "E1"}}
+第 1 步：**详细分析**（写在 JSON 之前，不限格式，自由发挥）
+请从以下角度分析这篇报告的质量，引用报告中的具体内容佐证你的判断：
+- 对原论文方法/结论的理解是否准确、具体？有没有关键错误或遗漏？
+- 分析是否有深度？是停留在复述，还是有展开、有机制讨论、有权衡？
+- 有无原创或批判性思考？是纯总结，还是有独立见解、质疑、跨领域联系？
+- 观点是否有具体引述/数据/例子支撑？引述是否扎实（有具体数字、有逐条对应）？
 
-2. **evidence_pool**：从报告原文中提取 3-5 段支撑性原文片段（不能编造，必须真实出现在报告全文中）。
-   每项结构：{{"id": "E1", "snippet": "原文直接引用片段，不超过100字", "claim_ref": "C1"}}
-   ⚠️ **snippet 的唯一合法来源是上方「报告全文」**。
-   - 禁止引用【原论文参考内容】里的任何句子——那是背景材料，不是学生写的。
-   - 禁止把报告里分散的几句话拼接、改写、翻译成一句。
-   - 逐字复制，标点也要一致；宁可摘短句，也不要凑字数。
-   代码层会逐条比对：凡是在「报告全文」里查不到的 snippet 一律作废，
-   作废后有效证据不足 2 条，整篇会被强制判为 rewrite_required。
+第 2 步：**结构化输出**（在分析结束后，输出一个 JSON）
+基于你上面的分析，提取核心观点和支撑证据，并按 4 维度打分。
 
-3. **4 维评分**（每个分数必须有 evidence_id 引用）：
-   - `understanding_accuracy`：报告对论文核心方法/结论的复述是否具体、准确、自洽
-     （若上方提供了【原论文参考内容】可对照核验；未提供则仅基于报告文本，0-1）
-   - `analysis_depth`：分析深度，对原文细节的展开程度（0-1）
-   - `innovative_insights`：是否有原创/批判性思考（0-1）
-   - `evidence_support`：观点是否有具体引述/数据/例子支撑（0-1）
+JSON 字段说明：
+- claims: 提取 3-5 个最核心的观点，每个含 id/text/evidence_id
+- evidence_pool: 从报告原文中提取 3-5 段支撑片段（snippet 必须逐字复制自「报告全文」，
+  禁止引用【原论文参考内容】、禁止拼接改写）。代码层会校验 snippet 是否真实出现在报告中，
+  查不到的会被作废。
+- understanding_accuracy(0-1): 对原论文理解的准确度与具体程度
+- analysis_depth(0-1): 分析深度，对原文细节的展开与讨论程度
+- innovative_insights(0-1): 原创/批判性思考的深度
+- evidence_support(0-1): 观点是否有具体引述/数据/例子支撑
+- summary: 1-2 句话总结报告核心内容
+- verdict_suggestion: well_done | needs_evidence | needs_depth | rewrite_required
 
-【评分参照系】请严格使用 0-1 全区间，**不要集中在 0.85-0.95**。
+评分参照（0-1 全区间，不要集中在 0.8-0.95）：
+- 差 (0.2-0.4): 明显缺陷（理解错误、无分析、无证据）
+- 中 (0.5-0.7): 合格但平庸（正确但简略、有想法但未深入、有引述但零散）
+- 好 (0.8-1.0): 优秀（准确具体、深入展开、独立见解、证据扎实）
 
-⚠️ **结构完整性对分数有直接下限约束**（代码层会在你打出的分上叠加封顶）：
-- 报告理应包含「一、论文问题」「二、软硬件结构」「三、实验与结果」「四、收获与感想」四段。
-- 若报告只有 2-3 段，说明内容天生不完整——此时 understanding_accuracy/analysis_depth 不应超过 0.70，innovative_insights 不应超过 0.50。
-- 若「四、收获与感想」段字数不足 100 字，innovative_insights 不应超过 0.40（没有真实反思内容）。
-- 若报告总字数不足 1200 字，所有维度不应超过 0.70。
+输出格式（先写分析，再输出 JSON）：
 
-各维度三档锚点（对照报告实际内容判断落在哪档，允许中间值）：
+[你的详细分析评语…]
 
-- `understanding_accuracy`：
-  差(0.2-0.4)=复述含糊、张冠李戴、关键概念错误；中(0.5-0.7)=复述正确但简略、缺关键细节；
-  好(0.8-1.0)=方法/结论复述具体准确，关键数字与术语齐全。
-- `analysis_depth`：
-  差(0.2-0.4)=只复述无展开；中(0.5-0.7)=有少量分析但停留在表面；
-  好(0.8-1.0)=对原文细节深入展开、有机制解释或权衡讨论。
-- `innovative_insights`：
-  差(0.2-0.4)=无独立观点、纯总结；中(0.5-0.7)=有零星想法但未深入；
-  好(0.8-1.0)=有原创批判、独立见解、跨领域联系。
-- `evidence_support`：
-  差(0.2-0.4)=观点无引用/数据支撑；中(0.5-0.7)=有引述但零散、缺乏数据/数字；
-  好(0.8-1.0)=多数观点有独立数据/数字/例子逐条支撑（引述≥3 处、含具体数值）。
-  **自检**：若报告只有概括性引述而缺少具体数字/数据，evidence_support 不应超过 0.7。
-
-**评分前自检**：给分时优先依据各维锚点的行为描述判断落在哪档，而不是凭总体印象；
-若某维达不到「好」档描述的全部标准，应相应下调分数并给出与锚点一致的档位。
-
-4. **summary**：用 1-2 句话总结报告的核心内容。
-
-5. **verdict_suggestion**：你的初步建议，但最终判决由代码层硬校验决定（证据不足时会被强制降级）。
-
-【严格输出 JSON，无多余字符】：
 {{
-  "claims": [...],
-  "evidence_pool": [...],
-  "understanding_accuracy": 0.0~1.0,
-  "analysis_depth": 0.0~1.0,
-  "innovative_insights": 0.0~1.0,
-  "evidence_support": 0.0~1.0,
-  "summary": "...",
-  "verdict_suggestion": "well_done|needs_evidence|needs_depth|rewrite_required"
+  "claims": [{{"id": "C1", "text": "…", "evidence_id": "E1"}}],
+  "evidence_pool": [{{"id": "E1", "snippet": "…", "claim_ref": "C1"}}],
+  "understanding_accuracy": 0.0,
+  "analysis_depth": 0.0,
+  "innovative_insights": 0.0,
+  "evidence_support": 0.0,
+  "summary": "…",
+  "verdict_suggestion": "well_done"
 }}
 """
 
@@ -922,10 +953,15 @@ class ReflectionReviewer:
 
         Args:
             student_id: 学号（可选，用于交叉验证加分查 _VERIFIED_PAIRS）
-            paper_text: 原论文全文（可选）。非空时把论文开头 MAX_PAPER_PREVIEW_CHARS
-                字符作为【原论文参考内容】注入 prompt，供千问对照核验报告理解准确性
+            paper_text: 原论文全文（可选）。非空时把论文开头 preview 字符作为
+                【原论文参考内容】注入 prompt，供千问对照核验报告理解准确性
                 （2026-08 实验 B：千问拿到论文后 understanding/evidence 判得更准，
                 但分数整体上浮——权重重构已把区分度不足维度降权以吸收该效应）。
+                预览长度 = 基础 MAX_PAPER_PREVIEW_CHARS（4000）+ 报告省下的字数 ×
+                PAPER_PREVIEW_BUDGET_RATIO（默认 0.0 = 不补给，仅基础预览；
+                2026-08-12 实测 16000 字长预览压死本机 9B 模型判断力 → 区分度坍缩，
+                见模块顶部注释），硬上限 PAPER_PREVIEW_MAX_CHARS（16000），
+                均可经环境变量调整；上限需与 LLAMA_SERVER_CTX 匹配（见 ADR-014 显存预算表）。
                 不传时 prompt 与旧版完全一致。
             paper_supplement: 论文全文补充文本（可选）。非空时插入【原论文参考内容】前，
                 包含全文全局摘要、关键句等（由 build_fulltext_context 产出）。
@@ -962,17 +998,30 @@ class ReflectionReviewer:
             if truncated
             else ""
         )
-        # 原论文参考（可选注入）：取论文开头 MAX_PAPER_PREVIEW_CHARS 字符，
-        # 若有全文补充（paper_supplement）则缩减预览长度以控制 prompt 总长。
-        # （实验 B 校准：摘要+引言足够判断理解准确性；snippet 仍强制来自报告）
+        # 原论文参考（可选注入）：取论文开头 preview_chars 字符。
+        # 动态预算（2026-08-11 引入；2026-08-12 默认改为 0.0）：报告通常远短于
+        # 16000 字截断上限，可把报告「省下」的字数按 PAPER_PREVIEW_BUDGET_RATIO
+        # 补给论文预览（硬上限 PAPER_PREVIEW_MAX_CHARS）；但实测长预览会压死本机
+        # 9B 模型判断力（区分度坍缩），故默认不补给、仅注入基础预览；有全文补充
+        # （paper_supplement）时仍保留 2000 字基础预览，避免与 supplement
+        # （≈7000 字）叠加后 prompt 过长。（snippet 仍强制来自报告）
         paper_section = ""
+        paper_preview_chars = 0  # 实际注入的原论文预览字数（0 = 未注入论文参考）
         if paper_text and paper_text.strip():
-            preview_chars = MAX_PAPER_PREVIEW_CHARS
             supp = (paper_supplement or "").strip()
-            if supp:
-                preview_chars = min(MAX_PAPER_PREVIEW_CHARS, 2000)
-            else:
-                supp = ""
+            base_preview = min(MAX_PAPER_PREVIEW_CHARS, 2000) if supp else MAX_PAPER_PREVIEW_CHARS
+            saved = max(0, MAX_REPORT_BUDGET_CHARS - len(content))
+            preview_chars = min(
+                PAPER_PREVIEW_MAX_CHARS,
+                base_preview + int(saved * PAPER_PREVIEW_BUDGET_RATIO),
+            )
+            paper_preview_chars = preview_chars
+            self._log(
+                f"原论文预览注入: preview={preview_chars} 字"
+                f"（报告 {len(content)} 字，省下 {saved} 字 × "
+                f"{PAPER_PREVIEW_BUDGET_RATIO:.0%}"
+                f"{'，含全文补充' if supp else ''}）"
+            )
             paper_section = PAPER_SECTION_TEMPLATE.format(
                 paper_supplement=supp,
                 paper_preview=paper_text[:preview_chars],
@@ -1194,6 +1243,7 @@ class ReflectionReviewer:
             summary_short=scored.summary[:200],
             parse_failed=parse_failed,
             truncated=truncated,
+            paper_preview_chars=paper_preview_chars,
             llm_calls=self._llm_calls,
             llm_empty=self._llm_empty,
             evidence_rejections=dict(self._evidence_rejections),

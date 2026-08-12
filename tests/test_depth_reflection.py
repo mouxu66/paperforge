@@ -635,9 +635,77 @@ class TestPaperReferenceInjection:
         )
 
         prompt = captured["prompt"]
-        # 注入的预览 = 前 MAX_PAPER_PREVIEW_CHARS 个 A，不含截断后的 B
+        # 注入的预览 = 前 MAX_PAPER_PREVIEW_CHARS 个 A（动态预算只会加不会减），不含截断后的 B
         assert ("A" * MAX_PAPER_PREVIEW_CHARS) in prompt
         assert "B" not in prompt
+
+    def test_short_report_gets_larger_paper_preview(self, monkeypatch):
+        """报告远短于 16000 字截断上限 → 把省下的字数全额补给原论文预览（动态预算）。
+
+        动态预算默认已关闭（PAPER_PREVIEW_BUDGET_RATIO 默认 0.0，见模块顶部注释：
+        2026-08-12 实测长预览压死本机 9B 模型判断力），此处显式设 1.0 验证补给逻辑本身。
+        """
+        import mock_api.depth_eval_reflection as der
+
+        monkeypatch.setattr(der, "PAPER_PREVIEW_BUDGET_RATIO", 1.0)
+
+        from mock_api.depth_eval_reflection import (
+            MAX_PAPER_PREVIEW_CHARS,
+            MAX_REPORT_BUDGET_CHARS,
+            PAPER_PREVIEW_MAX_CHARS,
+        )
+
+        captured = {}
+        # 论文足够长，保证预览不会被论文长度截断；报告用 Mock 短报告（≈700 字）
+        paper = "P" * (PAPER_PREVIEW_MAX_CHARS + 5000)
+
+        def mock_llm(prompt):
+            captured["prompt"] = prompt
+            return MOCK_REFLECTION_RESPONSE
+
+        reviewer = ReflectionReviewer(llm_func=mock_llm)
+        reviewer.review(
+            MOCK_REPORT_ID, MOCK_REPORT_TITLE, MOCK_REPORT_CONTENT, paper_text=paper
+        )
+        prompt = captured["prompt"]
+        # 动态预算：min(16000, 4000 + (16000 - 报告长度) × 比例=1.0)
+        saved = MAX_REPORT_BUDGET_CHARS - len(MOCK_REPORT_CONTENT)
+        expected = min(
+            PAPER_PREVIEW_MAX_CHARS,
+            MAX_PAPER_PREVIEW_CHARS + int(saved * der.PAPER_PREVIEW_BUDGET_RATIO),
+        )
+        assert (
+            "P" * expected
+        ) in prompt, "短报告应把省下的字数补给原论文预览"
+        # 注入量确实超过基础预览（证明预算补给到了论文）
+        assert expected > MAX_PAPER_PREVIEW_CHARS
+
+    def test_paper_preview_budget_capped(self, monkeypatch):
+        """补给预算受 PAPER_PREVIEW_MAX_CHARS 硬上限约束（防 context 撑爆）。
+
+        显式设补给比例 1.0（默认 0.0，2026-08-12 起）：理论预算 ≈ 4000 + 15300 = 19300
+        → 必须被 16000 封顶。
+        """
+        import mock_api.depth_eval_reflection as der
+
+        monkeypatch.setattr(der, "PAPER_PREVIEW_BUDGET_RATIO", 1.0)
+
+        from mock_api.depth_eval_reflection import PAPER_PREVIEW_MAX_CHARS
+
+        captured = {}
+        paper = "P" * (PAPER_PREVIEW_MAX_CHARS + 5000)
+
+        def mock_llm(prompt):
+            captured["prompt"] = prompt
+            return MOCK_REFLECTION_RESPONSE
+
+        reviewer = der.ReflectionReviewer(llm_func=mock_llm)
+        reviewer.review(
+            MOCK_REPORT_ID, MOCK_REPORT_TITLE, MOCK_REPORT_CONTENT, paper_text=paper
+        )
+        prompt = captured["prompt"]
+        assert ("P" * PAPER_PREVIEW_MAX_CHARS) in prompt
+        assert ("P" * (PAPER_PREVIEW_MAX_CHARS + 1)) not in prompt
 
     def test_no_paper_text_matches_legacy_prompt(self):
         """不传 paper_text → prompt 不含论文区块，与旧版一致。"""
@@ -677,16 +745,11 @@ class TestScoringAnchors:
     def test_prompt_contains_scoring_anchors(self):
         from mock_api.depth_eval_reflection import PROMPT_REFLECTION
 
-        assert "【评分参照系】" in PROMPT_REFLECTION
-        assert "不要集中在 0.85-0.95" in PROMPT_REFLECTION
-        assert "差(0.2-0.4)" in PROMPT_REFLECTION
-        assert "中(0.5-0.7)" in PROMPT_REFLECTION
-        assert "好(0.8-1.0)" in PROMPT_REFLECTION
-        # 四个维度都有三档锚点
-        for dim in ("understanding_accuracy", "analysis_depth", "innovative_insights", "evidence_support"):
-            assert f"- `{dim}`：" in PROMPT_REFLECTION
-        # 评分前自检
-        assert "评分前自检" in PROMPT_REFLECTION
+        assert "评分参照" in PROMPT_REFLECTION
+        assert "不要集中在 0.8-0.95" in PROMPT_REFLECTION
+        assert "差 (0.2-0.4)" in PROMPT_REFLECTION
+        assert "中 (0.5-0.7)" in PROMPT_REFLECTION
+        assert "好 (0.8-1.0)" in PROMPT_REFLECTION
 
     def test_anchors_do_not_break_prompt_format(self):
         """锚点加在要求区后，JSON 输出模板仍可正常 format。"""
@@ -695,7 +758,7 @@ class TestScoringAnchors:
         ps = PAPER_SECTION_TEMPLATE.format(paper_supplement="", paper_preview="x" * 100)
         p1 = PROMPT_REFLECTION.format(content="报告内容", truncation_note="", paper_section=ps)
         p2 = PROMPT_REFLECTION.format(content="报告内容", truncation_note="", paper_section="")
-        assert "【评分参照系】" in p1 and "【评分参照系】" in p2
+        assert "评分参照" in p1 and "评分参照" in p2
         # JSON 模板的 {{ }} 转义仍正确（能 format 即说明花括号配平）
         assert '\"claims\": [...]' in p1 or '"claims"' in p1
 

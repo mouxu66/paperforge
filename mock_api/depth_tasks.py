@@ -570,6 +570,8 @@ def run_depth_reflection_sync(paper_id: str) -> str:
                             "innovative_insights": scores_4.get("innovative_insights"),
                             "evidence_support": scores_4.get("evidence_support"),
                             "fidelity": fid.fidelity,
+                            # 本次评审实际注入 prompt 的原论文预览字数
+                            "paper_preview_chars": getattr(result, "paper_preview_chars", 0),
                             "average": round(
                                 sum(
                                     [

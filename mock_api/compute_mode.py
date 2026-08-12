@@ -862,7 +862,7 @@ COMPUTE_MODES: dict[str, dict] = {
     "deep": {
         "name": "深度思考",
         "description": "DAG 并行执行，大参数，极致质量",
-        "temperature": 0.0,
+        "temperature": 0.2,
         "max_tokens": 4096,
         "parallel": True,
         "llm_config_id": None,
