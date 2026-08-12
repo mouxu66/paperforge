@@ -36,6 +36,7 @@ import asyncio
 import concurrent.futures
 import hashlib
 import logging
+import math
 import os
 import re
 import threading
@@ -369,6 +370,7 @@ class DepthV4Result(BaseModel):
     # 增量风险标记：当论文实验充分但创新信号弱、LLM 可能系统性高估时标记。
     # 纯正则提取，零 LLM 成本。值：unknown / low / medium / high
     incrementality_risk: str = "unknown"
+    statistical_flags: list[str] = Field(default_factory=list)
 
 
 # v4.2: Rebuild DAGOutputs after all result types are defined.
@@ -2754,6 +2756,21 @@ class DepthReviewer:
     # ------------------------------------------------------------------
     # 平衡者辅助：判断辩护是否成功反驳质疑
     # ------------------------------------------------------------------
+    # D1 加固：量化硬质疑识别 + 对抗性辩护要求（类级正则，零 LLM）
+    _QUANT_CRITIQUE_RE = re.compile(
+        r"(?i)(\d+\.?\d+\s*%?|p\s*[<>=]\s*0?\.\d+|\d+\s*(?:seeds?|基准|std|标准差))"
+        r".{0,40}?(夸大|不寻常|矛盾|不可能|伪造|编造|超出|异常|存疑|未提供|缺乏|质疑|可疑)"
+    )
+    _CONCESSION_RE = re.compile(
+        r"(?i)(确实|核查|修正|校正|误差|误报|补充实验|重新验证|重新评估|附录|已添加|"
+        r"新增|承认|限于|不足|我们同意|诚然|为此我们|已更正|经复算)"
+    )
+
+    @staticmethod
+    def _rebuttal_has_adversarial_number(defense: str) -> bool:
+        """辩护需含至少一个数字（对抗性量化证据），否则视为未实质反驳。"""
+        return bool(re.search(r"\d+\.?\d+\s*%?", defense))
+
     @staticmethod
     def _is_successful_rebuttal(defense: str, critique: str) -> bool:
         """判断辩护是否成功反驳了质疑。
@@ -2784,6 +2801,14 @@ class DepthReviewer:
         defense_features = _extract_key_terms(defense_stripped)
         overlap = critique_features & defense_features
         # 至少需要 1 个关键术语重叠才认为"针对性辩护"
+        # 规则 4（D1 加固）：量化硬质疑需要对抗性数字反驳 + 承认/修正表态，
+        # 否则仅关键词重叠不算成功反驳（防止辩护复述主张而架空致命缺陷）。
+        if DepthReviewer._QUANT_CRITIQUE_RE.search(critique):
+            if not (
+                DepthReviewer._rebuttal_has_adversarial_number(defense_stripped)
+                and DepthReviewer._CONCESSION_RE.search(defense_stripped)
+            ):
+                return False
         return len(overlap) >= 1
 
     # ------------------------------------------------------------------
@@ -3710,6 +3735,45 @@ class DepthReviewer:
                 f"calibrated {q5c.calibrated_score + penalty:.3f} → {q5c.calibrated_score:.3f}"
             )
 
+        # ── D2：统计红旗后置扣分（此前统计检测只诊断、不进分数）──
+        # 提前计算（零 LLM）并在下方复用；统计红旗反向反馈进 calibrated_score。
+        self._stat_flags = _statistical_plausibility_check(full_text)
+        for _f in self._stat_flags:
+            self._log(f"[统计合理性] {_f}")
+        stat_penalty = 0.0
+        for _f in self._stat_flags:
+            if _f.startswith("[std过低]") or _f.startswith("[p值不可能]"):
+                stat_penalty += 0.05
+            elif _f.startswith("[表格文本矛盾]") or _f.startswith("[消融数字过整]"):
+                stat_penalty += 0.03
+        stat_penalty = min(stat_penalty, 0.15)
+
+        # ── D4：包装识别（Q0 期望 ≫ 校准分说明包装强于实质，辩护易中和致命缺陷）──
+        pkg_penalty = 0.0
+        _exp = getattr(q0, "expectation", 0.5)
+        if isinstance(_exp, (int, float)) and _exp:
+            _gap = _exp - q5c.calibrated_score
+            if _gap > 0.2:
+                pkg_penalty = 0.04
+                self._log(
+                    f"[包装识别] Q0期望 {_exp:.2f} ≫ 校准分 {q5c.calibrated_score:.2f} "
+                    f"(gap={_gap:.2f})，论文包装可能强于实质，追加压分"
+                )
+
+        _extra = min(stat_penalty + pkg_penalty, 0.20)
+        if _extra > 0:
+            q5c = q5c.model_copy(
+                update={
+                    "calibrated_score": max(0.0, q5c.calibrated_score - _extra),
+                    "delta": q5c.delta - _extra,
+                }
+            )
+            self._log(
+                f"[Q5c] 统计/包装信号后置扣分 {_extra:.2f} "
+                f"(stat={stat_penalty:.2f}, pkg={pkg_penalty:.2f}) → "
+                f"calibrated {q5c.calibrated_score + _extra:.3f} → {q5c.calibrated_score:.3f}"
+            )
+
         figure_coverage = self._figure_coverage(qf)
         balanced_cp = self._apply_figure_corroboration(balanced_cp, qf)
         final = self._apply_hard_verdict(q5c, balanced_cp, figure_coverage=figure_coverage)
@@ -4062,6 +4126,32 @@ class DepthReviewer:
                 flat_stds[f"{node}:{k}"] = round(v, 4)
             if node == "Q5c" and "calibrated_score" in scores:
                 flat_stds["Q5c"] = round(scores["calibrated_score"], 4)
+        # ── ADR-014 P4 硬校验：citation_integrity fabricated_suspected → reject ──
+        ci_report = _citation_integrity_report(full_text)
+        override_verdict = final.final_verdict
+        override_reason = final.override_reason
+        if ci_report.get("integrity_flag") == "fabricated_suspected":
+            if override_verdict != "reject":
+                n_fake = ci_report.get("not_found", 0)
+                override_reason = (
+                    f"[引用真值] 检测到 {n_fake} 个疑似编造 DOI（Crossref 查无），"
+                    f"原裁决 {override_verdict} → 升级为 reject。"
+                    + (" | " + final.override_reason if final.override_reason else "")
+                )
+                override_verdict = "reject"
+                self._log(
+                    f"[硬校验] citation_integrity fabricated_suspected → "
+                    f"verdict 从 {final.final_verdict} 升级为 reject"
+                )
+
+        # ── 统计合理性检测（零 LLM）── 复用 review 主函数已计算的缓存，避免重复
+        stat_flags = getattr(self, "_stat_flags", None) or _statistical_plausibility_check(
+            full_text
+        )
+        if stat_flags:
+            for flag in stat_flags:
+                self._log(f"[统计合理性] {flag}")
+
         return DepthV4Result(
             paper_id=paper_id,
             title=title,
@@ -4099,8 +4189,8 @@ class DepthReviewer:
             delta_missing=q5c.delta_missing,
             chair_reasoning=q5c.reasoning,
             llm_verdict=q5c.llm_verdict,
-            final_verdict=final.final_verdict,
-            override_reason=final.override_reason,
+            final_verdict=override_verdict,
+            override_reason=override_reason,
             evidence_pool=qe.evidence_pool,
             evidence_checks={
                 "Q2": q2.verified,
@@ -4124,9 +4214,10 @@ class DepthReviewer:
             node_logs=list(self._logs),
             evaluated_at=datetime.now().isoformat(),
             llm_params_snapshot=_eval_params_snapshot(),
-            citation_integrity=_citation_integrity_report(full_text),
+            citation_integrity=ci_report,
             score_uncertainty=_score_uncertainty_report(q5c.calibrated_score, q2, q3, q4, q5c),
-            incrementality_risk=_incrementality_risk(full_text, q5c.calibrated_score),
+            incrementality_risk=getattr(self, "_inc_risk", "unknown"),
+            statistical_flags=stat_flags,
         )
 
 
@@ -4234,6 +4325,366 @@ def _incrementality_risk(full_text: str, calibrated_score: float) -> str:
         return "low"
     except Exception:  # noqa: BLE001
         return "unknown"
+
+
+# ===========================================================================
+# 统计合理性检测：零 LLM 正则，检测数据篡改/伪造信号
+# ===========================================================================
+def _statistical_plausibility_check(full_text: str) -> list[str]:
+    """检测论文中统计上不可能或高度可疑的数据模式。
+
+    纯正则提取，零 LLM 成本。返回人类可读的警告字符串列表。
+    覆盖四类数据篡改信号：
+    1. std dev 过低（复杂 benchmark 上 \xb10.5% 以内且 \u22653 seeds）
+    2. 大规模全显著 p 值（\u22655 项比较全 p<0.001 且仅少量 seeds）
+    3. 消融数字过于整齐（\u22653 项 delta 全是 0.1 的倍数且无零）
+    4. 表格-文本数字矛盾（声称 X% 提升但表格数据显示偏差 >10pp）
+    """
+    flags: list[str] = []
+    if not full_text:
+        return flags
+    try:
+        text_lower = full_text.lower()
+
+        # ── 信号 1：std dev 过低 ──
+        # 用 \xb1 匹配 \xb1 字符
+        for m in re.finditer(r"\xb1\s*(\d+\.\d+)\s*%", text_lower):
+            try:
+                val = float(m.group(1))
+            except ValueError:
+                continue
+            if val < 0.5:  # < 0.5%
+                nearby = full_text[max(0, m.start() - 120) : m.end() + 80]
+                n_lower = nearby.lower()
+                seed_count = len(re.findall(r"(\d+)\s*(?:seeds?|runs?|trials?|repeats?)", n_lower))
+                has_std = bool(re.search(r"(?:std|standard\s*deviation|st\.?dev\.?)", n_lower))
+                has_enough_seeds = (
+                    any(int(s) >= 3 for s in re.findall(r"(\d+)\s*(?:seeds?|runs?)", n_lower))
+                    or seed_count >= 2
+                )
+                if has_std and has_enough_seeds:
+                    flags.append(
+                        f"[std\u8fc7\u4f4e] \u58f0\u79f0 std=\xb1{val:.1f}% \u4f46\u5728\u590d\u6742 benchmark "
+                        f"\u4e0a\u4e14\u4ec5 {seed_count} \u4e2a seeds\uff0c\u7edf\u8ba1\u4e0d\u53ef\u80fd"
+                    )
+                    break
+
+        # ── 信号 2：大规模全显著 p 值 ──
+        p_all = re.search(
+            r"(?:all|across\s+all|for\s+all)\s*(?:\d+\s*)?"
+            r"(?:pairwise\s+)?(?:comparison|benchmark|test|experiment)"
+            r".*?p\s*[<\u2264]\s*0?\.0+1",
+            text_lower,
+        )
+        if p_all:
+            nearby = full_text[max(0, p_all.start() - 300) : p_all.end() + 100]
+            seeds = re.findall(r"(\d+)\s*(?:random\s+)?seeds?", nearby)
+            if seeds and all(int(s) <= 5 for s in seeds):
+                flags.append(
+                    f"[p\u503c\u4e0d\u53ef\u80fd] \u58f0\u79f0\u6240\u6709\u6bd4\u8f83 p<0.001 \u4f46\u4ec5 {seeds[0]} seeds\uff0c"
+                    f"Bonferroni \u6821\u6b63\u540e\u4e0d\u53ef\u80fd\u5168\u663e\u8457"
+                )
+
+        # ── 信号 3：消融数字过于整齐（已收紧，避免对正常 1 位小数消融误报）──
+        # 旧逻辑「全是 0.1 的整数倍」会命中所有 1 位小数消融（诚实结果天然如此），
+        # 改为「全部为 2 位小数且小数部分完全相同（如全 .00 / 全 .50）」才报警，
+        # 仅捕捉「人工对齐的整齐数字」而放过真实数据。
+        ablation_deltas = re.findall(
+            r"\|\s*[-\u2013\u2014]\s*(\d+\.\d{2})\s*\|",
+            text_lower,
+        )
+        if len(ablation_deltas) >= 3:
+            fracs = {d.split(".")[1] for d in ablation_deltas}
+            if len(fracs) == 1:
+                flags.append(
+                    f"[\u6d88\u878d\u6570\u5b57\u8fc7\u6574] {len(ablation_deltas)} \u9879\u6d88\u878d delta \u5168\u90e8\u4e3a 2 \u4f4d\u5c0f\u6570\u4e14\u5c0f\u6570\u90e8\u5206\u5b8c\u5168\u76f8\u540c"
+                    f"\uff08{', '.join(ablation_deltas[:5])}\uff09\uff0c\u7591\u4f3c\u4eba\u5de5\u7f16\u9020"
+                )
+
+        # ── 信号 4：表格-文本数字矛盾 ──
+        # 解析 markdown 表格，提取 proposed vs baseline 行，与附近文本的%提升声明比对
+        _TBL = re.compile(
+            r"Table\s+(\d+)[:\u3000].*?\n((?:\|[^\n]+\|\n)+)",
+            re.IGNORECASE | re.DOTALL,
+        )
+        for table_match in _TBL.finditer(full_text):
+            table_num = table_match.group(1)
+            table_block = table_match.group(2)
+
+            rows: list[list[str]] = []
+            for line in table_block.strip().split("\n"):
+                line = line.strip()
+                if not line.startswith("|"):
+                    continue
+                cols = [c.strip() for c in line.split("|")[1:-1]]
+                if all(re.match(r"^-+$", c) for c in cols if c):
+                    continue
+                rows.append(cols)
+            if len(rows) < 2:
+                continue
+
+            header, baseline, proposed = rows[0], rows[1], rows[-1]
+            if len(baseline) != len(proposed) or len(header) != len(baseline):
+                continue
+
+            baseline_vals: list[float] = []
+            proposed_vals: list[float] = []
+            for j in range(len(header)):
+                try:
+                    bv = float(baseline[j])
+                    pv = float(proposed[j])
+                except (ValueError, IndexError):
+                    continue
+                if bv > 0:
+                    baseline_vals.append(bv)
+                    proposed_vals.append(pv)
+
+            if len(baseline_vals) < 2:
+                continue
+
+            nearby_start = max(0, table_match.start() - 1000)
+            nearby_end = min(len(full_text), table_match.end() + 2000)
+            nearby = full_text[nearby_start:nearby_end].lower()
+
+            pct_claims_raw = re.findall(
+                r"(?:improvement|gain|increase|boost|百分点)\s+of\s+(\d+\.?\d*)\s*%"
+                r"|(\d+\.?\d*)\s*%\s*(?:mean\s+)?"
+                r"(?:improvement|gain|increase|boost|百分点|"
+                r"point\s+(?:improvement|gain|increase))",
+                nearby,
+            )
+            # flatten tuples: each match has one non-empty capture group
+            pct_claims = [a or b for a, b in pct_claims_raw if a or b]
+            for claim_str in pct_claims:
+                try:
+                    claimed = float(claim_str)
+                except ValueError:
+                    continue
+                if claimed >= 100:
+                    continue
+
+                # 仅统计「proposed 确实优于 baseline」的列，避免退化列污染
+                improvements = [
+                    (pv - bv) / bv * 100 for bv, pv in zip(baseline_vals, proposed_vals) if pv > bv
+                ]
+                if not improvements:
+                    continue
+                mean_actual = sum(improvements) / len(improvements)
+                # 仅当「声称的提升」明显大于「表格实际提升」才算矛盾
+                # （表格实际 > 声称 通常是口径差异，不视为伪造信号）
+                mean_dev = claimed - mean_actual
+
+                if mean_dev > 10:
+                    flags.append(
+                        f"[表格文本矛盾] Table {table_num}: 声称改善 {claimed:.1f}%，"
+                        f"但表格数据显示各列平均实际改善仅 {mean_actual:.1f}%，"
+                        f"夸大约 {mean_dev:.0f}pp"
+                    )
+                    break
+
+        # ── 信号 5：等差数列 / 完美线性增长 ──
+        # 科学数据几乎不可能出现连续 4+ 个值恰好构成等差数列（如
+        # 82.5/84.0/85.5/87.0，差值恒为 1.5）。表格列或文本枚举中检出
+        # 即高度可疑（人工编造或伪造线性趋势）。序号列（1,2,3,4 / 0,1,2）
+        # 与合法 epoch 步长 1 除外。
+        def _is_arith_progression(vals: list[float], label: str) -> bool:
+            if len(vals) < 4:
+                return False
+            # 序号列排除：差为 ±1 的整数序列（epoch/层数/种子编号）
+            diffs = [round(vals[i + 1] - vals[i], 6) for i in range(len(vals) - 1)]
+            if all(abs(d - 1) < 1e-6 for d in diffs) or all(abs(d + 1) < 1e-6 for d in diffs):
+                return False
+            if len(set(diffs)) == 1 and diffs[0] != 0:
+                flags.append(
+                    f"[等差数字] {label} {len(vals)} 项数值构成等差数列"
+                    f"（差值恒为 {diffs[0]:.3f}：{', '.join(f'{v:.1f}' for v in vals[:5])}），"
+                    f"真实实验数据几乎不可能，疑似人工编造"
+                )
+                return True
+            return False
+
+        # 5a. 表格列等差（解析所有 markdown 表格的数值列）
+        for table_match in _TBL.finditer(full_text):
+            table_num = table_match.group(1)
+            block = table_match.group(2)
+            grid: list[list[str]] = []
+            for line in block.strip().split("\n"):
+                line = line.strip()
+                if not line.startswith("|"):
+                    continue
+                cols = [c.strip() for c in line.split("|")[1:-1]]
+                if all(re.match(r"^-+$", c) for c in cols if c):
+                    continue
+                grid.append(cols)
+            data_rows = grid[1:]  # 跳过表头；分隔行已被过滤，grid[1] 即为首行数据
+            if len(data_rows) < 4:
+                continue
+            ncols = min(len(c) for c in grid)
+            for j in range(1, ncols):  # 跳过第一列（行标签）
+                vals: list[float] = []
+                for row in data_rows:
+                    try:
+                        vals.append(float(row[j]))
+                    except (ValueError, IndexError):
+                        break
+                if _is_arith_progression(vals, f"Table {table_num} 第{j + 1}列"):
+                    break
+
+        # 5b. 文本枚举等差（≥4 个连续百分比恰好等差）
+        for m in re.finditer(
+            r"((?:\d+(?:\.\d+)?)\s*%\s*(?:[,，、/]\s*(?:\d+(?:\.\d+)?)\s*%){3,})",
+            full_text,
+        ):
+            pcts = [float(x) for x in re.findall(r"(\d+(?:\.\d+)?)\s*%", m.group(1))]
+            if _is_arith_progression(pcts, "文本枚举"):
+                break
+
+        # ── 信号 6：重复数字 / 复制粘贴 ──
+        # 表格中同一列 ≥3 行出现完全相同的数值（不同方法/数据集），
+        # 真实实验中概率极低，典型的人工复制粘贴痕迹。
+        def _parse_table_grid(block: str) -> list[list[str]]:
+            grid: list[list[str]] = []
+            for line in block.strip().split("\n"):
+                line = line.strip()
+                if not line.startswith("|"):
+                    continue
+                cols = [c.strip() for c in line.split("|")[1:-1]]
+                if all(re.match(r"^-+$", c) for c in cols if c):
+                    continue
+                grid.append(cols)
+            return grid
+
+        for table_match in _TBL.finditer(full_text):
+            table_num = table_match.group(1)
+            grid = _parse_table_grid(table_match.group(2))
+            data_rows = grid[1:]
+            if len(data_rows) < 3:
+                continue
+            ncols = min(len(c) for c in grid)
+            for j in range(1, ncols):
+                vals: list[float] = []
+                for row in data_rows:
+                    try:
+                        vals.append(float(row[j]))
+                    except (ValueError, IndexError):
+                        break
+                if len(vals) >= 3:
+                    from collections import Counter
+
+                    cnt = Counter(round(v, 3) for v in vals)
+                    dup_val, dup_n = max(cnt.items(), key=lambda kv: kv[1])
+                    if dup_n >= 3:
+                        flags.append(
+                            f"[重复数字] Table {table_num} 第{j + 1} 列有 {dup_n} 行数值完全相同"
+                            f"（{dup_val:.2f}），真实实验几乎不可能，疑似复制粘贴编造"
+                        )
+                        break
+
+        # ── 信号 7：两组数据恒定偏移（耿同学标志案例）──
+        # 「对照组与实验组逐行差值为同一常数」：所有行 A_i - B_i 恰好相等
+        # （如第二组所有学生比第一组高 0.1cm），真实测量不可能，纯人工编造。
+        for table_match in _TBL.finditer(full_text):
+            table_num = table_match.group(1)
+            grid = _parse_table_grid(table_match.group(2))
+            data_rows = grid[1:]  # 分隔行已过滤，grid[1] 即首行数据
+            if len(data_rows) < 4:
+                continue
+            ncols = min(len(c) for c in grid)
+            # 找两列数值列（跳过行标签列）
+            numeric_cols: list[list[float]] = []
+            for j in range(1, ncols):
+                vals: list[float] = []
+                for row in data_rows:
+                    try:
+                        vals.append(float(row[j]))
+                    except (ValueError, IndexError):
+                        break
+                if len(vals) >= 4:
+                    numeric_cols.append(vals)
+            if len(numeric_cols) < 2:
+                continue
+            # 两两比较逐行差
+            for a_i in range(len(numeric_cols)):
+                for b_i in range(a_i + 1, len(numeric_cols)):
+                    a, b = numeric_cols[a_i], numeric_cols[b_i]
+                    n = min(len(a), len(b))
+                    if n < 4:
+                        continue
+                    diffs = [round(a[k] - b[k], 4) for k in range(n)]
+                    if len(set(diffs)) == 1 and diffs[0] != 0:
+                        flags.append(
+                            f"[恒定偏移] Table {table_num} 两组数据 {n} 行差值恒为 "
+                            f"{diffs[0]:.4f}（完全相同），真实测量不可能，疑似整列编造"
+                        )
+                        break
+                else:
+                    continue
+                break
+
+        # ── 信号 8：Benford 首位数字分布偏离 ──
+        # 自然数据首位数字服从 Benford 分布（1 占 ~30%，9 占 ~5%）。
+        # 人类编造数据时趋向均匀分布（每数字 ~11%）→ 卡方偏离显著。
+        # 仅统计表格中的数值列（≥20 个数值才够样本量）。
+        all_vals: list[float] = []
+        for table_match in _TBL.finditer(full_text):
+            grid = _parse_table_grid(table_match.group(2))
+            for row in grid[2:]:
+                for cell in row[1:]:
+                    try:
+                        v = float(cell)
+                        if v > 0:
+                            all_vals.append(v)
+                    except ValueError:
+                        continue
+        if len(all_vals) >= 20:
+            from collections import Counter
+
+            first_digits = [int(str(v)[0]) for v in all_vals if str(v)[0].isdigit()]
+            if len(first_digits) >= 20:
+                n = len(first_digits)
+                observed = Counter(first_digits)
+                benford_exp = {d: n * math.log10(1 + 1 / d) for d in range(1, 10)}
+                chi2 = sum(
+                    ((observed.get(d, 0) - benford_exp[d]) ** 2) / benford_exp[d]
+                    for d in range(1, 10)
+                )
+                # 卡方临界值 (df=8, α=0.001) ≈ 26.1；保守阈值 30
+                if chi2 > 30:
+                    top_dev = max(
+                        range(1, 10),
+                        key=lambda d: abs(observed.get(d, 0) / n - math.log10(1 + 1 / d)),
+                    )
+                    exp_pct = math.log10(1 + 1 / top_dev) * 100
+                    obs_pct = observed.get(top_dev, 0) / n * 100
+                    flags.append(
+                        f"[Benford偏离] 表格 {n} 个数值首位数字分布严重偏离 Benford 定律"
+                        f"（首位 {top_dev} 实际 {obs_pct:.0f}% vs 理论 {exp_pct:.0f}%，"
+                        f"χ²={chi2:.0f}），人类编造数据常趋向均匀分布，疑似捏造"
+                    )
+
+        # ── 信号 9：p 值异常聚集（p-hacking）──
+        # 大量 p 值恰好挤在 0.04~0.049（勉强显著）而几乎没有 <0.01 的强显著，
+        # 是选择性汇报的经典指纹（真实实验强显著 p 常见）。
+        pvals: list[float] = []
+        for m in re.finditer(r"p\s*[=<>]\s*0?\.(\d{2,3})", text_lower):
+            try:
+                pv = float("0." + m.group(1))
+            except ValueError:
+                continue
+            if 0 < pv < 1:
+                pvals.append(pv)
+        if len(pvals) >= 5:
+            marginal = [pv for pv in pvals if 0.04 <= pv <= 0.05]
+            strong = [pv for pv in pvals if pv < 0.01]
+            if len(marginal) >= 3 and len(marginal) > len(strong) * 2:
+                flags.append(
+                    f"[p值聚集] 全文 {len(pvals)} 个 p 值中 {len(marginal)} 个恰好落在 "
+                    f"0.04~0.05 勉强显著区间而强显著(<0.01)仅 {len(strong)} 个，"
+                    f"符合 p-hacking 选择性汇报指纹"
+                )
+    except Exception:  # noqa: BLE001
+        pass
+    return flags
 
 
 def _eval_params_snapshot() -> dict:

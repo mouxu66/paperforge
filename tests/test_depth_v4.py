@@ -2200,3 +2200,58 @@ class TestDeltaBoundsConfig:
         lo, hi = reviewer._adaptive_delta_bounds(cp, default_min=-0.05, default_max=0.07)
         assert lo < -0.05
         assert hi == 0.07
+
+
+# ===========================================================================
+# D2 / D4 统计造假检测与包装识别（2026-08-12 补）
+# ===========================================================================
+
+def test_d2_statistical_flags_detected_in_review_result():
+    """D2：论文含 std 过低信号时，result.statistical_flags 应记录且触发后置扣分。"""
+    reviewer = DepthReviewer(llm_func=MockLLM())
+    fake_text = MOCK_FULL_TEXT.replace(
+        "3.2% in F1 score",
+        "std = 0.850 ± 0.3% and 0.812 ± 0.2% across 5 seeds, 3.2% in F1 score",
+    )
+    result = reviewer.review(
+        paper_id=MOCK_PAPER_ID,
+        title=MOCK_TITLE,
+        full_text=fake_text,
+        abstract=MOCK_ABSTRACT,
+    )
+    assert result.statistical_flags, "D2 未检出 std 过低信号"
+    assert any(f.startswith("[std过低]") for f in result.statistical_flags), (
+        f"期望 std过低 信号，实际: {result.statistical_flags}"
+    )
+    # D2 后置扣分应体现在日志里
+    assert any("统计/包装信号后置扣分" in log for log in result.node_logs), (
+        "D2 后置扣分未执行"
+    )
+
+
+def test_d4_packaging_penalty_fires_when_expectation_gap_large(monkeypatch):
+    """D4：Q0 期望 ≫ 校准分（gap>0.2）时触发包装扣分 0.04。"""
+    responses = dict(MOCK_RESPONSES)
+    responses["Q0"] = (
+        "reasoning: 论文宣传语非常宏大，但细节支撑不足。\n"
+        "has_substance: true\n"
+        "expectation: 0.98"
+    )
+    # 压低 Q234/Q5c，制造 expectation ≫ calibrated 的大 gap（>0.2 触发 D4）
+    responses["Q234"] = (
+        "reasoning: 贡献平淡\ncore_contribution: 小改进\nnovelty_score: 0.40\n"
+        "hotspot_alignment_score: 0.45\nrigor_score: 0.42\n"
+        "influence_score: 0.40\nreproducibility_score: 0.45\n"
+        "missing_items: 无\nq2_evidence_id: E1\nq3_evidence_id: E4\nq4_evidence_id: E5"
+    )
+    responses["Q5c"] = "reasoning: 贡献不足\nverdict: reject\ndelta: -0.10"
+    reviewer = DepthReviewer(llm_func=MockLLM(responses=responses))
+    result = reviewer.review(
+        paper_id=MOCK_PAPER_ID,
+        title=MOCK_TITLE,
+        full_text=MOCK_FULL_TEXT,
+        abstract=MOCK_ABSTRACT,
+    )
+    assert any("包装识别" in log and "gap" in log for log in result.node_logs), (
+        "D4 包装识别未触发"
+    )

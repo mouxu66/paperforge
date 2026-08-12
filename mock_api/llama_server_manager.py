@@ -176,12 +176,18 @@ class LlamaServerManager:
             "--top-p",
             "1.0",
             "--repeat-penalty",
-            "1.05",
+            "1.0",
+            "--min-p",
+            "0.01",
             "--samplers",
             "top_k;temp;penalties",
             "-fit",
             "off",
         ]
+        if settings.llama_server_flash_attn:
+            cmd += ["-fa", "on"]
+        if settings.llama_server_n_cpu_moe:
+            cmd += ["--n-cpu-moe", str(settings.llama_server_n_cpu_moe)]
         if settings.llama_server_draft:
             cmd += [
                 "--spec-type",
