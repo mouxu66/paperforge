@@ -19,6 +19,7 @@ from mock_api.crud import _detect_document_type
 # 测试通过 pytest 从项目根运行时自动加入 sys.path（conftest.py 兜底）
 from mock_api.depth_eval_reflection import (
     AVERAGE_SCORE_POOR,
+    GRADED_CAP_BY_EVIDENCE,
     MAX_SCORE_WHEN_EVIDENCE_INSUFFICIENT,
     MIN_EVIDENCE_FOR_VALID_REVIEW,
     UNDERSTANDING_THRESHOLD_DEEP,
@@ -118,16 +119,16 @@ class TestReflectionReviewerHappyPath:
 
         # 4 维评分
         sc = result.scores
-        assert sc["understanding_accuracy"] == 0.85
+        assert sc["understanding_accuracy"] == 0.80
         assert sc["analysis_depth"] == 0.80
         # 创新分可能被 R4.5 封顶至 0.5（若 mock 文本缺原创标记）
         assert sc["innovative_insights"] in (0.50, 0.72), (
             f"innovative_insights={sc['innovative_insights']}, expected 0.50 or 0.72"
         )
-        # 证据数为 3（少于允许推高分的 5 条），evidence_support 受 0.85 上限约束。
-        assert sc["evidence_support"] == 0.85
+        # 证据数为 3 → R1.5 分级帽 CAP 至 0.80（2→0.75 / 3→0.80 / 4→0.85）。
+        assert sc["evidence_support"] == 0.80
         # 平均分
-        expected_avg = round((0.85 + 0.80 + 0.72 + 0.85) / 4, 4)
+        expected_avg = round((0.80 + 0.80 + 0.72 + 0.80) / 4, 4)
         assert sc["average"] == expected_avg
 
         # verdict：高质量 response + 3 有效证据 → well_done
@@ -434,8 +435,8 @@ class TestReflectionScoringEdgeCases:
         reviewer = ReflectionReviewer(llm_func=MockLLM(response))
         result = reviewer.review(MOCK_REPORT_ID, MOCK_REPORT_TITLE, MOCK_REPORT_CONTENT)
 
-        # 两条证据不足以推高分，触发 R1.5 的 0.85 上限。
-        assert result.scores["understanding_accuracy"] == 0.85
+        # 两条证据不足以推高分，触发 R1.5 分级帽（2 条→0.75）。
+        assert result.scores["understanding_accuracy"] == 0.75
         assert result.scores["analysis_depth"] == 0.0
         assert result.scores["innovative_insights"] in (0.5, 0.7), (
             f"innovative_insights={result.scores['innovative_insights']}"
@@ -492,9 +493,50 @@ class TestReflectionScoringEdgeCases:
 
         assert result.verdict == "well_done"
         assert any("R1.5:" in ov for ov in result.hardcoded_overrides)
-        assert result.scores["average"] == pytest.approx(
-            (0.85 + 0.82 + 0.80 + 0.85) / 4, rel=1e-4
+        # 3 条证据 → 分级帽 0.80，四维全部顶到 0.80
+        assert result.scores["average"] == pytest.approx(0.80, rel=1e-4)
+
+    def test_graded_cap_boundaries(self):
+        """R1.5 分级帽边界：4 条→0.85，5 条不封顶；映射表与实现一致。"""
+        assert GRADED_CAP_BY_EVIDENCE == {2: 0.75, 3: 0.80, 4: 0.85}
+
+        # 自定义报告全文，含 5 条可被 _snippet_exists 命中的证据句
+        evidence_sents = [f"这是第{i}条支撑性证据的具体原文内容" for i in range(1, 6)]
+        report = "一篇报告。".join(evidence_sents)
+
+        def _response(n):
+            return json.dumps({
+                "claims": [
+                    {"id": f"C{i}", "text": f"观点{i}", "evidence_id": f"E{i}"}
+                    for i in range(1, n + 1)
+                ],
+                "evidence_pool": [
+                    {"id": f"E{i}", "snippet": evidence_sents[i - 1], "claim_ref": f"C{i}"}
+                    for i in range(1, n + 1)
+                ],
+                "understanding_accuracy": 0.88,
+                "analysis_depth": 0.86,
+                "innovative_insights": 0.90,
+                "evidence_support": 0.90,
+                "summary": "高分报告",
+                "verdict_suggestion": "well_done",
+            }, ensure_ascii=False)
+
+        # 4 条证据 → 分级帽 0.85
+        r4 = ReflectionReviewer(llm_func=MockLLM(_response(4))).review(
+            MOCK_REPORT_ID, MOCK_REPORT_TITLE, report
         )
+        assert r4.effective_evidence_count == 4
+        assert r4.scores["understanding_accuracy"] == 0.85
+        assert any("R1.5:" in ov for ov in r4.hardcoded_overrides)
+
+        # 5 条证据 → 不触发 R1.5，高分原样保留
+        r5 = ReflectionReviewer(llm_func=MockLLM(_response(5))).review(
+            MOCK_REPORT_ID, MOCK_REPORT_TITLE, report
+        )
+        assert r5.effective_evidence_count == 5
+        assert r5.scores["understanding_accuracy"] == 0.88
+        assert not any("R1.5:" in ov for ov in r5.hardcoded_overrides)
 
     def test_cross_validate_only_backward_reference(self):
         """只有 evidence 引用 claim，没有 claim 正向引用 evidence → effective=0。
@@ -883,6 +925,98 @@ class TestEvidenceRetryFromPaper:
             paper_text="paper originated claim",
         )
         assert result.verdict == "well_done"
+
+
+class TestIIMedianSampling:
+    """II 维中位数采样：抑制 9B 模型措辞噪声（2026-08-13）。"""
+
+    def test_sample_ii_median_takes_median(self, monkeypatch):
+        """主调用 + 2 次额外采样 → II 取中位数而非单次措辞值。"""
+        from mock_api.depth_eval_reflection import ReflectionReviewer
+
+        monkeypatch.setenv("PAPERFORGE_REFLECTION_II_SAMPLES", "3")
+        extra = iter([0.90, 0.60])
+
+        def _llm(prompt):
+            return json.dumps({"innovative_insights": next(extra)}, ensure_ascii=False)
+
+        reviewer = ReflectionReviewer(llm_func=_llm)
+        med = reviewer._sample_ii_median("prompt", primary_ii=0.50)
+        # 样本 [0.50(主), 0.90, 0.60] → 中位数 0.60
+        assert med == pytest.approx(0.60)
+
+    def test_sample_ii_median_disabled_returns_primary(self, monkeypatch):
+        """PAPERFORGE_REFLECTION_II_SAMPLES=1 → 关闭采样，不发额外调用。"""
+        from mock_api.depth_eval_reflection import ReflectionReviewer
+
+        monkeypatch.setenv("PAPERFORGE_REFLECTION_II_SAMPLES", "1")
+        calls: list[str] = []
+
+        def _llm(prompt):
+            calls.append(prompt)
+            return "{}"
+
+        reviewer = ReflectionReviewer(llm_func=_llm)
+        med = reviewer._sample_ii_median("prompt", primary_ii=0.42)
+        assert med == 0.42
+        assert calls == []  # 未发任何额外调用
+        assert reviewer._ii_samples == []  # 关闭时不持久化样本
+
+    def test_sample_ii_median_skips_bad_samples(self, monkeypatch):
+        """解析失败/空返回的样本跳过，仍用有效样本取中位数（fail-open）。"""
+        from mock_api.depth_eval_reflection import ReflectionReviewer
+
+        monkeypatch.setenv("PAPERFORGE_REFLECTION_II_SAMPLES", "3")
+        responses = iter(["not json", '{"innovative_insights": 0.80}'])
+
+        def _llm(prompt):
+            return next(responses)
+
+        reviewer = ReflectionReviewer(llm_func=_llm)
+        med = reviewer._sample_ii_median("prompt", primary_ii=0.40)
+        # 第 1 个额外样本解析失败被跳过，仅第 2 个有效：样本 [0.40, 0.80] → 中位数 0.60
+        assert med == pytest.approx(0.60)
+
+    def test_review_applies_ii_median(self, monkeypatch):
+        """完整 review() 路径：II 最终分 = 原始采样的中位数（未被打压前）。"""
+        from mock_api.depth_eval_reflection import ReflectionReviewer
+
+        monkeypatch.setenv("PAPERFORGE_REFLECTION_II_SAMPLES", "3")
+
+        # 报告含强原创标记（避免 R4.5 封顶）+ 5 条可命中证据（避免 R1.5 分级帽）
+        evidence = [f"支撑句{i}的具体原文内容" for i in range(1, 6)]
+        report = "我认为这个设计值得商榷。" + "。".join(evidence)
+
+        def _resp(ii):
+            return json.dumps({
+                "claims": [
+                    {"id": f"C{i}", "text": f"观点{i}", "evidence_id": f"E{i}"}
+                    for i in range(1, 6)
+                ],
+                "evidence_pool": [
+                    {"id": f"E{i}", "snippet": evidence[i - 1], "claim_ref": f"C{i}"}
+                    for i in range(1, 6)
+                ],
+                "understanding_accuracy": 0.80,
+                "analysis_depth": 0.80,
+                "innovative_insights": ii,
+                "evidence_support": 0.80,
+                "summary": "s",
+                "verdict_suggestion": "well_done",
+            }, ensure_ascii=False)
+
+        iis = iter([0.55, 0.95, 0.65])
+
+        def _llm(prompt):
+            return _resp(next(iis))
+
+        reviewer = ReflectionReviewer(llm_func=_llm)
+        res = reviewer.review("p1", "T", report)
+        # 主调用 II=0.55，额外采样 0.95/0.65 → 样本 [0.55,0.95,0.65] 中位数 0.65
+        assert res.scores["innovative_insights"] == pytest.approx(0.65)
+        assert res.llm_calls == 3  # 主调用 + 2 次 II 采样
+        # 原始样本被持久化供离线 A/B 审计
+        assert res.ii_samples == pytest.approx([0.55, 0.95, 0.65])
 
 
 class TestCrossvalCache:

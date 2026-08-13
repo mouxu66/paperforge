@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import os
+from contextlib import contextmanager
 from typing import Any
 
 from .base import BaseLLMProvider
@@ -56,6 +57,30 @@ def with_eval_seed(kwargs: dict[str, Any]) -> dict[str, Any]:
         if seed is not None:
             kwargs["seed"] = seed
     return kwargs
+
+
+@contextmanager
+def eval_seed_override(seed: int | None):
+    """临时覆盖 PAPERFORGE_EVAL_SEED，用于对同一 prompt 做多次采样（不同种子）。
+
+    感悟报告 II 维中位数采样依赖此能力：在固定全局种子的前提下，对同一 base_prompt
+    用不同 seed 重跑 2-3 次，捕捉 9B 模型的措辞噪声，再取中位数。仅临时改环境变量，
+    退出即还原。评审主链路单线程（llama-server parallel=1），无并发覆盖风险。
+
+    seed=None 表示移除种子（回到模型默认随机行为）。
+    """
+    prev = os.environ.get(_ENV_SEED)
+    if seed is None:
+        os.environ.pop(_ENV_SEED, None)
+    else:
+        os.environ[_ENV_SEED] = str(seed)
+    try:
+        yield
+    finally:
+        if prev is None:
+            os.environ.pop(_ENV_SEED, None)
+        else:
+            os.environ[_ENV_SEED] = prev
 
 
 def get_llm_params_snapshot(provider: BaseLLMProvider | None = None) -> dict[str, Any]:

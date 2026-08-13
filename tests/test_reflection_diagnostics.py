@@ -84,6 +84,8 @@ def _review_result(
 
 
 def _patch(monkeypatch, review_result) -> None:
+    # 本文件锁「诊断字段透传」的原始分精确断言，关闭确定性校准层。
+    monkeypatch.setenv("PAPERFORGE_REFLECTION_DIM_CALIBRATION", "0")
     monkeypatch.setattr(
         "mock_api.reflection_pipeline.parse_docx_from_bytes",
         lambda data, filename="": _fake_parse(),
@@ -415,8 +417,11 @@ class TestReviewerRecordsRejections:
             ensure_ascii=False,
         )
 
-    def test_from_paper_recorded_and_fed_back(self):
+    def test_from_paper_recorded_and_fed_back(self, monkeypatch):
         from mock_api.depth_eval_reflection import ReflectionReviewer
+
+        # 本测试锁「首轮 + 证据重试」的精确调用数，关闭 II 中位数采样。
+        monkeypatch.setenv("PAPERFORGE_REFLECTION_II_SAMPLES", "1")
 
         prompts: list[str] = []
 
@@ -434,9 +439,12 @@ class TestReviewerRecordsRejections:
         assert "原论文" in prompts[1]
         assert any("R1-diag" in o for o in res.hardcoded_overrides)
 
-    def test_successful_retry_clears_stale_source_diagnosis(self):
+    def test_successful_retry_clears_stale_source_diagnosis(self, monkeypatch):
         import json
         from mock_api.depth_eval_reflection import ReflectionReviewer
+
+        # 本测试用固定调用队列（calls.pop），关闭 II 中位数采样以免多出额外调用。
+        monkeypatch.setenv("PAPERFORGE_REFLECTION_II_SAMPLES", "1")
 
         good = json.dumps({
             "claims": [
@@ -462,8 +470,11 @@ class TestReviewerRecordsRejections:
         assert res.evidence_rejections.get("from_paper", 0) == 0
         assert not any("R1-diag" in o for o in res.hardcoded_overrides)
 
-    def test_valid_report_snippet_needs_no_retry(self):
+    def test_valid_report_snippet_needs_no_retry(self, monkeypatch):
         from mock_api.depth_eval_reflection import ReflectionReviewer
+
+        # 本测试锁「证据够、无重试」的单次调用，关闭 II 中位数采样。
+        monkeypatch.setenv("PAPERFORGE_REFLECTION_II_SAMPLES", "1")
 
         import json
 

@@ -26,6 +26,7 @@ import os
 from .ai_likelihood import compute_ai_likelihood
 from .depth_eval_v4 import _statistical_plausibility_check
 from .reflection_binding import match_paper_by_title
+from .reflection_calibration import apply_dim_offsets
 from .reflection_docx_parser import parse_docx_from_bytes
 from .reflection_fidelity import (
     COPY_RATIO_FAIL,
@@ -363,11 +364,15 @@ def analyze_reflection_file(
         )
 
     # 4. 6 维融合（论文↔报告交叉评价：fidelity + coverage）
+    # 确定性校准层：对 4 维 LLM 分逐维减去金标拟合的系统偏差（II +0.074 等）。
+    # 只作用于 LLM 分、绝不触碰 fidelity/coverage（向量层独立保证）；
+    # llm_failed 时 four 全为 None，apply_dim_offsets 原样保留 None 不造分。
+    four_cal = apply_dim_offsets(four)
     scores = {
-        "understanding_accuracy": four.get("understanding_accuracy"),
-        "analysis_depth": four.get("analysis_depth"),
-        "innovative_insights": four.get("innovative_insights"),
-        "evidence_support": four.get("evidence_support"),
+        "understanding_accuracy": four_cal.get("understanding_accuracy"),
+        "analysis_depth": four_cal.get("analysis_depth"),
+        "innovative_insights": four_cal.get("innovative_insights"),
+        "evidence_support": four_cal.get("evidence_support"),
         "fidelity": fid.fidelity if fid.fidelity is not None else 0.0,
         "coverage": cov.coverage if cov.coverage is not None else 0.0,
     }

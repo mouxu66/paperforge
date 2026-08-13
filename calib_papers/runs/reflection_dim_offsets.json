@@ -1,0 +1,13 @@
+{
+  "offsets": {
+    "understanding_accuracy": -0.0429,
+    "analysis_depth": -0.0661,
+    "innovative_insights": 0.0761,
+    "evidence_support": -0.042
+  },
+  "n_samples": 41,
+  "source": "deliverables/ornstein_vs_human_full.csv",
+  "generated_by": "scripts/calibration/recompute_reflection_dim_offsets.py",
+  "method": "offset = mean(system_score - human_score) per dimension",
+  "note": "正值表示系统系统性偏高、推理时需减去。II 是主要修正量；UA/AD/ES 的偏移在噪声内。系统分口径=标题+摘要注入 + R1.5 分级帽 + II 维中位数采样（PAPERFORGE_REFLECTION_II_SAMPLES=3）；模型/提示词/采样口径稳定后应重跑 scripts/orn_review.py 全量 41 篇并用本脚本复核。"
+}

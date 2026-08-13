@@ -21,14 +21,18 @@ PIPELINE（单次 LLM 调用 + 代码层硬校验）
     - evidence_support 每个评分必须由 evidence_id 锚定（防幻觉打分）
     - analysis_depth analysis_depth analysis_depth analysis_depth
     - summary, verdict_suggestion
+  R1.5 → II 维中位数采样（抑制 9B 模型措辞噪声）：
+    对同一 base_prompt 用不同 seed 额外跑 2-3 次，只取 innovative_insights 的
+    中位数（PAPERFORGE_REFLECTION_II_SAMPLES 默认 3，1=关闭）；UA/AD/ES 单次。
   R2 → 代码层硬校验：
     1. claims 与 evidence_pool 交叉引用 → 计算 effective_evidence_count
     2. effective_evidence_count < MIN_EVIDENCE_FOR_VALID_REVIEW (2)
        → 4 维评分上限 CAP 到 0.3 + verdict="rewrite_required"
-    3. understanding_accuracy < UNDERSTANDING_THRESHOLD_DEEP (0.40)
+    3. effective_evidence_count 2-4 条 → R1.5 分级帽（2→0.75/3→0.80/4→0.85）
+    4. understanding_accuracy < UNDERSTANDING_THRESHOLD_DEEP (0.50)
        → verdict="needs_depth"（理解不够深）
-    4. 4 维平均 < 0.50 → verdict="needs_evidence"（证据不足）
-    5. 否则 → 通过 + verdict="well_done"，并附 verdict_reason 说明
+    5. 4 维平均 < 0.65 → verdict="needs_evidence"（证据不足）
+    6. 否则 → 通过 + verdict="well_done"，并附 verdict_reason 说明
 
 EVIDENCE POOL 语义（与 v4.1 不同）
 - 论文 v4.1 的"证据"指论文原文 + 章节，是 external anchoring
@@ -112,7 +116,12 @@ def _snippet_exists(snippet: str, full_text: str) -> bool:
 
 
 MAX_SCORE_WHEN_EVIDENCE_INSUFFICIENT = 0.3  # 证据不足时分数上限
-MAX_SCORE_WHEN_EVIDENCE_BELOW_HIGH = 0.85  # 证据 < 5 条时分数上限（调严新增）
+# R1.5 分级帽（2026-08-12 区分度修复）：有效证据 2-4 条按证据数分级封顶，
+# 取代此前「证据 < 5 一律封顶 0.85」的统一帽——统一帽把 UA/ES 压成 36/41 篇同分、
+# 抹平高分端区分度。2→0.75 / 3→0.80 / 4→0.85；5+ 条（MIN_EVIDENCE_FOR_HIGH_SCORE）不封顶。
+# r15_graded_ab.py 离线 A/B 已验证分级帽能拉开 UA/ES 区分度。
+GRADED_CAP_BY_EVIDENCE: dict[int, float] = {2: 0.75, 3: 0.80, 4: 0.85}
+MAX_SCORE_WHEN_EVIDENCE_BELOW_HIGH = 0.85  # 分级帽上限（4 条证据）；未知证据数的兜底值
 UNDERSTANDING_THRESHOLD_DEEP = 0.50  # 理解准确性 < 此即判 needs_depth（调严：0.40→0.50）
 AVERAGE_SCORE_POOR = 0.65  # 平均 < 此即判 needs_evidence（调严：0.50→0.65）
 INNOVATION_THRESHOLD = 0.45  # 创新见解 < 此即判 needs_depth（新增门阀：创新不足）
@@ -300,7 +309,7 @@ MAX_PAPER_PREVIEW_CHARS = _env_int("PAPERFORGE_PAPER_PREVIEW_CHARS", 4000)
 #     因此 ctx 默认 16384 保底；8GB 卡 + q4_0 KV 可到 24576（KV 约 0.9GB，余量充足）。
 #
 # 【默认 0.0 的原因（2026-08-12 实测）】本机 9B 模型（Ornstein）拿到长论文预览后
-# 会把每篇报告都往高打（≥0.85），随后被 R1.5 硬帽统一钉到 0.85 → 不同报告分数几乎
+# 会把每篇报告都往高打（≥0.85），随后被 R1.5 硬帽钉住（旧版统一 0.85，现按证据数分级 0.75/0.80/0.85）→ 不同报告分数几乎
 # 相同，区分度坍缩：同 4 篇报告、同温度 0.2 下，16000 字预览跨度 0.057、4000 字
 # 基础预览跨度 0.150、无预览跨度 0.200。默认不再补给，仅注入基础 4000 字（保留
 # UA 校准能力）；需要更高论文覆盖度时显式设 PAPERFORGE_PAPER_PREVIEW_BUDGET_RATIO=1.0。
@@ -309,6 +318,19 @@ PAPER_PREVIEW_BUDGET_RATIO = _env_ratio("PAPERFORGE_PAPER_PREVIEW_BUDGET_RATIO",
 PAPER_PREVIEW_MAX_CHARS = _env_int(
     "PAPERFORGE_PAPER_PREVIEW_MAX", 16000, minimum=MAX_PAPER_PREVIEW_CHARS
 )
+
+# II 维中位数采样（2026-08-13 措辞噪声抑制）：9B 模型（Ornstein）对同一报告的
+# innovative_insights 打分有显著措辞噪声（同 prompt 不同 seed 下抖动，实测同一报告
+# 差可达 0.05-0.10），单次采样会被一次随机措辞带偏 → 排名不稳定。
+# 对 II 维额外跑 2-3 次（不同 seed）取中位数，只在 II 上做以控制成本（UA/AD/ES 单次）。
+# PAPERFORGE_REFLECTION_II_SAMPLES=1 关闭（单次调用，向后兼容）。
+REFLECTION_II_SAMPLES_DEFAULT = 3
+
+
+def _reflection_ii_samples() -> int:
+    """动态读取 II 中位数采样次数（默认 3，1=关闭）。每次调用现读环境变量，
+    支持运行时/测试热切换（与 reflection_calibration 的开关模式一致）。"""
+    return _env_int("PAPERFORGE_REFLECTION_II_SAMPLES", REFLECTION_II_SAMPLES_DEFAULT, minimum=1)
 
 
 def _truncate_head_tail(
@@ -412,6 +434,9 @@ class ReflectionReviewResult(BaseModel):
     # 而不是报告本身缺乏证据——两者不能都记在学生头上。
     evidence_rejections: dict = Field(default_factory=dict)
     node_logs: list[str] = Field(default_factory=list)
+    # II 维中位数采样的原始样本（PAPERFORGE_REFLECTION_II_SAMPLES>1 时非空）。
+    # 供离线 A/B 审计：对比单次采样 vs 中位数的措辞噪声；采样关闭时为空列表。
+    ii_samples: list[float] = Field(default_factory=list)
     evaluated_at: str = ""
     # ADR-014 P2：分数不确定性（bootstrap 95% CI + 不确定门控）。解决 W4：
     # 此前只有点估计，不知道“这个分把握多大”。仅当 PAPERFORGE_UNCERTAINTY_GATE
@@ -641,6 +666,8 @@ class ReflectionReviewer:
         # 证据被判无效的原因分布（{"ok","from_paper","not_found"} → 条数）。
         # 只在触发证据不足重试时填充，用于事后区分「模型引错来源」和「报告真没料」。
         self._evidence_rejections: dict[str, int] = {}
+        # II 维中位数采样的原始样本（每次 review 重置；采样关闭时为空）。
+        self._ii_samples: list[float] = []
         # 注：_temperature / _max_tokens 不在 __init__ 里缓存 —— call_llm 直接从
         # compute_mode 读 cfg 并与 _REFLECTION_MAX_TOKENS_FLOOR 合并。
 
@@ -662,6 +689,52 @@ class ReflectionReviewer:
         if not raw:
             self._llm_empty += 1
         return raw
+
+    def _sample_ii_median(self, base_prompt: str, primary_ii: float) -> float:
+        """对 II 维做多次采样取中位数，抑制 9B 模型的措辞噪声。
+
+        用不同 seed 重跑 base_prompt（与主调用同一 prompt），仅取每次的
+        innovative_insights 原始分。空返回/解析失败的样本跳过（fail-open：
+        样本不足时退回主调用值，绝不因采样把分数变成假值）。
+
+        只有 II 维采样：UA/AD/ES 仍单次调用，控制成本（II 是措辞噪声最重、
+        且权重最高 0.35 的维度）。
+        """
+        from statistics import median
+
+        from .llm.reproducibility import eval_seed_override, get_eval_seed
+
+        n = _reflection_ii_samples()
+        if n <= 1:
+            return primary_ii
+        base_seed = get_eval_seed()
+        ii_vals = [float(primary_ii)]
+        for i in range(1, n):
+            # 有全局种子则在其上递增；无种子则用显式递增种子（强制采样确定性）。
+            sample_seed = (base_seed + i) if base_seed is not None else i
+            with eval_seed_override(sample_seed):
+                raw = self._llm(base_prompt)
+            if not raw:
+                self._log(f"[II采样] #{i + 1} LLM 空返回，跳过")
+                continue
+            data = safe_json_parse(raw, logger) or {}
+            if "innovative_insights" not in data:
+                self._log(f"[II采样] #{i + 1} 解析失败，跳过")
+                continue
+            try:
+                ii_vals.append(clamp_float(data.get("innovative_insights", primary_ii)))
+            except (TypeError, ValueError):
+                self._log(f"[II采样] #{i + 1} 非法 II 值，跳过")
+                continue
+        med = round(float(median(ii_vals)), 4)
+        # 持久化原始样本（含主调用值），供 orn_review 落盘与离线 A/B 审计
+        self._ii_samples = [round(float(v), 4) for v in ii_vals]
+        if len(ii_vals) > 1:
+            self._log(
+                f"[II采样] n={len(ii_vals)}/{n}，innovative_insights 原始样本={ii_vals}，"
+                f"取中位数={med}"
+            )
+        return med
 
     # ------------------------------------------------------------------
     # 硬校验（核心逻辑）
@@ -729,7 +802,7 @@ class ReflectionReviewer:
         规则优先级（从上到下，后面的规则可叠加，但 verdict 一旦被强制就锁死）：
         1. (R1) effective_evidence_count < MIN_EVIDENCE_FOR_VALID_REVIEW (2)
            → 4 维分数全部上限 CAP 到 0.3 + verdict=rewrite_required
-        2. (R1.5) effective_evidence 2-4 条 → 封顶 0.85
+        2. (R1.5) effective_evidence 2-4 条 → 分级封顶（2→0.75 / 3→0.80 / 4→0.85）
         3. (R2) understanding < 0.50 → verdict=needs_depth
         4. (R3) 4 维平均 < 0.65 → verdict=needs_evidence
         5. (R4) innovative < 0.45 → verdict=needs_depth
@@ -768,19 +841,18 @@ class ReflectionReviewer:
             )
             rule_1_fired = True
 
-        # ── 规则 1.5：证据不足以推高分（调严新增）──
-        # 有效证据 >= 2 但 < 5 → 4 维分数 CAP 到 0.85，防止证据不足却拿满分
+        # ── 规则 1.5：证据不足以推高分（分级帽）──
+        # 有效证据 >= 2 但 < 5 → 4 维分数按证据数分级封顶（2→0.75/3→0.80/4→0.85），
+        # 防止证据不足却拿满分，同时避免统一 0.85 帽把高分端压平（UA/ES 曾 36/41 篇同分）。
         if not rule_1_fired and effective < MIN_EVIDENCE_FOR_HIGH_SCORE:
+            cap = GRADED_CAP_BY_EVIDENCE.get(effective, MAX_SCORE_WHEN_EVIDENCE_BELOW_HIGH)
             capped_any = False
             for k in list(out_scores.keys()):
-                if out_scores[k] > MAX_SCORE_WHEN_EVIDENCE_BELOW_HIGH:
-                    out_scores[k] = MAX_SCORE_WHEN_EVIDENCE_BELOW_HIGH
+                if out_scores[k] > cap:
+                    out_scores[k] = cap
                     capped_any = True
             if capped_any:
-                overrides.append(
-                    f"R1.5: 有效证据数 {effective} < {MIN_EVIDENCE_FOR_HIGH_SCORE}，"
-                    f"分数 CAP 至 {MAX_SCORE_WHEN_EVIDENCE_BELOW_HIGH}"
-                )
+                overrides.append(f"R1.5: 有效证据数 {effective} 条，分数分级 CAP 至 {cap}")
 
         # ── 规则 2：理解深度不足（仅在规则 1 未触发时，因为 R1 会把 understanding 也降到 0.3）──
         # 注意 R1 触发后 understanding 已被压到 ≤ 0.3，必然 < 0.4；为避免重复触发，
@@ -974,6 +1046,7 @@ class ReflectionReviewer:
         self._llm_calls = 0
         self._llm_empty = 0
         self._evidence_rejections = {}
+        self._ii_samples = []
         self._log(f"======== DEPTH reflection 评审开始: {paper_id} ========")
 
         if not full_text or not full_text.strip():
@@ -1088,6 +1161,14 @@ class ReflectionReviewer:
             f"verdict_suggestion={llm_output.verdict_suggestion}"
         )
 
+        # 1.5 II 维中位数采样（抑制 9B 模型措辞噪声）：仅解析成功时额外采样。
+        # median_ii 同时用于覆盖后续证据重试轮次的 II 原始分，保证同一篇报告的
+        # II 始终来自同一中位数口径，而非「首轮中位数 / 重试单次」混用。
+        median_ii: float | None = None
+        if not parse_failed and _reflection_ii_samples() > 1:
+            median_ii = self._sample_ii_median(base_prompt, llm_output.innovative_insights)
+            llm_output.innovative_insights = median_ii
+
         # 2. 硬编码校验
         scores_in = {
             "understanding_accuracy": llm_output.understanding_accuracy,
@@ -1146,6 +1227,9 @@ class ReflectionReviewer:
                     summary=str(data_ev.get("summary", llm_output.summary)).strip(),
                     verdict_suggestion=str(data_ev.get("verdict_suggestion", "needs_evidence")),
                 )
+                # 重试轮次的 II 原始分同样用中位数口径覆盖（措辞噪声抑制一致）
+                if median_ii is not None:
+                    llm_ev.innovative_insights = median_ii
                 scored_ev = self._apply_hardcoded_validation(
                     claims=llm_ev.claims,
                     evidence_pool=llm_ev.evidence_pool,
@@ -1247,6 +1331,7 @@ class ReflectionReviewer:
             llm_calls=self._llm_calls,
             llm_empty=self._llm_empty,
             evidence_rejections=dict(self._evidence_rejections),
+            ii_samples=list(self._ii_samples),
             evaluated_at=datetime.now().isoformat(timespec="seconds"),
             node_logs=list(self._logs),
             score_uncertainty=_reflection_uncertainty_report(final_scores),

@@ -169,6 +169,9 @@ class TestAnalyzeReflectionFile:
         """全流水线正常路径：mock 所有依赖。"""
         from mock_api.reflection_pipeline import analyze_reflection_file
 
+        # 本测试锁的是「原始分透传」机制，关闭确定性校准层以免逐维偏移干扰精确断言。
+        monkeypatch.setenv("PAPERFORGE_REFLECTION_DIM_CALIBRATION", "0")
+
         # 创建临时文件
         test_file = tmp_path / "report.docx"
         test_file.write_bytes(b"fake docx bytes")
@@ -404,6 +407,9 @@ class TestAnalyzeReflectionFile:
     def test_fidelity_none_does_not_crash_verdict(self, tmp_path, monkeypatch):
         """fidelity 为 None 时（no_paper/too_short），不触发 rewrite 覆盖。"""
         from mock_api.reflection_pipeline import analyze_reflection_file
+
+        # 锁原始分透传与加权公式，关闭校准层以免逐维偏移干扰精确断言。
+        monkeypatch.setenv("PAPERFORGE_REFLECTION_DIM_CALIBRATION", "0")
 
         test_file = tmp_path / "report.docx"
         test_file.write_bytes(b"fake docx bytes")

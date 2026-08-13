@@ -62,7 +62,7 @@ thresholds:
     evidence_basis: "heuristic（R1 证据门阀的分数上限）"
   MAX_SCORE_WHEN_EVIDENCE_BELOW_HIGH:
     value: 0.85
-    evidence_basis: "heuristic（R1.5：证据 2-4 条时分数上限）"
+    evidence_basis: "heuristic（R1.5 分级帽上限=4 条证据；2→0.75/3→0.80/4→0.85，见 GRADED_CAP_BY_EVIDENCE）"
   UNDERSTANDING_THRESHOLD_DEEP:
     value: 0.50
     evidence_basis: "heuristic（调严 0.40→0.50；需实验标定）"
