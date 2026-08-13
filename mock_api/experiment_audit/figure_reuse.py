@@ -13,7 +13,9 @@ from __future__ import annotations
 import logging
 from itertools import combinations
 from pathlib import Path
+from typing import Any
 
+import numpy as np
 from sqlalchemy.orm import Session
 
 from ..models import PaperFigure
@@ -168,16 +170,17 @@ def detect_figure_reuse(
 def detect_cross_paper_reuse(
     figures_by_paper: dict[str, list[str | Path]],
     phash_threshold: int = DEFAULT_PHASH_RECALL_THRESHOLD,
+    verify_sift: bool = False,
+    min_ransac_inliers: int = DEFAULT_MIN_RANSAC_INLIERS,
 ) -> list[dict]:
-    """跨论文图片复用召回（仅 pHash 粗筛，不上 SIFT）。
+    """跨论文图片复用召回（pHash 粗筛 + 可选 SIFT 验证）。
 
     输入：paper_id → figure 路径列表（如 uploads/figures/<paper_id>/ 下的 PNG）。
     输出：不同 paper 之间的 pHash 近重复候选对
-    ``{paper_a, fig_a, paper_b, fig_b, dist}``。
+    ``{paper_a, fig_a, paper_b, fig_b, dist, sift_verified, ransac_inliers}``。
 
-    论文内复用由 detect_figure_reuse（含 SIFT 验证）负责；跨论文候选对
-    O(N²) 过大，先只做 pHash 召回，命中后再按需对单对做 SIFT 验证。
-    依赖缺失（imagehash/PIL）fail-open 返回空。
+    verify_sift=True 时对 pHash 候选对做 SIFT+RANSAC 验证（与论文内复用对齐）。
+    依赖缺失（imagehash/PIL/cv2）fail-open 返回空。
     """
     try:
         import imagehash
@@ -185,6 +188,16 @@ def detect_cross_paper_reuse(
     except ImportError:
         logger.warning("P0-9 依赖缺失，跨论文复用召回跳过")
         return []
+
+    # SIFT 验证需要 cv2
+    cv2 = None
+    if verify_sift:
+        try:
+            import cv2 as _cv2
+
+            cv2 = _cv2
+        except ImportError:
+            logger.warning("cv2 未安装，SIFT 验证跳过，仅返回 pHash 候选")
 
     entries: list[tuple[str, str, object]] = []
     for paper_id, paths in figures_by_paper.items():
@@ -212,6 +225,55 @@ def detect_cross_paper_reuse(
                         "paper_b": pb,
                         "fig_b": fp_b,
                         "dist": dist,
+                        "sift_verified": False,
+                        "ransac_inliers": 0,
                     }
                 )
+
+    # SIFT 验证（可选）
+    if verify_sift and cv2 is not None and candidates:
+        candidates = _verify_cross_paper_with_sift(cv2, candidates, min_ransac_inliers)
+
     return candidates
+
+
+def _verify_cross_paper_with_sift(
+    cv2: Any,
+    candidates: list[dict],
+    min_ransac_inliers: int,
+) -> list[dict]:
+    """对跨论文 pHash 候选对做 SIFT+RANSAC 验证。"""
+    sift = cv2.SIFT_create()
+    bf = cv2.BFMatcher()
+    verified: list[dict] = []
+    for cand in candidates:
+        p1, p2 = cand["fig_a"], cand["fig_b"]
+        img1 = cv2.imread(str(p1), cv2.IMREAD_GRAYSCALE)
+        img2 = cv2.imread(str(p2), cv2.IMREAD_GRAYSCALE)
+        if img1 is None or img2 is None:
+            continue
+        kp1, des1 = sift.detectAndCompute(img1, None)
+        kp2, des2 = sift.detectAndCompute(img2, None)
+        if des1 is None or des2 is None or len(kp1) < 5 or len(kp2) < 5:
+            continue
+        try:
+            matches = bf.knnMatch(des1, des2, k=2)
+        except cv2.error as e:
+            logger.debug("[audit] 跨论文 SIFT knnMatch 失败: %s vs %s - %s", p1, p2, e)
+            continue
+        good = [
+            pair[0]
+            for pair in matches
+            if len(pair) == 2 and pair[0].distance < DEFAULT_RATIO * pair[1].distance
+        ]
+        if len(good) < DEFAULT_MIN_GOOD_MATCHES:
+            continue
+        src_pts = np.float32([kp1[m.queryIdx].pt for m in good]).reshape(-1, 1, 2)
+        dst_pts = np.float32([kp2[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
+        M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+        inliers = int(mask.sum()) if mask is not None else 0
+        if M is not None and inliers >= min_ransac_inliers:
+            cand["sift_verified"] = True
+            cand["ransac_inliers"] = inliers
+            verified.append(cand)
+    return verified

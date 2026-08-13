@@ -88,6 +88,12 @@ FINDING_TYPES: dict[str, dict[str, str]] = {
         "example": "pip install 报错、依赖版本冲突、缺少必需数据文件",
         "check": "尝试安装依赖并运行入口脚本，记录失败原因",
     },
+    "CITATION_INTEGRITY": {
+        "severity": "medium",
+        "description": "引用编号不一致或 DOI 疑似编造",
+        "example": "文中引用 [25] 但参考文献列表无 25 号；DOI 在 Crossref 查无",
+        "check": "引用编号一致性检查 + DOI 真值校验（Crossref API）",
+    },
 }
 
 SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2}

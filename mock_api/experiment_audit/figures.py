@@ -16,6 +16,7 @@ import math
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 from sqlalchemy.orm import Session
 
 from ..models import PaperFigure
@@ -191,8 +192,206 @@ def detect_panel_scale_inconsistency(image_path: str) -> dict[str, Any] | None:
 
 
 # ---------------------------------------------------------------------------
-# 语义部分：Qwen3-VL（fail-open）
+# 确定性部分 3：子图分割（split_subplots）
 # ---------------------------------------------------------------------------
+def split_subplots(image_path: str) -> list[dict[str, Any]]:
+    """多面板分割：检测并分割图中的多个子图区域。
+
+    返回 [{"bbox": [x, y, w, h], "area_ratio": float}, ...] 或空列表。
+    """
+    cv2 = _load_cv2()
+    if cv2 is None:
+        return []
+    img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+    if img is None:
+        return []
+    h, w = img.shape[:2]
+    edges = cv2.Canny(img, 50, 150)
+    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    panels: list[dict[str, Any]] = []
+    min_area = (h * w) * 0.03  # 至少占图像 3%
+    max_area = (h * w) * 0.45  # 最多占图像 45%（避免把整个图当子图）
+    for c in contours:
+        x, y, pw, ph = cv2.boundingRect(c)
+        area = pw * ph
+        if min_area <= area <= max_area and 0.2 < pw / max(ph, 1) < 5:
+            panels.append(
+                {
+                    "bbox": [float(x), float(y), float(pw), float(ph)],
+                    "area_ratio": round(area / (h * w), 4),
+                }
+            )
+    # 合并重叠区域
+    panels = _merge_overlapping_panels(panels)
+    return panels
+
+
+def _merge_overlapping_panels(
+    panels: list[dict[str, Any]], iou_threshold: float = 0.3
+) -> list[dict[str, Any]]:
+    """合并重叠度高的面板区域。"""
+    if len(panels) <= 1:
+        return panels
+    merged = []
+    used = set()
+    for i, p1 in enumerate(panels):
+        if i in used:
+            continue
+        bbox1 = p1["bbox"]
+        for j, p2 in enumerate(panels):
+            if j <= i or j in used:
+                continue
+            bbox2 = p2["bbox"]
+            if _iou(bbox1, bbox2) > iou_threshold:
+                # 合并两个 bbox
+                x = min(bbox1[0], bbox2[0])
+                y = min(bbox1[1], bbox2[1])
+                x2 = max(bbox1[0] + bbox1[2], bbox2[0] + bbox2[2])
+                y2 = max(bbox1[1] + bbox1[3], bbox2[1] + bbox2[3])
+                bbox1 = [x, y, x2 - x, y2 - y]
+                used.add(j)
+        merged.append({"bbox": bbox1, "area_ratio": p1["area_ratio"]})
+    return merged
+
+
+def _iou(bbox1: list[float], bbox2: list[float]) -> float:
+    """计算两个 bbox 的 IoU（交并比）。"""
+    x1 = max(bbox1[0], bbox2[0])
+    y1 = max(bbox1[1], bbox2[1])
+    x2 = min(bbox1[0] + bbox1[2], bbox2[0] + bbox2[2])
+    y2 = min(bbox1[1] + bbox1[3], bbox2[1] + bbox2[3])
+    if x2 <= x1 or y2 <= y1:
+        return 0.0
+    inter = (x2 - x1) * (y2 - y1)
+    area1 = bbox1[2] * bbox1[3]
+    area2 = bbox2[2] * bbox2[3]
+    union = area1 + area2 - inter
+    return inter / union if union > 0 else 0.0
+
+
+# ---------------------------------------------------------------------------
+# 确定性部分 4：图例颜色冲突检测（detect_legend_color_clash）
+# ---------------------------------------------------------------------------
+def detect_legend_color_clash(image_path: str) -> dict[str, Any] | None:
+    """图例颜色冲突检测：图例区域中颜色过于相似 → 难以区分。
+
+    返回 {"risk": "legend_color_clash", "similar_pairs": [...], "description": ...} 或 None。
+    """
+    cv2 = _load_cv2()
+    if cv2 is None:
+        return None
+    img = cv2.imread(image_path)
+    if img is None:
+        return None
+    h, w = img.shape[:2]
+    # 图例通常在右上角或底部，先尝试右上角 30% 区域
+    legend_regions = [
+        img[0 : int(h * 0.3), int(w * 0.6) : w],  # 右上角
+        img[int(h * 0.7) : h, 0:w],  # 底部
+    ]
+    for region in legend_regions:
+        if region.size == 0:
+            continue
+        colors = _extract_legend_colors(region)
+        if len(colors) < 2:
+            continue
+        similar_pairs = _find_similar_colors(colors)
+        if similar_pairs:
+            return {
+                "risk": "legend_color_clash",
+                "similar_pairs": similar_pairs,
+                "description": f"图例中检测到 {len(similar_pairs)} 对颜色过于相似，可能难以区分",
+            }
+    return None
+
+
+def _extract_legend_colors(region: Any, n_colors: int = 10) -> list[tuple[int, int, int]]:
+    """从图例区域提取主要颜色（使用 k-means 聚类）。"""
+    cv2 = _load_cv2()
+    if cv2 is None:
+        return []
+    pixels = region.reshape(-1, 3).astype(np.float32) if hasattr(region, "reshape") else []
+    if len(pixels) == 0:
+        return []
+    # 过滤白色/黑色/灰色背景
+    mask = ~((pixels[:, 0] > 230) & (pixels[:, 1] > 230) & (pixels[:, 2] > 230))
+    mask &= ~((pixels[:, 0] < 25) & (pixels[:, 1] < 25) & (pixels[:, 2] < 25))
+    # 过滤灰色（RGB 三通道差异小）
+    mask &= ~((np.max(pixels, axis=1) - np.min(pixels, axis=1)) < 30)
+    filtered = pixels[mask]
+    if len(filtered) < 10:
+        return []
+    # 简单采样取众数颜色
+    step = max(1, len(filtered) // n_colors)
+    colors = [tuple(int(c) for c in filtered[i]) for i in range(0, len(filtered), step)][:n_colors]
+    return colors
+
+
+def _find_similar_colors(colors: list[tuple[int, int, int]], threshold: float = 30.0) -> list[dict]:
+    """找出颜色距离小于阈值的配对。"""
+    similar = []
+    for i in range(len(colors)):
+        for j in range(i + 1, len(colors)):
+            dist = _color_distance(colors[i], colors[j])
+            if dist < threshold:
+                similar.append(
+                    {
+                        "color1": list(colors[i]),
+                        "color2": list(colors[j]),
+                        "distance": round(dist, 1),
+                    }
+                )
+    return similar
+
+
+def _color_distance(c1: tuple[int, int, int], c2: tuple[int, int, int]) -> float:
+    """计算 RGB 颜色空间的欧氏距离。"""
+    return sum((a - b) ** 2 for a, b in zip(c1, c2)) ** 0.5
+
+
+# ---------------------------------------------------------------------------
+# 确定性部分 5：曲线/柱状/散点区域定位（locate_plot_elements）
+# ---------------------------------------------------------------------------
+def locate_plot_elements(image_path: str) -> dict[str, Any]:
+    """定位图中的曲线、柱状、散点区域。
+
+    返回 {"has_lines": bool, "has_bars": bool, "has_scatter": bool, "element_count": int}。
+    """
+    cv2 = _load_cv2()
+    if cv2 is None:
+        return {"has_lines": False, "has_bars": False, "has_scatter": False, "element_count": 0}
+    img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+    if img is None:
+        return {"has_lines": False, "has_bars": False, "has_scatter": False, "element_count": 0}
+    h, w = img.shape[:2]
+    edges = cv2.Canny(img, 50, 150)
+    # 检测直线（曲线图的特征）
+    lines = cv2.HoughLinesP(edges, 1, math.pi / 180, threshold=50, minLineLength=30, maxLineGap=5)
+    has_lines = lines is not None and len(lines) > 5
+    # 检测矩形（柱状图的特征）
+    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    bar_count = 0
+    for c in contours:
+        x, y, pw, ph = cv2.boundingRect(c)
+        aspect = ph / max(pw, 1)
+        area = pw * ph
+        if 0.5 < aspect < 10 and area > (h * w) * 0.005:
+            bar_count += 1
+    has_bars = bar_count >= 3
+    # 检测圆形/椭圆形（散点图的特征）
+    circles = cv2.HoughCircles(
+        edges, cv2.HOUGH_GRADIENT, dp=1, minDist=10, param1=50, param2=30, minRadius=3, maxRadius=15
+    )
+    has_scatter = circles is not None and len(circles[0]) > 5
+    element_count = (len(lines) if lines else 0) + bar_count + (len(circles[0]) if circles else 0)
+    return {
+        "has_lines": has_lines,
+        "has_bars": has_bars,
+        "has_scatter": has_scatter,
+        "element_count": element_count,
+    }
+
+
 def analyze_figure_semantic(image_path: str, caption: str = "", timeout: int = 120) -> str:
     """Qwen3-VL 图表语义分析；不可用/失败返回空串。"""
     path = Path(image_path)
@@ -287,11 +486,15 @@ def check_figure_axis_risks(db: Session, paper_id: str, *, allow_vlm: bool = Tru
                 )
             )
 
-        # ── 确定性：OpenCV 断轴 / 子图尺度 ──
+        # ── 确定性：OpenCV 断轴 / 子图尺度 / 图例颜色冲突 ──
         img_path = uploads / Path(fig.figure_path).name if fig.figure_path else None
         cv_risks: list[dict] = []
         if img_path and img_path.exists():
-            for detector in (detect_axis_line_gaps, detect_panel_scale_inconsistency):
+            for detector in (
+                detect_axis_line_gaps,
+                detect_panel_scale_inconsistency,
+                detect_legend_color_clash,
+            ):
                 risk = detector(str(img_path))
                 if risk:
                     cv_risks.append(risk)

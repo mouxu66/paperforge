@@ -29,7 +29,7 @@ from . import (
     table_numbers,
     tables,
 )
-from .schemas import assign_finding_ids, coerce_findings
+from .schemas import assign_finding_ids, coerce_findings, make_finding
 
 logger = logging.getLogger(__name__)
 
@@ -263,6 +263,14 @@ class AuditService:
                     }
                 )
 
+            # ── P1-0 引用完整性校验（DOI 真值 + 引用编号一致性）──
+            if enabled("P1-0_citation_integrity"):
+                findings += self._timed_list(
+                    checks_run,
+                    "P1-0_citation_integrity",
+                    lambda: self._check_citation_integrity(full_text),
+                )
+
             # 写库前再校验一次（防御检测器构造非法结构），脏数据不落库
             audit.findings = coerce_findings(assign_finding_ids(findings))
             audit.checks_run = checks_run
@@ -305,6 +313,58 @@ class AuditService:
         else:
             for sent in metrics.split_sentences(full_text):
                 findings += metrics.check_sentence_metric_consistency(sent)
+        return findings
+
+    @staticmethod
+    def _check_citation_integrity(full_text: str) -> list[dict]:
+        """P1-0：引用完整性校验（DOI 真值 + 引用编号一致性）。"""
+        try:
+            from ..integrity.citation_verifier import verify_citations
+        except ImportError:
+            logger.warning("[audit] citation_verifier 模块不可用，引用完整性检查跳过")
+            return []
+
+        report = verify_citations(full_text)
+        findings: list[dict] = []
+
+        # 引用编号不一致（文中引用 vs 参考文献列表）
+        consistency = report.consistency or {}
+        cited_not_listed = consistency.get("cited_not_listed", [])
+        listed_not_cited = consistency.get("listed_not_cited", [])
+        if cited_not_listed or listed_not_cited:
+            findings.append(
+                make_finding(
+                    "CITATION_INTEGRITY",
+                    title="引用编号不一致",
+                    claim=(
+                        f"文中引用但参考文献列表缺失: {cited_not_listed[:5]}；"
+                        f"参考文献列表有但文中未引用: {listed_not_cited[:5]}"
+                    ),
+                    computed=f"cited_not_listed={len(cited_not_listed)}, listed_not_cited={len(listed_not_cited)}",
+                    method="引用编号一致性检查（正则抽取文中引用 vs 参考文献列表）",
+                    evidence_sources=[{"type": "text", "snippet": str(consistency)[:500]}],
+                    normal_explanation="可能是引用编号格式不规范或参考文献列表不完整",
+                    needs_human_review=True,
+                )
+            )
+
+        # DOI 疑似编造（Crossref 查无）
+        if report.suspect_dois:
+            findings.append(
+                make_finding(
+                    "CITATION_INTEGRITY",
+                    title="DOI 疑似编造",
+                    claim=f"Crossref 查无以下 DOI: {report.suspect_dois[:5]}",
+                    computed=f"not_found={report.not_found}, verified={report.verified}, unknown={report.unknown}",
+                    method="DOI 真值校验（Crossref API）",
+                    evidence_sources=[
+                        {"type": "text", "snippet": doi} for doi in report.suspect_dois[:5]
+                    ],
+                    normal_explanation="可能是 DOI 尚未被 Crossref 索引或格式错误",
+                    needs_human_review=True,
+                )
+            )
+
         return findings
 
     @staticmethod
