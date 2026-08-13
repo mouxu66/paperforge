@@ -215,7 +215,7 @@ def detect_decimal_precision_consistency(
     """同一组内多个值的小数精度完全一致 → 人造数据指纹。
 
     真实测量值的精度会因仪器/读数/四舍五入而不同；独立重复实验的比值
-    精度不可能完全一致（如 3 次实验的 A/C 比值全部是 7 位小数）。
+    精度不太可能完全一致（如 3 次实验的 A/C 比值全部是 7 位小数）。
     命中条件：≥3 个值全部精度相同，且精度 ≥5 位小数。
     """
     for label, vals in series:
@@ -225,7 +225,7 @@ def detect_decimal_precision_consistency(
         if len(set(precisions)) == 1 and precisions[0] >= 5:
             return (
                 f"[精度一致] {label} 的 {len(vals)} 个数值全部为 {precisions[0]} 位小数，"
-                f"独立实验的精度不可能完全一致，疑似从同一数据源复制"
+                f"独立实验的精度不太可能完全一致，疑似从同一数据源复制"
             )
     return None
 
@@ -251,7 +251,7 @@ def detect_complementary_groups(
             if all(abs(s - mean_sum) < 0.01 for s in sums):
                 flags.append(
                     f"[互补] {la} 与 {lb} 的 {len(va)} 对数值之和全部为 {mean_sum:.2f}，"
-                    f"不同组数值不可能完全互补，疑似人为构造"
+                    f"不同组数值不太可能完全互补，疑似人为构造"
                 )
             # 检查数值高度相似（相对差异 <5%）
             if len(va) == len(vb):
@@ -260,7 +260,7 @@ def detect_complementary_groups(
                 if mean_diff < 0.05 and len(va) >= 3:
                     flags.append(
                         f"[高度相似] {la} 与 {lb} 的 {len(va)} 对数值平均相对差异仅 {mean_diff * 100:.1f}%，"
-                        f"不同处理组的数值不可能如此接近"
+                        f"不同处理组的数值不太可能如此接近"
                     )
     return flags
 
@@ -271,7 +271,7 @@ def detect_cross_figure_duplicates(
     """跨表完全复制检测：不同 PaperFigure 之间共享完全相同的数值。
 
     对比策略：用 6 位精度将所有数值哈希化，统计每个数值出现在哪些 figure 中。
-    出现在 ≥2 个不同 figure 的数值是铁证——不同实验条件的数据不可能完全一致。
+    出现在 ≥2 个不同 figure 的数值是高度可疑的信号——不同实验条件的数据不太可能完全一致。
 
     Args:
         fig_data: [(figure_id, series), ...] 每张 figure 的转写结果
@@ -482,7 +482,7 @@ def check_figure_number_patterns(
                     page=fig_obj.page,
                     claim=(
                         f"[跨表完全复制] {fid} 与 {other} 共享 {n} 个完全相同的数值"
-                        f"（占 {fid} 数值的 {pct}%），不同实验条件的数据不可能完全一致"
+                        f"（占 {fid} 数值的 {pct}%），不同实验条件的数据不太可能完全一致"
                     ),
                     computed=(
                         f"共享数值示例：{sample}\n"
@@ -500,8 +500,8 @@ def check_figure_number_patterns(
                         }
                     ],
                     normal_explanation=(
-                        "不同实验条件的 figure 数据逐位完全相同，这在真实实验中不可能发生；"
-                        "这通常意味着数据从同一数据源复制粘贴，是绝对的人工造假证据"
+                        "不同实验条件的 figure 数据逐位完全相同，这在真实实验中不太可能发生；"
+                        "这通常表明数据可能从同一数据源复制粘贴，是需要人工核实的数据不一致线索"
                     ),
                     needs_human_review=True,
                 )

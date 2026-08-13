@@ -64,6 +64,7 @@ def check_data_leakage(
         return findings
 
     # ── 1. 精确 hash 碰撞 ──
+    collisions: list[tuple[str, str]] = []
     if exact_hash:
         train_hashes: dict[str, str] = {}
         for p in train_paths:
@@ -71,7 +72,6 @@ def check_data_leakage(
                 train_hashes.setdefault(_sha256_file(p), p)
             except OSError:
                 continue
-        collisions: list[tuple[str, str]] = []
         for p in test_paths:
             try:
                 h = _sha256_file(p)

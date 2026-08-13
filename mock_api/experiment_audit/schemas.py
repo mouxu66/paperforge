@@ -79,6 +79,12 @@ FINDING_TYPES: dict[str, dict[str, str]] = {
         "example": "WT 与 H186R 两组多时间点酶活 6 位小数完全相同，末位数字过度集中于 1",
         "check": "VLM 转写图内数值 → 等差/跨组重复/末位偏好/Benford 统计指纹",
     },
+    "REPRODUCTION_BLOCKER": {
+        "severity": "high",
+        "description": "代码仓库安装/运行失败，无法复现论文结果",
+        "example": "pip install 报错、依赖版本冲突、缺少必需数据文件",
+        "check": "尝试安装依赖并运行入口脚本，记录失败原因",
+    },
 }
 
 SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2}
@@ -145,6 +151,13 @@ class LeakageRequest(BaseModel):
     test_dir: str
     exact_hash: bool = True
     phash_threshold: int = 10
+
+
+class CodeAuditRequest(BaseModel):
+    """P1-1 代码配置 vs 论文超参比对请求（独立于 PDF，用户提供代码仓库目录）。"""
+
+    paper_id: str
+    repo_dir: str
 
 
 def coerce_findings(findings: Any) -> list[dict[str, Any]]:

@@ -6,7 +6,8 @@
 - GET  /api/experiment-audit/list              审计历史列表
 - GET  /api/experiment-audit/report/{audit_id} HTML 报告（浏览器存 PDF）
 - POST /api/experiment-audit/leakage           P0-7 数据泄漏初筛（独立端点）
-- GET  /api/experiment-audit/finding-types     10 种 Finding 类型目录
+- POST /api/experiment-audit/code-audit        P1-1 代码配置 vs 论文超参比对（独立端点）
+- GET  /api/experiment-audit/finding-types     Finding 类型目录
 
 SSE 进度复用 /api/tasks/{task_id}/events 现有通道。
 """
@@ -21,7 +22,12 @@ from sqlalchemy.orm import Session
 
 from ..database import SessionLocal, get_db
 from ..experiment_audit import data_leakage, report
-from ..experiment_audit.schemas import AuditRequest, LeakageRequest, coerce_findings
+from ..experiment_audit.schemas import (
+    AuditRequest,
+    CodeAuditRequest,
+    LeakageRequest,
+    coerce_findings,
+)
 from ..experiment_audit.service import AuditService, get_latest_audit
 from ..models import ExperimentAudit
 from ..models import Paper as PaperORM
@@ -161,6 +167,24 @@ def run_leakage_check(payload: LeakageRequest) -> dict:
             exact_hash=payload.exact_hash,
             phash_threshold=payload.phash_threshold,
         )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"findings": findings, "findings_count": len(findings)}
+
+
+@router.post("/api/experiment-audit/code-audit")
+def run_code_audit_check(payload: CodeAuditRequest, db: Session = Depends(get_db)) -> dict:
+    """P1-1 代码配置 vs 论文超参比对（独立端点，需提供代码仓库目录）。"""
+    paper = db.query(PaperORM).filter(PaperORM.id == payload.paper_id).first()
+    if paper is None:
+        raise HTTPException(status_code=404, detail="论文不存在")
+    full_text = paper.full_text or ""
+    if not full_text:
+        raise HTTPException(status_code=400, detail="论文无全文，无法比对超参")
+    try:
+        from ..experiment_audit import code_audit
+
+        findings = code_audit.check_config_mismatch(full_text, payload.repo_dir)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return {"findings": findings, "findings_count": len(findings)}
