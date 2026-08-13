@@ -124,6 +124,59 @@ class TestCheckFigureNumberPatterns:
     def test_no_figures_returns_empty(self, db_session):
         assert table_numbers.check_figure_number_patterns(db_session, "no-figs") == []
 
+    def test_cross_figure_duplicate_produces_finding(self, db_session, tmp_path, monkeypatch):
+        """两张 figure 共享完全相同的数据 → 跨表复制 Finding。"""
+        monkeypatch.setattr(table_numbers, "_get_uploads_dir", lambda: tmp_path)
+        fig_dir = tmp_path / "figures" / "p-cross"
+        fig_dir.mkdir(parents=True, exist_ok=True)
+        (fig_dir / "fig7i.png").write_bytes(b"x")
+        (fig_dir / "fig8j.png").write_bytes(b"y")
+        db_session.add(Paper(id="p-cross", title="Cross Figure Dup"))
+        db_session.add(
+            PaperFigure(
+                paper_id="p-cross",
+                page=5,
+                figure_index=0,
+                figure_path="figures/p-cross/fig7i.png",
+                figure_number=1,
+                caption_text="RpL12 RNAi",
+            )
+        )
+        db_session.add(
+            PaperFigure(
+                paper_id="p-cross",
+                page=8,
+                figure_index=1,
+                figure_path="figures/p-cross/fig8j.png",
+                figure_number=2,
+                caption_text="RpL12 OE",
+            )
+        )
+        db_session.commit()
+
+        # 两张图的数据完全相同
+        transcript = "RpS25|77.40741\nRpS25|84.47466\nRpS25|73.37331"
+        call_count = 0
+
+        def mock_transcribe(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            return transcript
+
+        monkeypatch.setattr(table_numbers, "transcribe_figure_numbers", mock_transcribe)
+        findings = table_numbers.check_figure_number_patterns(db_session, "p-cross")
+
+        # 应包含跨表复制 Finding
+        cross_findings = [f for f in findings if "跨表" in f.get("title", "")]
+        assert len(cross_findings) >= 1
+        cf = cross_findings[0]
+        assert cf["type"] == "SUSPICIOUS_DATA_PATTERN"
+        assert cf["severity"] == "high"
+        assert cf["needs_human_review"] is True
+        assert "Figure 1" in cf["title"]
+        assert "Figure 2" in cf["title"]
+        assert cf["evidence_sources"][0]["shared_count"] == 3
+
 
 class TestTranscribeMulti:
     def test_multi_run_returns_all_transcripts(self):
@@ -207,3 +260,106 @@ class TestMergeTranscripts:
     def test_all_empty_series_returns_empty(self):
         """所有转写都解析不出数值时返回空。"""
         assert table_numbers.merge_transcripts(["", "NA|?"]) == []
+
+
+class TestDetectCrossFigureDuplicates:
+    def test_identical_data_across_figures_flagged(self):
+        """两组完全相同的数据（如 RpL12 RNAi vs OE 的 WT 组）应触发跨表复制检测。"""
+        fig_data = [
+            (
+                "Figure 1 (RNAi)",
+                [
+                    ("RpS25", [77.40741, 84.47466, 73.37331]),
+                    ("RpL12", [71.42857, 80.69768, 73.37058]),
+                ],
+            ),
+            (
+                "Figure 2 (OE)",
+                [
+                    ("RpS25", [67.40741, 74.57585, 63.37331]),  # 不同值
+                    ("RpL12", [61.42857, 70.69938, 63.37058]),  # 不同值
+                ],
+            ),
+        ]
+        # 没有重复值 → 不应触发
+        assert table_numbers.detect_cross_figure_duplicates(fig_data) == []
+
+    def test_shared_values_detected(self):
+        """两个 figure 共享完全相同的数值 → 应命中。"""
+        fig_data = [
+            (
+                "Figure 1",
+                [
+                    ("RpS25", [77.40741, 84.47466, 73.37331]),
+                    ("RpL12", [71.42857, 80.69768, 73.37058]),
+                ],
+            ),
+            (
+                "Figure 2",
+                [
+                    ("RpS25", [77.40741, 84.47466, 73.37331]),  # 完全相同
+                    ("RpL12", [71.42857, 80.69768, 73.37058]),  # 完全相同
+                ],
+            ),
+        ]
+        flags = table_numbers.detect_cross_figure_duplicates(fig_data)
+        assert len(flags) == 2
+        # 两个 figure 都应被标记
+        fig_ids = [f["figure_id"] for f in flags]
+        assert "Figure 1" in fig_ids
+        assert "Figure 2" in fig_ids
+        # 共享数量应为 6（所有值都相同）
+        assert all(f["shared_count"] == 6 for f in flags)
+        assert all(f["overlap_pct"] == 100.0 for f in flags)
+
+    def test_partial_overlap(self):
+        """部分重叠 → 应标记共享数量。"""
+        fig_data = [
+            (
+                "Figure 1",
+                [("WT", [1.111111, 2.222222, 3.333333, 4.444444])],
+            ),
+            (
+                "Figure 2",
+                [("WT", [1.111111, 2.222222, 9.999999])],  # 2个相同 1个不同
+            ),
+        ]
+        flags = table_numbers.detect_cross_figure_duplicates(fig_data)
+        assert len(flags) == 2
+        # 共享 2 个值
+        assert all(f["shared_count"] == 2 for f in flags)
+        # Figure 1 中 50% 重叠（2/4）
+        f1 = next(f for f in flags if f["figure_id"] == "Figure 1")
+        assert f1["overlap_pct"] == 50.0
+
+    def test_single_figure_no_flag(self):
+        """只有 1 个 figure → 不应检测。"""
+        fig_data = [("Figure 1", [("WT", [1.1, 2.2, 3.3])])]
+        assert table_numbers.detect_cross_figure_duplicates(fig_data) == []
+
+    def test_empty_fig_data(self):
+        assert table_numbers.detect_cross_figure_duplicates([]) == []
+
+    def test_no_shared_values(self):
+        """完全没有共享值 → 不触发。"""
+        fig_data = [
+            ("Figure 1", [("WT", [1.1, 2.2])]),
+            ("Figure 2", [("WT", [3.3, 4.4])]),
+        ]
+        assert table_numbers.detect_cross_figure_duplicates(fig_data) == []
+
+    def test_shared_across_different_labels(self):
+        """相同数值出现在不同 label 的不同 figure 中 → 也应命中。"""
+        fig_data = [
+            (
+                "Figure 1 (WT)",
+                [("RpS25", [77.40741, 84.47466])],
+            ),
+            (
+                "Figure 2 (OE)",
+                [("RpL12", [77.40741, 84.47466])],  # 相同数值，不同 label
+            ),
+        ]
+        flags = table_numbers.detect_cross_figure_duplicates(fig_data)
+        assert len(flags) == 2
+        assert all(f["shared_count"] == 2 for f in flags)

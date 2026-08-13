@@ -201,6 +201,82 @@ def detect_digit_preference(values: list[float]) -> str | None:
     )
 
 
+def detect_cross_figure_duplicates(
+    fig_data: list[tuple[str, list[tuple[str, list[float]]]]],
+) -> list[dict]:
+    """跨表完全复制检测：不同 PaperFigure 之间共享完全相同的数值。
+
+    对比策略：用 6 位精度将所有数值哈希化，统计每个数值出现在哪些 figure 中。
+    出现在 ≥2 个不同 figure 的数值是铁证——不同实验条件的数据不可能完全一致。
+
+    Args:
+        fig_data: [(figure_id, series), ...] 每张 figure 的转写结果
+
+    Returns:
+        每个命中的 figure 产出一个 dict，包含 figure_id、重复数值列表、来源 figure 信息
+    """
+    if len(fig_data) < 2:
+        return []
+
+    # 数值 → 出现在哪些 figure 中
+    val_figures: dict[str, list[str]] = defaultdict(list)
+    val_display: dict[str, str] = {}
+    # 每个 figure 的所有数值（6位精度 key）
+    fig_val_keys: dict[str, set[str]] = defaultdict(set)
+
+    for fig_id, series in fig_data:
+        for _, vals in series:
+            for v in vals:
+                key = f"{v:.6f}"
+                val_figures[key].append(fig_id)
+                val_display.setdefault(key, str(v))
+                fig_val_keys[fig_id].add(key)
+
+    # 找出在 ≥2 个 figure 中共享的数值
+    shared_keys = {key for key, figs in val_figures.items() if len(set(figs)) >= 2}
+    if not shared_keys:
+        return []
+
+    # 计算每对 figure 之间的共享数值数量
+    fig_ids = [fid for fid, _ in fig_data]
+    pair_details: list[tuple[str, str, set[str]]] = []
+    for i in range(len(fig_ids)):
+        for j in range(i + 1, len(fig_ids)):
+            fid_a, fid_b = fig_ids[i], fig_ids[j]
+            shared = fig_val_keys[fid_a] & fig_val_keys[fid_b] & shared_keys
+            if shared:
+                pair_details.append((fid_a, fid_b, shared))
+
+    if not pair_details:
+        return []
+
+    # 为每个涉及的 figure 生成 flag（避免重复）
+    results: list[dict] = []
+    flagged_figs: set[str] = set()
+    for fid_a, fid_b, shared in pair_details:
+        n = len(shared)
+        # 总数值中占比
+        total_a = len(fig_val_keys[fid_a])
+        overlap_pct = n / total_a * 100 if total_a else 0
+        sample = [val_display[k] for k in sorted(shared)[:3]]
+
+        for fid in (fid_a, fid_b):
+            if fid in flagged_figs:
+                continue
+            flagged_figs.add(fid)
+            other_fid = fid_b if fid == fid_a else fid_a
+            results.append(
+                {
+                    "figure_id": fid,
+                    "other_figure_id": other_fid,
+                    "shared_count": n,
+                    "overlap_pct": round(overlap_pct, 1),
+                    "sample_values": sample,
+                }
+            )
+    return results
+
+
 def transcribe_multi(
     image_path: str, caption: str = "", n_runs: int = 3, timeout: int = 120
 ) -> list[str]:
@@ -283,8 +359,10 @@ def check_figure_number_patterns(
 
     无 figure 记录时返回空（上游 figure 抽取未完成，不误报）。
 
-    为提高跨组重复检测的稳定性，对每张图跑多遍转写取多数（默认 3 遍），
-    消除 VLM 因标签配对不稳导致的随机性噪声。
+    检测逻辑：
+    1. 对每张图跑多遍转写取多数（默认 3 遍），消除标签噪声
+    2. 跨表完全复制检测（不同 figure 共享相同数值 → 铁证）
+    3. 单图内统计指纹（等差/重复/恒定偏移/Benford/跨组重复/末位偏好）
     """
     figs = (
         db.query(PaperFigure)
@@ -297,6 +375,9 @@ def check_figure_number_patterns(
 
     uploads = _get_uploads_dir() / "figures" / paper_id
     findings: list[dict] = []
+
+    # 第一轮：收集所有 figure 的转写结果
+    fig_data: list[tuple[str, list[tuple[str, list[float]]], PaperFigure, list[str]]] = []
     for fig in figs:
         img_path = uploads / Path(fig.figure_path).name if fig.figure_path else None
         if not (img_path and img_path.exists()):
@@ -304,7 +385,6 @@ def check_figure_number_patterns(
         if not allow_vlm:
             continue
 
-        # 多遍转写取多数，提高标签配对稳定性
         transcripts = transcribe_multi(str(img_path), fig.caption_text or "")
         if not transcripts:
             continue
@@ -312,9 +392,62 @@ def check_figure_number_patterns(
         if not series:
             continue
 
+        fid = _figure_id(fig)
+        fig_data.append((fid, series, fig, transcripts))
+
+    if not fig_data:
+        return []
+
+    # 跨表完全复制检测（铁证）
+    if len(fig_data) >= 2:
+        cross_flags = detect_cross_figure_duplicates(
+            [(fid, series) for fid, series, _, _ in fig_data]
+        )
+        for cf in cross_flags:
+            fid = cf["figure_id"]
+            other = cf["other_figure_id"]
+            n = cf["shared_count"]
+            pct = cf["overlap_pct"]
+            sample = "、".join(cf["sample_values"][:3])
+            fig_obj = next((f for f_id, _, f, _ in fig_data if f_id == fid), None)
+            if fig_obj is None:
+                continue
+            findings.append(
+                make_finding(
+                    "SUSPICIOUS_DATA_PATTERN",
+                    title=f"{fid} 与 {other} 之间存在跨表数据复制",
+                    page=fig_obj.page,
+                    claim=(
+                        f"[跨表完全复制] {fid} 与 {other} 共享 {n} 个完全相同的数值"
+                        f"（占 {fid} 数值的 {pct}%），不同实验条件的数据不可能完全一致"
+                    ),
+                    computed=(
+                        f"共享数值示例：{sample}\n"
+                        f"不同实验条件的 figure 数据逐位完全相同，疑似从同一数据源复制粘贴"
+                    ),
+                    method="Qwen3-VL 图内数值转写 + 跨表数值完全复制检测",
+                    evidence_sources=[
+                        {
+                            "type": "figure",
+                            "figure_id": fid,
+                            "other_figure_id": other,
+                            "shared_count": n,
+                            "overlap_pct": pct,
+                            "sample_values": cf["sample_values"],
+                        }
+                    ],
+                    normal_explanation=(
+                        "不同实验条件的 figure 数据逐位完全相同，这在真实实验中不可能发生；"
+                        "这通常意味着数据从同一数据源复制粘贴，是绝对的人工造假证据"
+                    ),
+                    needs_human_review=True,
+                )
+            )
+
+    # 第二轮：单图内统计指纹
+    for fid, series, fig, transcripts in fig_data:
         all_vals = [v for _, vals in series for v in vals]
 
-        # 复用 depth_eval_v4 的零 LLM 统计指纹（等差/重复/恒定偏移/Benford，单一事实源）
         try:
             from ..depth_eval_v4 import statistical_flags_from_series
 
@@ -329,7 +462,6 @@ def check_figure_number_patterns(
         if not flags:
             continue
 
-        fid = _figure_id(fig)
         findings.append(
             make_finding(
                 "SUSPICIOUS_DATA_PATTERN",

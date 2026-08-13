@@ -90,8 +90,12 @@ class EvidenceSource(BaseModel):
     type: str  # table | figure | text
     table_id: str | None = None
     figure_id: str | None = None
+    other_figure_id: str | None = None
     page: int | None = None
     snippet: str | None = None
+    shared_count: int | None = None
+    overlap_pct: float | None = None
+    sample_values: list[str] | None = None
 
 
 class Finding(BaseModel):
