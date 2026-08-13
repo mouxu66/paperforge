@@ -255,9 +255,6 @@ def detect_cross_figure_duplicates(
     flagged_figs: set[str] = set()
     for fid_a, fid_b, shared in pair_details:
         n = len(shared)
-        # 总数值中占比
-        total_a = len(fig_val_keys[fid_a])
-        overlap_pct = n / total_a * 100 if total_a else 0
         sample = [val_display[k] for k in sorted(shared)[:3]]
 
         for fid in (fid_a, fid_b):
@@ -265,6 +262,8 @@ def detect_cross_figure_duplicates(
                 continue
             flagged_figs.add(fid)
             other_fid = fid_b if fid == fid_a else fid_a
+            total_fid = len(fig_val_keys[fid])
+            overlap_pct = n / total_fid * 100 if total_fid else 0
             results.append(
                 {
                     "figure_id": fid,
