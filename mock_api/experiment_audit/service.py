@@ -271,6 +271,17 @@ class AuditService:
                     lambda: self._check_citation_integrity(full_text),
                 )
 
+            # ── P1-1 论断抽取（LLM + 规则回退，为其他检查提供结构化输入）──
+            if enabled("P1-1_claims_extraction"):
+                extracted_claims = self._timed_list(
+                    checks_run,
+                    "P1-1_claims_extraction",
+                    lambda: self._extract_claims(full_text),
+                )
+                # 论断抽取结果作为特殊 Finding 存储，供前端展示和其他检查使用
+                if extracted_claims:
+                    findings += extracted_claims
+
             # 写库前再校验一次（防御检测器构造非法结构），脏数据不落库
             audit.findings = coerce_findings(assign_finding_ids(findings))
             audit.checks_run = checks_run
@@ -313,6 +324,42 @@ class AuditService:
         else:
             for sent in metrics.split_sentences(full_text):
                 findings += metrics.check_sentence_metric_consistency(sent)
+        return findings
+
+    @staticmethod
+    def _extract_claims(full_text: str) -> list[dict]:
+        """P1-1：论断抽取（LLM + 规则回退），返回 Finding 列表。"""
+        try:
+            from .claims import extract_claims
+        except ImportError:
+            logger.warning("[audit] claims 模块不可用，论断抽取跳过")
+            return []
+
+        claims = extract_claims(full_text)
+        if not claims:
+            return []
+
+        # 将抽取的论断转为 Finding 格式存储
+        findings: list[dict] = []
+        for i, claim in enumerate(claims[:20]):  # 最多存储 20 条论断
+            findings.append(
+                make_finding(
+                    "CLAIMS_EXTRACTION",
+                    title=f"抽取论断 #{i + 1}: {claim.get('claim_text', '')[:50]}",
+                    claim=claim.get("claim_text", "")[:500],
+                    computed=(
+                        f"类型: {claim.get('claim_type', 'unknown')}; "
+                        f"相关指标: {', '.join(claim.get('related_metrics', []))}; "
+                        f"相关图表: {', '.join(claim.get('related_figures', []) + claim.get('related_tables', []))}"
+                    ),
+                    method="LLM 论断抽取 + 规则回退",
+                    evidence_sources=[
+                        {"type": "text", "snippet": claim.get("claim_text", "")[:300]}
+                    ],
+                    normal_explanation="论断抽取为结构化输入，供其他检查使用",
+                    needs_human_review=False,
+                )
+            )
         return findings
 
     @staticmethod

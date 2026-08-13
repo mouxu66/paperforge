@@ -94,6 +94,12 @@ FINDING_TYPES: dict[str, dict[str, str]] = {
         "example": "文中引用 [25] 但参考文献列表无 25 号；DOI 在 Crossref 查无",
         "check": "引用编号一致性检查 + DOI 真值校验（Crossref API）",
     },
+    "CLAIMS_EXTRACTION": {
+        "severity": "low",
+        "description": "从论文中抽取的实验论断（结构化输入）",
+        "example": "Our method achieves 95.2% accuracy, outperforming baseline by 3.1%",
+        "check": "LLM 论断抽取 + 规则回退（数值论断 + Figure/Table 引用）",
+    },
 }
 
 SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2}
