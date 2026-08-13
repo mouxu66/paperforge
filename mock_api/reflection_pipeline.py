@@ -459,6 +459,26 @@ def analyze_reflection_file(
     if verdict == "rewrite_required" and avg is not None:
         avg = min(avg, REWRITE_AVG_CAP)
 
+    # 5.6 统计红旗后置扣分（对齐论文侧 depth_eval_v4.py 的 stat_penalty 逻辑）
+    #    报告原文 + 原论文的统计红旗信号均参与扣分，最高 0.15。
+    #    等差/重复/恒定偏移/Benford 等零 LLM 信号，检测学生引用的数据是否可信。
+    _report_flags = _statistical_plausibility_check(parse.raw_text)
+    _paper_flags = _statistical_plausibility_check(full or "")
+    _all_stat_flags = _report_flags + _paper_flags
+    stat_penalty = 0.0
+    for _f in _all_stat_flags:
+        if _f.startswith("[std过低]") or _f.startswith("[p值不可能]"):
+            stat_penalty += 0.05
+        elif (
+            _f.startswith("[表格文本矛盾]")
+            or _f.startswith("[消融数字过整]")
+            or any(_f.startswith(p) for p in ("[等差]", "[重复]", "[恒定偏移]", "[Benford]"))
+        ):
+            stat_penalty += 0.03
+    stat_penalty = min(stat_penalty, 0.15)
+    if stat_penalty > 0 and avg is not None:
+        avg = max(0.0, avg - stat_penalty)
+
     return {
         "student_id": parse.student_id,
         "student_name": parse.name,
@@ -512,7 +532,9 @@ def analyze_reflection_file(
         "citation_integrity": citation_integrity,
         "citation_override_reason": citation_override_reason,
         # —— 统计合理性检测（零 LLM，复用论文侧检测，对报告同样生效）——
-        "statistical_flags": _statistical_plausibility_check(parse.raw_text),
+        "statistical_flags": _report_flags,
         # —— 论文原文统计检测（检测学生引用的论文是否有数据篡改信号）——
-        "paper_statistical_flags": _statistical_plausibility_check(full or ""),
+        "paper_statistical_flags": _paper_flags,
+        # —— 统计红旗扣分（对齐论文侧 stat_penalty，最高 0.15）——
+        "stat_penalty": round(stat_penalty, 4),
     }
