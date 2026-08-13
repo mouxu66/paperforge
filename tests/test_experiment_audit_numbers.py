@@ -121,6 +121,41 @@ class TestCheckFigureNumberPatterns:
         )
         assert table_numbers.check_figure_number_patterns(db_session, "p-num") == []
 
+    def test_noisy_multi_round_no_false_finding(self, db_session, tmp_path, monkeypatch):
+        """多遍转写含噪声遍（值被误归到两组的单遍）→ 多数共识消除，不误报。
+
+        3 遍转写中第 1 遍把 5.589312 同时归到 WT 和 H186R（标签噪声），
+        后 2 遍正确归到 WT → 众数投票后 5.589312 只在 WT 保留，
+        跨组重复不再命中，不产生 Finding。
+        """
+        self._seed(db_session, tmp_path, monkeypatch)
+        noisy = "WT|0.763641\nH186R|0.811456\nWT|5.589312\nH186R|5.589312"
+        clean = "WT|0.763641\nH186R|0.811456\nWT|5.589312"
+        call_count = 0
+
+        def mock_transcribe(*args, **kwargs):
+            nonlocal call_count
+            t = [noisy, clean, clean][call_count]
+            call_count += 1
+            return t
+
+        monkeypatch.setattr(table_numbers, "transcribe_figure_numbers", mock_transcribe)
+        findings = table_numbers.check_figure_number_patterns(db_session, "p-num")
+        assert findings == []
+
+    def test_consistent_duplicate_survives_multi_round(self, db_session, tmp_path, monkeypatch):
+        """真实跨组重复在全部 3 遍都出现 → 多数共识不误杀，仍命中。"""
+        self._seed(db_session, tmp_path, monkeypatch)
+        transcript = "WT|0.763641\nH186R|0.811456\nWT|5.589312\nH186R|5.589312"
+        monkeypatch.setattr(
+            table_numbers,
+            "transcribe_figure_numbers",
+            lambda *a, **k: transcript,
+        )
+        findings = table_numbers.check_figure_number_patterns(db_session, "p-num")
+        assert len(findings) == 1
+        assert "跨组重复" in findings[0]["computed"]
+
     def test_no_figures_returns_empty(self, db_session):
         assert table_numbers.check_figure_number_patterns(db_session, "no-figs") == []
 
@@ -260,6 +295,37 @@ class TestMergeTranscripts:
     def test_all_empty_series_returns_empty(self):
         """所有转写都解析不出数值时返回空。"""
         assert table_numbers.merge_transcripts(["", "NA|?"]) == []
+
+    def test_inconsistent_runs_no_majority_drops_values(self):
+        """多遍转写互相不一致且无任一值达到 2/3 众数 → 整组剔除，不产生误判。
+
+        场景：3 遍转写对同一组数值各抄各的（VLM 抖动），没有任何一个值
+        在 ≥2 遍中出现 → 众数投票后该组被剔除，避免把偶发值当真实数据。
+        """
+        transcripts = [
+            "A|0.123\nB|0.456",
+            "A|0.789\nB|0.123",  # A/B 的值与第 1 遍互换
+            "A|0.456\nB|0.789",  # 与第 1、2 遍都不同
+        ]
+        merged = table_numbers.merge_transcripts(transcripts)
+        # 每个值都只出现 1/3 遍，低于 2/3 阈值 → 全部剔除
+        assert merged == []
+
+    def test_inconsistent_runs_no_false_cross_group_duplicate(self):
+        """值跨遍乱配对时不产生跨组重复误报。
+
+        场景：VLM 每遍把 0.456 归到不同组（A→B→A）。单遍看 0.456 会
+        同时出现在 A 和 B 而触发跨组重复；但 0.456 从未在任一组达到
+        2/3 众数 → 合并后被剔除，跨组重复信号也随之消失。
+        """
+        transcripts = [
+            "A|0.456\nB|0.789",
+            "A|0.123\nB|0.456",
+            "A|0.456\nB|0.789",
+        ]
+        merged = table_numbers.merge_transcripts(transcripts)
+        assert merged == [("A", [0.456]), ("B", [0.789])]
+        assert table_numbers.detect_cross_group_duplicates(merged) == []
 
 
 class TestDetectCrossFigureDuplicates:
