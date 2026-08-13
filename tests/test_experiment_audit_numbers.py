@@ -4,10 +4,13 @@
 - parse_number_series（label|value 与 markdown 两种格式）
 - detect_cross_group_duplicates（跨组重复值）
 - detect_digit_preference（末位偏好）
+- transcribe_multi / merge_transcripts（多遍转写取多数，跨组重复加固）
 - check_figure_number_patterns DB 集成（mock VLM，不触网）
 """
 
 from __future__ import annotations
+
+from unittest.mock import patch
 
 from mock_api.experiment_audit import table_numbers
 from mock_api.models import Paper, PaperFigure
@@ -120,3 +123,87 @@ class TestCheckFigureNumberPatterns:
 
     def test_no_figures_returns_empty(self, db_session):
         assert table_numbers.check_figure_number_patterns(db_session, "no-figs") == []
+
+
+class TestTranscribeMulti:
+    def test_multi_run_returns_all_transcripts(self):
+        """transcribe_multi 应调用 transcribe_figure_numbers n_runs 次并返回结果列表。"""
+        transcripts = ["WT|0.1", "WT|0.2", "WT|0.3"]
+        call_count = 0
+
+        def mock_transcribe(*args, **kwargs):
+            nonlocal call_count
+            t = transcripts[call_count]
+            call_count += 1
+            return t
+
+        with patch.object(table_numbers, "transcribe_figure_numbers", side_effect=mock_transcribe):
+            result = table_numbers.transcribe_multi("fake.png", n_runs=3)
+        assert result == ["WT|0.1", "WT|0.2", "WT|0.3"]
+        assert call_count == 3
+
+    def test_multi_run_skips_empty_transcripts(self):
+        """transcribe_multi 跳过空转写结果。"""
+        call_count = 0
+
+        def mock_transcribe(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            return "" if call_count % 2 == 0 else "WT|0.1"
+
+        with patch.object(table_numbers, "transcribe_figure_numbers", side_effect=mock_transcribe):
+            result = table_numbers.transcribe_multi("fake.png", n_runs=3)
+        assert result == ["WT|0.1", "WT|0.1"]
+
+    def test_multi_run_returns_empty_if_all_fail(self):
+        """transcribe_multi 全部失败时返回空列表。"""
+        with patch.object(table_numbers, "transcribe_figure_numbers", return_value=""):
+            result = table_numbers.transcribe_multi("fake.png", n_runs=3)
+        assert result == []
+
+
+class TestMergeTranscripts:
+    def test_single_transcript_passthrough(self):
+        """单遍转写直接返回 parse 结果。"""
+        transcript = "WT|0.763641\nH186R|0.811456"
+        merged = table_numbers.merge_transcripts([transcript])
+        assert merged == [("WT", [0.763641]), ("H186R", [0.811456])]
+
+    def test_multi_transcript_majority_vote(self):
+        """多遍转写取众数：2/3 遍相同则取该值。"""
+        transcripts = [
+            "WT|0.123\nH186R|0.456",
+            "WT|0.123\nH186R|0.789",  # H186R 不同
+            "WT|0.123\nH186R|0.456",  # H186R 与第1遍相同（多数）
+        ]
+        merged = table_numbers.merge_transcripts(transcripts)
+        assert merged == [("WT", [0.123]), ("H186R", [0.456])]
+
+    def test_multi_transcript_resolves_label_noise(self):
+        """标签噪声场景：2/3 遍把数值归到正确组，消除跨组误判。
+
+        原始问题：VLM 把 5.589312 同时归到 WT 和 H186R，触发误报。
+        多遍转写后取众数：2/3 遍正确归组 → 合并后不重复。
+        """
+        transcripts = [
+            # 第1遍：标签正确（WT 有 5.589312，H186R 没有）
+            "WT|0.763641\nWT|5.589312\nH186R|0.811456",
+            # 第2遍：标签错误（两个组都有 5.589312）
+            "WT|0.763641\nH186R|0.811456\nWT|5.589312\nH186R|5.589312",
+            # 第3遍：标签正确（同第1遍）
+            "WT|0.763641\nWT|5.589312\nH186R|0.811456",
+        ]
+        merged = table_numbers.merge_transcripts(transcripts)
+        # 众数投票后：WT 有 0.763641 和 5.589312，H186R 只有 0.811456
+        wt_vals = next(vals for label, vals in merged if label == "WT")
+        h186r_vals = next(vals for label, vals in merged if label == "H186R")
+        assert 5.589312 in wt_vals
+        assert 5.589312 not in h186r_vals  # 多遍后消除跨组重复
+        assert table_numbers.detect_cross_group_duplicates(merged) == []
+
+    def test_empty_transcripts_returns_empty(self):
+        assert table_numbers.merge_transcripts([]) == []
+
+    def test_all_empty_series_returns_empty(self):
+        """所有转写都解析不出数值时返回空。"""
+        assert table_numbers.merge_transcripts(["", "NA|?"]) == []

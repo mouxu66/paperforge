@@ -201,12 +201,90 @@ def detect_digit_preference(values: list[float]) -> str | None:
     )
 
 
+def transcribe_multi(
+    image_path: str, caption: str = "", n_runs: int = 3, timeout: int = 120
+) -> list[str]:
+    """对同一张图跑 n_runs 次转写，返回所有原始文本列表。
+
+    多遍转写取多数可抵消 VLM 的随机性标签配对噪声，提高跨组重复检测的稳定性。
+    """
+    transcripts: list[str] = []
+    for i in range(n_runs):
+        logger.debug("[audit] 多遍转写 %d/%d: %s", i + 1, n_runs, image_path)
+        t = transcribe_figure_numbers(image_path, caption, timeout=timeout)
+        if t:
+            transcripts.append(t)
+    return transcripts
+
+
+def merge_transcripts(transcripts: list[str]) -> list[tuple[str, list[float]]]:
+    """合并多次转写结果，按组别聚合数值并取众数（多数投票）。
+
+    核心思想：对每个 label，收集所有遍出现过的值，用 6 位精度做众数投票。
+    某个值在至少 ceil(N/2) 遍中出现才保留，这样可消除 VLM 单遍转写时
+    因标签配对不稳导致的跨组重复误判。
+    """
+    if not transcripts:
+        return []
+    if len(transcripts) == 1:
+        return parse_number_series(transcripts[0])
+
+    # 收集所有转写的 series
+    all_series: list[list[tuple[str, list[float]]]] = []
+    for t in transcripts:
+        s = parse_number_series(t)
+        if s:
+            all_series.append(s)
+
+    if not all_series:
+        return []
+    if len(all_series) == 1:
+        return all_series[0]
+
+    # 按 label 聚合所有遍的值
+    label_all_vals: dict[str, list[list[float]]] = defaultdict(list)
+    for series in all_series:
+        for label, vals in series:
+            label_all_vals[label].append(vals)
+
+    # 对每个 label，用值本身做众数投票
+    threshold = len(all_series) // 2 + 1  # 至少出现这么多遍才保留
+    merged: list[tuple[str, list[float]]] = []
+    for label, val_lists in label_all_vals.items():
+        if len(val_lists) == 1:
+            merged.append((label, val_lists[0]))
+            continue
+        # 统计每个值（6位精度）在多少遍中出现
+        value_presence: dict[str, int] = Counter()
+        value_display: dict[str, float] = {}
+        # 保持第一遍的出现顺序
+        first_seen_order: list[str] = []
+        for vl in val_lists:
+            seen_in_this_run: set[str] = set()
+            for v in vl:
+                key = f"{v:.6f}"
+                if key not in seen_in_this_run:
+                    seen_in_this_run.add(key)
+                    value_presence[key] += 1
+                    value_display.setdefault(key, v)
+                    if key not in first_seen_order:
+                        first_seen_order.append(key)
+        # 取众数（至少 threshold 遍出现）
+        result = [value_display[k] for k in first_seen_order if value_presence[k] >= threshold]
+        if result:
+            merged.append((label, result))
+    return merged
+
+
 def check_figure_number_patterns(
     db: Session, paper_id: str, *, allow_vlm: bool = True
 ) -> list[dict]:
     """P0-11 入口：对论文所有 PaperFigure 做「图内数值 → 统计指纹」审计。
 
     无 figure 记录时返回空（上游 figure 抽取未完成，不误报）。
+
+    为提高跨组重复检测的稳定性，对每张图跑多遍转写取多数（默认 3 遍），
+    消除 VLM 因标签配对不稳导致的随机性噪声。
     """
     figs = (
         db.query(PaperFigure)
@@ -226,10 +304,11 @@ def check_figure_number_patterns(
         if not allow_vlm:
             continue
 
-        transcript = transcribe_figure_numbers(str(img_path), fig.caption_text or "")
-        if not transcript:
+        # 多遍转写取多数，提高标签配对稳定性
+        transcripts = transcribe_multi(str(img_path), fig.caption_text or "")
+        if not transcripts:
             continue
-        series = parse_number_series(transcript)
+        series = merge_transcripts(transcripts)
         if not series:
             continue
 
@@ -264,7 +343,7 @@ def check_figure_number_patterns(
                         "type": "figure",
                         "figure_id": fid,
                         "page": fig.page,
-                        "snippet": transcript[:300],
+                        "snippet": "\n".join(transcripts)[:300],
                     }
                 ],
                 normal_explanation=(
