@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+from pathlib import Path
 
 from .ai_likelihood import compute_ai_likelihood
 from .depth_eval_v4 import _statistical_plausibility_check
@@ -113,6 +114,102 @@ def _get_paper_title_abstract(db, paper_id: str | None) -> str:
         return "\n\n".join(parts)
     except Exception:  # noqa: BLE001 - fail-open，绝不影响主评审流程
         return ""
+
+
+def _lookup_source_paper_id_by_docx(db, path: str) -> str | None:
+    """通过报告 docx 路径反查数据库里已绑定的源论文 ID。"""
+
+
+def _load_figure_series(
+    db, paper_id: str | None
+) -> list[tuple[str, list[tuple[str, list[float]]]]]:
+    """从数据库加载 PaperFigure 数据，转换为 (figure_id, series) 格式。
+
+    用于 figure 级别的造假检测（跨表复制、末位偏好、精度一致、互补等）。
+    失败时返回空列表（fail-open）。
+    """
+    if not paper_id:
+        return []
+    try:
+        from .experiment_audit.figures import _figure_id
+        from .experiment_audit.table_numbers import merge_transcripts, transcribe_multi
+        from .models import PaperFigure
+        from .pdf_parser import _get_uploads_dir
+
+        figs = (
+            db.query(PaperFigure)
+            .filter(PaperFigure.paper_id == paper_id)
+            .order_by(PaperFigure.page, PaperFigure.figure_index)
+            .all()
+        )
+        if not figs:
+            return []
+
+        uploads = _get_uploads_dir() / "figures" / paper_id
+        result = []
+        for fig in figs:
+            img_path = uploads / Path(fig.figure_path).name if fig.figure_path else None
+            if not (img_path and img_path.exists()):
+                continue
+            transcripts = transcribe_multi(str(img_path), fig.caption_text or "")
+            if not transcripts:
+                continue
+            series = merge_transcripts(transcripts)
+            if series:
+                result.append((_figure_id(fig), series))
+        return result
+    except Exception:  # noqa: BLE001 - figure 加载失败不影响主流程
+        return []
+
+
+def _run_figure_fraud_detection(
+    fig_series: list[tuple[str, list[tuple[str, list[float]]]]],
+) -> list[str]:
+    """对 figure 级别数据运行造假检测，返回警告字符串列表。
+
+    覆盖：跨表完全复制、末位偏好、精度一致、互补/高度相似。
+    """
+    if not fig_series:
+        return []
+
+    from .experiment_audit.table_numbers import (
+        detect_complementary_groups,
+        detect_cross_figure_duplicates,
+        detect_decimal_precision_consistency,
+        detect_digit_preference,
+    )
+
+    flags: list[str] = []
+
+    # 跨表完全复制检测
+    if len(fig_series) >= 2:
+        cross = detect_cross_figure_duplicates(fig_series)
+        for cf in cross:
+            flags.append(
+                f"[跨表复制] {cf['figure_id']} 与 {cf['other_figure_id']} 共享 "
+                f"{cf['shared_count']} 个完全相同的数值（{cf['overlap_pct']}%）"
+            )
+
+    # 对每个 figure 做单图内检测
+    for fig_id, series in fig_series:
+        all_vals = [v for _, vals in series for v in vals]
+
+        # 末位偏好
+        pref = detect_digit_preference(all_vals)
+        if pref:
+            flags.append(f"[{fig_id}] {pref}")
+
+        # 精度一致
+        prec = detect_decimal_precision_consistency(series)
+        if prec:
+            flags.append(f"[{fig_id}] {prec}")
+
+        # 互补/高度相似
+        comp = detect_complementary_groups(series)
+        for c in comp:
+            flags.append(f"[{fig_id}] {c}")
+
+    return flags
 
 
 def _lookup_source_paper_id_by_docx(db, path: str) -> str | None:
@@ -233,6 +330,11 @@ def analyze_reflection_file(
         or (match_paper_by_title(parse.paper_title, db) if parse.paper_title else None)
     )
     full, emb = _get_paper_text_emb(db, bound)
+
+    # 1.5 figure 级别造假检测（跨表复制、末位偏好、精度一致、互补/高度相似）
+    #    需要 VLM 转写，仅在 vision_http_url 配置时执行；失败静默跳过。
+    _fig_series = _load_figure_series(db, bound)
+    _figure_flags = _run_figure_fraud_detection(_fig_series)
 
     # 2. 忠实度层（报告→论文 有据性，防编造）
     fid = compute_fidelity(parse.sections, full, emb)
@@ -460,11 +562,11 @@ def analyze_reflection_file(
         avg = min(avg, REWRITE_AVG_CAP)
 
     # 5.6 统计红旗后置扣分（对齐论文侧 depth_eval_v4.py 的 stat_penalty 逻辑）
-    #    报告原文 + 原论文的统计红旗信号均参与扣分，最高 0.15。
+    #    报告原文 + 原论文 + figure 级别的统计红旗信号均参与扣分，最高 0.15。
     #    等差/重复/恒定偏移/Benford 等零 LLM 信号，检测学生引用的数据是否可信。
     _report_flags = _statistical_plausibility_check(parse.raw_text)
     _paper_flags = _statistical_plausibility_check(full or "")
-    _all_stat_flags = _report_flags + _paper_flags
+    _all_stat_flags = _report_flags + _paper_flags + _figure_flags
     stat_penalty = 0.0
     for _f in _all_stat_flags:
         if _f.startswith("[std过低]") or _f.startswith("[p值不可能]"):
@@ -475,6 +577,17 @@ def analyze_reflection_file(
             or any(_f.startswith(p) for p in ("[等差]", "[重复]", "[恒定偏移]", "[Benford]"))
         ):
             stat_penalty += 0.03
+        # figure 级别造假信号（跨表复制、末位偏好、精度一致、互补/高度相似）
+        elif any(_f.startswith(p) for p in ("[跨表复制]", "[Figure", "[")):
+            # 末位偏好/精度一致/互补等信号来自 _run_figure_fraud_detection
+            if (
+                "末位偏好" in _f
+                or "精度一致" in _f
+                or "互补" in _f
+                or "高度相似" in _f
+                or "跨表复制" in _f
+            ):
+                stat_penalty += 0.03
     stat_penalty = min(stat_penalty, 0.15)
     if stat_penalty > 0 and avg is not None:
         avg = max(0.0, avg - stat_penalty)
@@ -535,6 +648,8 @@ def analyze_reflection_file(
         "statistical_flags": _report_flags,
         # —— 论文原文统计检测（检测学生引用的论文是否有数据篡改信号）——
         "paper_statistical_flags": _paper_flags,
+        # —— Figure 级别造假检测（跨表复制、末位偏好、精度一致、互补/高度相似）——
+        "figure_fraud_flags": _figure_flags,
         # —— 统计红旗扣分（对齐论文侧 stat_penalty，最高 0.15）——
         "stat_penalty": round(stat_penalty, 4),
     }
