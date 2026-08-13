@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 from mock_api.experiment_audit import figures
@@ -118,3 +120,22 @@ class TestCheckFigureAxisRisks:
         # axis_info=None 触发 VLM 兜底路径，但 vision_http_url 未配置 → 空
         self._seed(db_session, axis_info=None)
         assert figures.check_figure_axis_risks(db_session, "p-fig") == []
+
+    def test_broken_axis_annotates_evidence(self, db_session, tmp_path, monkeypatch):
+        monkeypatch.setattr(figures, "_get_uploads_dir", lambda: tmp_path)
+        fig_dir = tmp_path / "figures" / "p-fig"
+        fig_dir.mkdir(parents=True, exist_ok=True)
+        img = np.full((400, 600), 255, dtype=np.uint8)
+        cv2.line(img, (40, 30), (40, 160), 0, 2)
+        cv2.line(img, (40, 240), (40, 370), 0, 2)
+        cv2.imwrite(str(fig_dir / "f0.png"), img)
+
+        self._seed(db_session, axis_info=None)
+        findings = figures.check_figure_axis_risks(db_session, "p-fig")
+        cv_findings = [f for f in findings if "broken_axis" in f["title"]]
+        assert cv_findings
+        snippets = [e.get("snippet") or "" for e in cv_findings[0]["evidence_sources"]]
+        assert any("_audit" in s and s.endswith(".png") for s in snippets)
+        # 标注证据图已落盘
+        annotated = [s for s in snippets if "_audit" in s]
+        assert annotated and Path(annotated[0]).exists()

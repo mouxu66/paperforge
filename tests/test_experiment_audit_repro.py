@@ -42,8 +42,8 @@ class TestReproChecklist:
 
 
 class TestSchemas:
-    def test_registry_has_ten_types(self):
-        assert len(FINDING_TYPES) == 10
+    def test_registry_has_eleven_types(self):
+        assert len(FINDING_TYPES) == 11
         for meta in FINDING_TYPES.values():
             assert meta["severity"] in ("high", "medium", "low")
             assert meta["description"]

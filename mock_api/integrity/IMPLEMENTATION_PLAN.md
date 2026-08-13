@@ -6,6 +6,34 @@
 
 ---
 
+## 落地现状（2026-08 同步，代码为准）
+
+本文后续章节是**历史规划**，目录/编号与代码有漂移，实际实现位置如下（
+代码在 `mock_api/experiment_audit/`，本文规划的 `integrity/xxx.py` 多数已改名）：
+
+| 规划章节 | 规划文件 | 实际文件 | 状态 |
+|---|---|---|---|
+| 表格提取 | integrity/tables.py | `experiment_audit/tables.py` | ✅ PyMuPDF find_tables（非 camelot），lines 失败回退 text 策略 |
+| 数字一致性 P0-1 | integrity/consistency.py | `experiment_audit/metrics.py` | ✅ |
+| 指标验证 P0-2 | integrity/metrics.py | `experiment_audit/metrics.py` | ✅ |
+| Ablation P0-3 | integrity/ablation.py | `experiment_audit/ablation.py` | ✅ |
+| OpenCV 图表 P0-4 | integrity/figure_cv.py | `experiment_audit/figures.py` | ✅ 断轴+子图尺度；面板分割/图例颜色/柱线定位**未实现** |
+| Qwen3-VL 语义 | integrity/figure_audit.py | `experiment_audit/figures.py` | ✅ 仅无 axis_info 兑底 |
+| 双引擎交叉验证 | integrity/evidence.py | `experiment_audit/evidence.py` | ✅ 冲突标定+标注证据图 |
+| 复现性清单 | integrity/reproducibility.py | `experiment_audit/reproducibility.py` | ✅（实际为 P0-5，非规划的 P0-6） |
+| 代码审计 CONFIG_MISMATCH | integrity/code_audit.py | `experiment_audit/code_audit.py` | ✅ 端点驱动（未接入 run_paper_audit） |
+| 报告 | integrity/report.py | `experiment_audit/report.py` | ✅ |
+| 数据泄漏 P0-7 | — | `experiment_audit/data_leakage.py` | ✅ 端点驱动 |
+| 图片复用 P0-9 | — | `experiment_audit/figure_reuse.py` | ✅ 论文内；跨论文召回见 `scripts/figure_reuse_index.py` |
+| 引用完整性 | — | `integrity/citation_verifier.py` | ✅ |
+| 金标基准 | 附录 C 验收指标 | `scripts/audit_benchmark.py` | ✅ 错误注入召回 + 候选 CSV |
+
+当前 P0 编号事实源：`experiment_audit/__init__.py`（P0-1 数字一致、P0-2 指标自洽、
+P0-3 Ablation、P0-4 图表轴、P0-5 复现清单、P0-6 Baseline 公平、P0-7 数据泄漏、
+P0-8 标准差缺失、P0-9 图片复用、P0-10 报告）。
+
+---
+
 ## 0. 开干之前先做三件事
 
 ### 0.1 收集 20 篇测试论文

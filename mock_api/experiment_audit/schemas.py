@@ -73,6 +73,12 @@ FINDING_TYPES: dict[str, dict[str, str]] = {
         "example": "Figure 3 曲线与 Figure 5 某段高度匹配",
         "check": "pHash recall + SIFT/RANSAC verify + OpenCV visualization",
     },
+    "SUSPICIOUS_DATA_PATTERN": {
+        "severity": "high",
+        "description": "图内数值呈人工编造指纹（等差/重复/末位偏好等）",
+        "example": "WT 与 H186R 两组多时间点酶活 6 位小数完全相同，末位数字过度集中于 1",
+        "check": "VLM 转写图内数值 → 等差/跨组重复/末位偏好/Benford 统计指纹",
+    },
 }
 
 SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2}

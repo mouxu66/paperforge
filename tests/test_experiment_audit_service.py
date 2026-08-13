@@ -145,3 +145,43 @@ class TestCoerceFindings:
         assert all(f["finding_id"].startswith("F-") for f in out)
         types = {f["type"] for f in out}
         assert "METRIC_INCONSISTENCY" in types
+
+
+class TestDependencyDegradation:
+    """依赖缺失必须显式记 skipped，不得伪装成 ok/0 发现（fail-open 可观测性）。"""
+
+    def test_missing_pymupdf_records_skipped(self, db_session, monkeypatch):
+        import mock_api.experiment_audit.service as svc_mod
+        import mock_api.experiment_audit.tables as tables_mod
+
+        # 有 PDF 但 PyMuPDF 缺失 → 表格提取显式 skipped（而非伪装 ok/0）
+        monkeypatch.setattr(svc_mod, "_resolve_pdf_bytes", lambda pid: b"%PDF-1.4 fake")
+        monkeypatch.setattr(tables_mod, "pymupdf_available", lambda: False)
+        _seed_paper(db_session, "p-deg-table", _AUDIT_TEXT)
+        audit = AuditService().run_paper_audit(db_session, "p-deg-table")
+
+        by_check = {c["check"]: c for c in audit.checks_run}
+        assert by_check["table_extraction"]["status"] == "skipped"
+        assert "PyMuPDF" in by_check["table_extraction"]["reason"]
+
+    def test_missing_opencv_records_skipped_subentry(self, db_session, monkeypatch):
+        import mock_api.experiment_audit.figures as figures_mod
+
+        monkeypatch.setattr(figures_mod, "opencv_available", lambda: False)
+        _seed_paper(db_session, "p-deg-cv", _AUDIT_TEXT)
+        audit = AuditService().run_paper_audit(db_session, "p-deg-cv")
+
+        sub = [c for c in audit.checks_run if c["check"] == "P0-4_figure_axis.opencv"]
+        assert sub and sub[0]["status"] == "skipped"
+        assert "OpenCV" in sub[0]["reason"]
+
+    def test_missing_reuse_deps_records_skipped(self, db_session, monkeypatch):
+        import mock_api.experiment_audit.figure_reuse as fr_mod
+
+        monkeypatch.setattr(fr_mod, "reuse_deps_available", lambda: False)
+        _seed_paper(db_session, "p-deg-reuse", _AUDIT_TEXT)
+        audit = AuditService().run_paper_audit(db_session, "p-deg-reuse")
+
+        by_check = {c["check"]: c for c in audit.checks_run}
+        assert by_check["P0-9_figure_reuse"]["status"] == "skipped"
+        assert "cv2" in by_check["P0-9_figure_reuse"]["reason"]

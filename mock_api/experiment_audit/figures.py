@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from ..models import PaperFigure
 from ..pdf_parser import _get_uploads_dir
+from .evidence import annotate_axis_evidence, cross_validate_axis
 from .schemas import make_finding
 
 logger = logging.getLogger(__name__)
@@ -75,6 +76,19 @@ def check_truncated_y_axis(axis_info: dict[str, Any] | None) -> dict[str, Any] |
 # ---------------------------------------------------------------------------
 # 确定性部分 2：OpenCV 轴线检测（断轴 / 子图尺度）
 # ---------------------------------------------------------------------------
+def opencv_available() -> bool:
+    """OpenCV 是否可导入（断轴/子图尺度确定性检测的硬依赖）。
+
+    供编排层在运行前探测：缺失时显式记 skipped，而非静默返回 ok/0 发现。
+    """
+    try:
+        import cv2  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
 def _load_cv2():
     """懒加载 OpenCV；未安装返回 None（对应检测跳过）。"""
     try:
@@ -130,10 +144,13 @@ def detect_axis_line_gaps(image_path: str) -> dict[str, Any] | None:
         if merged[i + 1][0] - merged[i][1] > h * 0.08
     ]
     if len(merged) >= 2 and gaps:
+        min_y = min(s[0] for s in merged)
+        max_y = max(s[1] for s in merged)
         return {
             "risk": "broken_axis",
             "segments": len(merged),
             "description": f"y 轴检测到 {len(merged)} 段分离轴线（间隙 {max(gaps)}px），疑似断轴",
+            "bbox": [0.0, float(min_y), float(w) * 0.15, float(max_y)],
         }
     return None
 
@@ -149,21 +166,26 @@ def detect_panel_scale_inconsistency(image_path: str) -> dict[str, Any] | None:
     h, w = img.shape[:2]
     edges = cv2.Canny(img, 50, 150)
     contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-    panels: list[tuple[int, int]] = []  # (height, width)
+    panels: list[tuple[int, int, int, int]] = []  # (x, y, w, h)
     min_area = (h * w) * 0.02
     for c in contours:
         x, y, pw, ph = cv2.boundingRect(c)
         if pw * ph >= min_area and 0.15 < pw / max(ph, 1) < 6:
-            panels.append((ph, pw))
+            panels.append((x, y, pw, ph))
     if len(panels) < 2:
         return None
     # 只比较近似同行排列的面板（高度排序后极差）
-    heights = sorted(p[0] for p in panels)
+    heights = sorted(p[3] for p in panels)
     lo, hi = heights[0], heights[-1]
     if hi > 0 and (hi - lo) / hi > 0.25 and len(panels) >= 2:
+        x0 = min(p[0] for p in panels)
+        y0 = min(p[1] for p in panels)
+        x1 = max(p[0] + p[2] for p in panels)
+        y1 = max(p[1] + p[3] for p in panels)
         return {
             "risk": "panel_scale_inconsistency",
             "description": f"检测到 {len(panels)} 个子图面板，高度差 {(hi - lo) / hi * 100:.0f}%，尺度可能不一致",
+            "bbox": [float(x0), float(y0), float(x1), float(y1)],
         }
     return None
 
@@ -267,10 +289,24 @@ def check_figure_axis_risks(db: Session, paper_id: str, *, allow_vlm: bool = Tru
 
         # ── 确定性：OpenCV 断轴 / 子图尺度 ──
         img_path = uploads / Path(fig.figure_path).name if fig.figure_path else None
+        cv_risks: list[dict] = []
         if img_path and img_path.exists():
             for detector in (detect_axis_line_gaps, detect_panel_scale_inconsistency):
                 risk = detector(str(img_path))
                 if risk:
+                    cv_risks.append(risk)
+                    ev = list(evidence)
+                    ann = annotate_axis_evidence(
+                        str(img_path),
+                        risk,
+                        str(
+                            uploads / "_audit" / f"{Path(fig.figure_path).stem}_{risk['risk']}.png"
+                        ),
+                    )
+                    if ann:
+                        ev.append(
+                            {"type": "figure", "figure_id": fid, "page": fig.page, "snippet": ann}
+                        )
                     findings.append(
                         make_finding(
                             "CHART_AXIS_RISK",
@@ -278,7 +314,7 @@ def check_figure_axis_risks(db: Session, paper_id: str, *, allow_vlm: bool = Tru
                             page=fig.page,
                             claim=risk["description"],
                             method="OpenCV Canny + HoughLinesP/contour 确定性检测",
-                            evidence_sources=evidence,
+                            evidence_sources=ev,
                             normal_explanation=(
                                 "检测基于几何启发式，可能把多面板布局误判为断轴，请人工核对原图"
                             ),
@@ -289,7 +325,22 @@ def check_figure_axis_risks(db: Session, paper_id: str, *, allow_vlm: bool = Tru
         # ── 语义兜底：无 axis_info 时问 VLM ──
         if axis_info is None and allow_vlm and img_path and img_path.exists():
             response = analyze_figure_semantic(str(img_path), fig.caption_text or "")
-            if response and any(k in response for k in _VLM_RISK_KEYWORDS):
+            cross = cross_validate_axis(cv_risks[-1] if cv_risks else None, response)
+            if cross and cross.get("conflict"):
+                findings.append(
+                    make_finding(
+                        "CHART_AXIS_RISK",
+                        title=f"{fid} 双引擎冲突（OpenCV 优先）",
+                        page=fig.page,
+                        claim=cross["detail"],
+                        computed=f"OpenCV: {cv_risks[-1]['risk']}；VLM: {response[:200]}",
+                        method="OpenCV 确定性结果与 Qwen3-VL 语义交叉验证",
+                        evidence_sources=evidence,
+                        normal_explanation="VLM 视觉理解可能误读轴刻度，像素检测更可靠",
+                        needs_human_review=True,
+                    )
+                )
+            elif response and any(k in response for k in _VLM_RISK_KEYWORDS):
                 findings.append(
                     make_finding(
                         "CHART_AXIS_RISK",

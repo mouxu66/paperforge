@@ -28,6 +28,19 @@ DEFAULT_MIN_GOOD_MATCHES = 10
 DEFAULT_MIN_RANSAC_INLIERS = 5
 
 
+def reuse_deps_available() -> bool:
+    """cv2/imagehash/Pillow/numpy 是否可用（P0-9 图片复用检测的硬依赖）。"""
+    try:
+        import cv2  # noqa: F401
+        import imagehash  # noqa: F401
+        import numpy  # noqa: F401
+        from PIL import Image  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
 def _figure_label(fig: PaperFigure) -> str:
     return (
         f"Figure {fig.figure_number}"
@@ -147,3 +160,54 @@ def detect_figure_reuse(
             )
         )
     return findings
+
+
+def detect_cross_paper_reuse(
+    figures_by_paper: dict[str, list[str | Path]],
+    phash_threshold: int = DEFAULT_PHASH_RECALL_THRESHOLD,
+) -> list[dict]:
+    """跨论文图片复用召回（仅 pHash 粗筛，不上 SIFT）。
+
+    输入：paper_id → figure 路径列表（如 uploads/figures/<paper_id>/ 下的 PNG）。
+    输出：不同 paper 之间的 pHash 近重复候选对
+    ``{paper_a, fig_a, paper_b, fig_b, dist}``。
+
+    论文内复用由 detect_figure_reuse（含 SIFT 验证）负责；跨论文候选对
+    O(N²) 过大，先只做 pHash 召回，命中后再按需对单对做 SIFT 验证。
+    依赖缺失（imagehash/PIL）fail-open 返回空。
+    """
+    try:
+        import imagehash
+        from PIL import Image
+    except ImportError:
+        logger.warning("P0-9 依赖缺失，跨论文复用召回跳过")
+        return []
+
+    entries: list[tuple[str, str, object]] = []
+    for paper_id, paths in figures_by_paper.items():
+        for p in paths:
+            try:
+                with Image.open(p) as im:
+                    entries.append((str(paper_id), str(p), imagehash.phash(im)))
+            except Exception:  # noqa: BLE001 - 坏图跳过
+                continue
+
+    candidates: list[dict] = []
+    for i in range(len(entries)):
+        pa, fp_a, ha = entries[i]
+        for j in range(i + 1, len(entries)):
+            pb, fp_b, hb = entries[j]
+            if pa == pb:
+                continue
+            dist = ha - hb
+            if dist < phash_threshold:
+                candidates.append(
+                    {
+                        "paper_a": pa,
+                        "fig_a": fp_a,
+                        "paper_b": pb,
+                        "fig_b": fp_b,
+                        "dist": dist,
+                    }
+                )
+    return candidates

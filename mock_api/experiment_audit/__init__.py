@@ -12,6 +12,7 @@
 - P0-8 标准差/显著性缺失（STD_OR_SIGNIFICANCE_MISSING）
 - P0-9 曲线复用候选（FIGURE_REUSE_CANDIDATE）
 - P0-10 审计报告生成（report.py）
+- P0-11 图内数值造假指纹（SUSPICIOUS_DATA_PATTERN）
 
 设计原则（与 integrity_report.py 一致）：
 - **确定性优先**：能用公式/规则判定的绝不让 LLM 猜；LLM 仅用于语义抽取。

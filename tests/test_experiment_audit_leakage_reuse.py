@@ -145,3 +145,41 @@ class TestFigureReuse:
         )
         db_session.commit()
         assert figure_reuse.detect_figure_reuse(db_session, "p-missing") == []
+
+
+# ---------------------------------------------------------------------------
+# 跨论文图片复用召回（pHash 粗筛）
+# ---------------------------------------------------------------------------
+class TestCrossPaperReuse:
+    def test_same_image_across_papers_detected(self, tmp_path):
+        pa, pb = tmp_path / "paperA", tmp_path / "paperB"
+        pa.mkdir()
+        pb.mkdir()
+        _write_image(pa / "a1.png", seed=5)
+        shutil.copy(pa / "a1.png", pb / "b1.png")  # 跨论文同图
+        cands = figure_reuse.detect_cross_paper_reuse(
+            {"paperA": [str(pa / "a1.png")], "paperB": [str(pb / "b1.png")]}
+        )
+        assert len(cands) == 1
+        assert cands[0]["paper_a"] != cands[0]["paper_b"]
+        assert cands[0]["dist"] == 0
+
+    def test_unrelated_figures_clean(self, tmp_path):
+        pa, pb = tmp_path / "paperA", tmp_path / "paperB"
+        pa.mkdir()
+        pb.mkdir()
+        _write_image(pa / "a1.png", seed=17)
+        _write_image(pb / "b1.png", seed=991)
+        assert figure_reuse.detect_cross_paper_reuse(
+            {"paperA": [str(pa / "a1.png")], "paperB": [str(pb / "b1.png")]}
+        ) == []
+
+    def test_same_paper_pairs_excluded(self, tmp_path):
+        pa = tmp_path / "paperA"
+        pa.mkdir()
+        _write_image(pa / "a1.png", seed=9)
+        shutil.copy(pa / "a1.png", pa / "a2.png")  # 论文内复用
+        # 论文内复用不归跨论文召回管
+        assert figure_reuse.detect_cross_paper_reuse(
+            {"paperA": [str(pa / "a1.png"), str(pa / "a2.png")]}
+        ) == []

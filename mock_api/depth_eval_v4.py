@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import csv
 import hashlib
 import logging
 import math
@@ -41,6 +42,7 @@ import os
 import re
 import threading
 import time
+from collections import Counter
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -4330,6 +4332,89 @@ def _incrementality_risk(full_text: str, calibrated_score: float) -> str:
 # ===========================================================================
 # 统计合理性检测：零 LLM 正则，检测数据篡改/伪造信号
 # ===========================================================================
+def _parse_markdown_table_grid(block: str) -> list[list[str]]:
+    """把 markdown 表格块解析成单元格网格（过滤分隔行）。"""
+    grid: list[list[str]] = []
+    for line in block.strip().split("\n"):
+        line = line.strip()
+        if not line.startswith("|"):
+            continue
+        cols = [c.strip() for c in line.split("|")[1:-1]]
+        if all(re.match(r"^-+$", c) for c in cols if c):
+            continue
+        grid.append(cols)
+    return grid
+
+
+def _arith_progression_flag(vals: list[float], label: str) -> str | None:
+    """等差/完美线性：≥4 个值差值恒等且非 ±1 序号列 → 高度可疑。"""
+    if len(vals) < 4:
+        return None
+    diffs = [round(vals[i + 1] - vals[i], 6) for i in range(len(vals) - 1)]
+    if all(abs(d - 1) < 1e-6 for d in diffs) or all(abs(d + 1) < 1e-6 for d in diffs):
+        return None
+    if len(set(diffs)) == 1 and diffs[0] != 0:
+        return (
+            f"[等差数字] {label} {len(vals)} 项数值构成等差数列"
+            f"（差值恒为 {diffs[0]:.3f}：{', '.join(f'{v:.1f}' for v in vals[:5])}），"
+            f"真实实验数据几乎不可能，疑似人工编造"
+        )
+    return None
+
+
+def _repeated_value_flag(vals: list[float], label: str) -> str | None:
+    """重复数字：同列 ≥3 行数值完全相同（复制粘贴痕迹）。"""
+    if len(vals) < 3:
+        return None
+    cnt = Counter(round(v, 3) for v in vals)
+    dup_val, dup_n = max(cnt.items(), key=lambda kv: kv[1])
+    if dup_n >= 3:
+        return (
+            f"[重复数字] {label} 有 {dup_n} 行数值完全相同"
+            f"（{dup_val:.2f}），真实实验几乎不可能，疑似复制粘贴编造"
+        )
+    return None
+
+
+def _constant_offset_flag(a: list[float], b: list[float], label: str) -> str | None:
+    """恒定偏移：两组数据逐行差恒为同一常数（整列编造痕迹）。"""
+    n = min(len(a), len(b))
+    if n < 4:
+        return None
+    diffs = [round(a[k] - b[k], 4) for k in range(n)]
+    if len(set(diffs)) == 1 and diffs[0] != 0:
+        return (
+            f"[恒定偏移] {label} {n} 行差值恒为 "
+            f"{diffs[0]:.4f}（完全相同），真实测量不可能，疑似整列编造"
+        )
+    return None
+
+
+def _benford_flag(all_vals: list[float], context: str) -> str | None:
+    """Benford 首位数字分布偏离（≥20 个正值且 χ²>30）。"""
+    positive = [v for v in all_vals if v > 0]
+    first_digits = [int(str(v)[0]) for v in positive if str(v)[0].isdigit()]
+    n = len(first_digits)
+    if n < 20:
+        return None
+    observed = Counter(first_digits)
+    benford_exp = {d: n * math.log10(1 + 1 / d) for d in range(1, 10)}
+    chi2 = sum(((observed.get(d, 0) - benford_exp[d]) ** 2) / benford_exp[d] for d in range(1, 10))
+    if chi2 > 30:
+        top_dev = max(
+            range(1, 10),
+            key=lambda d: abs(observed.get(d, 0) / n - math.log10(1 + 1 / d)),
+        )
+        exp_pct = math.log10(1 + 1 / top_dev) * 100
+        obs_pct = observed.get(top_dev, 0) / n * 100
+        return (
+            f"[Benford偏离] {context} {n} 个数值首位数字分布严重偏离 Benford 定律"
+            f"（首位 {top_dev} 实际 {obs_pct:.0f}% vs 理论 {exp_pct:.0f}%，"
+            f"χ²={chi2:.0f}），人类编造数据常趋向均匀分布，疑似捏造"
+        )
+    return None
+
+
 def _statistical_plausibility_check(full_text: str) -> list[str]:
     """检测论文中统计上不可能或高度可疑的数据模式。
 
@@ -4487,35 +4572,11 @@ def _statistical_plausibility_check(full_text: str) -> list[str]:
         # 82.5/84.0/85.5/87.0，差值恒为 1.5）。表格列或文本枚举中检出
         # 即高度可疑（人工编造或伪造线性趋势）。序号列（1,2,3,4 / 0,1,2）
         # 与合法 epoch 步长 1 除外。
-        def _is_arith_progression(vals: list[float], label: str) -> bool:
-            if len(vals) < 4:
-                return False
-            # 序号列排除：差为 ±1 的整数序列（epoch/层数/种子编号）
-            diffs = [round(vals[i + 1] - vals[i], 6) for i in range(len(vals) - 1)]
-            if all(abs(d - 1) < 1e-6 for d in diffs) or all(abs(d + 1) < 1e-6 for d in diffs):
-                return False
-            if len(set(diffs)) == 1 and diffs[0] != 0:
-                flags.append(
-                    f"[等差数字] {label} {len(vals)} 项数值构成等差数列"
-                    f"（差值恒为 {diffs[0]:.3f}：{', '.join(f'{v:.1f}' for v in vals[:5])}），"
-                    f"真实实验数据几乎不可能，疑似人工编造"
-                )
-                return True
-            return False
 
         # 5a. 表格列等差（解析所有 markdown 表格的数值列）
         for table_match in _TBL.finditer(full_text):
             table_num = table_match.group(1)
-            block = table_match.group(2)
-            grid: list[list[str]] = []
-            for line in block.strip().split("\n"):
-                line = line.strip()
-                if not line.startswith("|"):
-                    continue
-                cols = [c.strip() for c in line.split("|")[1:-1]]
-                if all(re.match(r"^-+$", c) for c in cols if c):
-                    continue
-                grid.append(cols)
+            grid = _parse_markdown_table_grid(table_match.group(2))
             data_rows = grid[1:]  # 跳过表头；分隔行已被过滤，grid[1] 即为首行数据
             if len(data_rows) < 4:
                 continue
@@ -4527,7 +4588,9 @@ def _statistical_plausibility_check(full_text: str) -> list[str]:
                         vals.append(float(row[j]))
                     except (ValueError, IndexError):
                         break
-                if _is_arith_progression(vals, f"Table {table_num} 第{j + 1}列"):
+                f = _arith_progression_flag(vals, f"Table {table_num} 第{j + 1}列")
+                if f:
+                    flags.append(f)
                     break
 
         # 5b. 文本枚举等差（≥4 个连续百分比恰好等差）
@@ -4536,27 +4599,17 @@ def _statistical_plausibility_check(full_text: str) -> list[str]:
             full_text,
         ):
             pcts = [float(x) for x in re.findall(r"(\d+(?:\.\d+)?)\s*%", m.group(1))]
-            if _is_arith_progression(pcts, "文本枚举"):
+            f = _arith_progression_flag(pcts, "文本枚举")
+            if f:
+                flags.append(f)
                 break
 
         # ── 信号 6：重复数字 / 复制粘贴 ──
         # 表格中同一列 ≥3 行出现完全相同的数值（不同方法/数据集），
         # 真实实验中概率极低，典型的人工复制粘贴痕迹。
-        def _parse_table_grid(block: str) -> list[list[str]]:
-            grid: list[list[str]] = []
-            for line in block.strip().split("\n"):
-                line = line.strip()
-                if not line.startswith("|"):
-                    continue
-                cols = [c.strip() for c in line.split("|")[1:-1]]
-                if all(re.match(r"^-+$", c) for c in cols if c):
-                    continue
-                grid.append(cols)
-            return grid
-
         for table_match in _TBL.finditer(full_text):
             table_num = table_match.group(1)
-            grid = _parse_table_grid(table_match.group(2))
+            grid = _parse_markdown_table_grid(table_match.group(2))
             data_rows = grid[1:]
             if len(data_rows) < 3:
                 continue
@@ -4568,30 +4621,23 @@ def _statistical_plausibility_check(full_text: str) -> list[str]:
                         vals.append(float(row[j]))
                     except (ValueError, IndexError):
                         break
-                if len(vals) >= 3:
-                    from collections import Counter
-
-                    cnt = Counter(round(v, 3) for v in vals)
-                    dup_val, dup_n = max(cnt.items(), key=lambda kv: kv[1])
-                    if dup_n >= 3:
-                        flags.append(
-                            f"[重复数字] Table {table_num} 第{j + 1} 列有 {dup_n} 行数值完全相同"
-                            f"（{dup_val:.2f}），真实实验几乎不可能，疑似复制粘贴编造"
-                        )
-                        break
+                f = _repeated_value_flag(vals, f"Table {table_num} 第{j + 1} 列")
+                if f:
+                    flags.append(f)
+                    break
 
         # ── 信号 7：两组数据恒定偏移（耿同学标志案例）──
         # 「对照组与实验组逐行差值为同一常数」：所有行 A_i - B_i 恰好相等
         # （如第二组所有学生比第一组高 0.1cm），真实测量不可能，纯人工编造。
         for table_match in _TBL.finditer(full_text):
             table_num = table_match.group(1)
-            grid = _parse_table_grid(table_match.group(2))
+            grid = _parse_markdown_table_grid(table_match.group(2))
             data_rows = grid[1:]  # 分隔行已过滤，grid[1] 即首行数据
             if len(data_rows) < 4:
                 continue
             ncols = min(len(c) for c in grid)
             # 找两列数值列（跳过行标签列）
-            numeric_cols: list[list[float]] = []
+            numeric_cols: list[tuple[int, list[float]]] = []
             for j in range(1, ncols):
                 vals: list[float] = []
                 for row in data_rows:
@@ -4600,22 +4646,19 @@ def _statistical_plausibility_check(full_text: str) -> list[str]:
                     except (ValueError, IndexError):
                         break
                 if len(vals) >= 4:
-                    numeric_cols.append(vals)
+                    numeric_cols.append((j, vals))
             if len(numeric_cols) < 2:
                 continue
             # 两两比较逐行差
             for a_i in range(len(numeric_cols)):
                 for b_i in range(a_i + 1, len(numeric_cols)):
-                    a, b = numeric_cols[a_i], numeric_cols[b_i]
-                    n = min(len(a), len(b))
-                    if n < 4:
-                        continue
-                    diffs = [round(a[k] - b[k], 4) for k in range(n)]
-                    if len(set(diffs)) == 1 and diffs[0] != 0:
-                        flags.append(
-                            f"[恒定偏移] Table {table_num} 两组数据 {n} 行差值恒为 "
-                            f"{diffs[0]:.4f}（完全相同），真实测量不可能，疑似整列编造"
-                        )
+                    ja, a = numeric_cols[a_i]
+                    jb, b = numeric_cols[b_i]
+                    f = _constant_offset_flag(
+                        a, b, f"Table {table_num} 第{ja + 1}列 vs 第{jb + 1}列"
+                    )
+                    if f:
+                        flags.append(f)
                         break
                 else:
                     continue
@@ -4627,7 +4670,7 @@ def _statistical_plausibility_check(full_text: str) -> list[str]:
         # 仅统计表格中的数值列（≥20 个数值才够样本量）。
         all_vals: list[float] = []
         for table_match in _TBL.finditer(full_text):
-            grid = _parse_table_grid(table_match.group(2))
+            grid = _parse_markdown_table_grid(table_match.group(2))
             for row in grid[2:]:
                 for cell in row[1:]:
                     try:
@@ -4636,31 +4679,9 @@ def _statistical_plausibility_check(full_text: str) -> list[str]:
                             all_vals.append(v)
                     except ValueError:
                         continue
-        if len(all_vals) >= 20:
-            from collections import Counter
-
-            first_digits = [int(str(v)[0]) for v in all_vals if str(v)[0].isdigit()]
-            if len(first_digits) >= 20:
-                n = len(first_digits)
-                observed = Counter(first_digits)
-                benford_exp = {d: n * math.log10(1 + 1 / d) for d in range(1, 10)}
-                chi2 = sum(
-                    ((observed.get(d, 0) - benford_exp[d]) ** 2) / benford_exp[d]
-                    for d in range(1, 10)
-                )
-                # 卡方临界值 (df=8, α=0.001) ≈ 26.1；保守阈值 30
-                if chi2 > 30:
-                    top_dev = max(
-                        range(1, 10),
-                        key=lambda d: abs(observed.get(d, 0) / n - math.log10(1 + 1 / d)),
-                    )
-                    exp_pct = math.log10(1 + 1 / top_dev) * 100
-                    obs_pct = observed.get(top_dev, 0) / n * 100
-                    flags.append(
-                        f"[Benford偏离] 表格 {n} 个数值首位数字分布严重偏离 Benford 定律"
-                        f"（首位 {top_dev} 实际 {obs_pct:.0f}% vs 理论 {exp_pct:.0f}%，"
-                        f"χ²={chi2:.0f}），人类编造数据常趋向均匀分布，疑似捏造"
-                    )
+        f = _benford_flag(all_vals, "表格")
+        if f:
+            flags.append(f)
 
         # ── 信号 9：p 值异常聚集（p-hacking）──
         # 大量 p 值恰好挤在 0.04~0.049（勉强显著）而几乎没有 <0.01 的强显著，
@@ -4685,6 +4706,116 @@ def _statistical_plausibility_check(full_text: str) -> list[str]:
     except Exception:  # noqa: BLE001
         pass
     return flags
+
+
+def statistical_flags_from_series(
+    series: list[tuple[str, list[float]]],
+    *,
+    existing_flags: list[str] | None = None,
+    pairwise_offset: bool = True,
+) -> list[str]:
+    """对任意数值序列跑「等差/重复/恒定偏移/Benford」统计指纹（零 LLM）。
+
+    与 _statistical_plausibility_check（正文 markdown 表格路径）不同，本函数
+    直接吃已抽取的数值序列——图内曲线数据点（figure_curves.extract_curve_points）
+    或补充数据表（CSV/TSV）的数值列。series 形如 [(label, [v1, v2, ...]), ...]。
+
+    pairwise_offset：仅当序列行对齐（如 CSV 同表多列）才做两两恒定偏移比对；
+    图内曲线各 series 的 x 采样不对齐时传 False。
+    """
+    flags = list(existing_flags or [])
+    if not series:
+        return flags
+
+    for label, vals in series:
+        f = _arith_progression_flag(vals, label)
+        if f:
+            flags.append(f)
+        f = _repeated_value_flag(vals, label)
+        if f:
+            flags.append(f)
+
+    if pairwise_offset:
+        for i in range(len(series)):
+            la, a = series[i]
+            for j in range(i + 1, len(series)):
+                lb, b = series[j]
+                f = _constant_offset_flag(a, b, f"{la} vs {lb}")
+                if f:
+                    flags.append(f)
+
+    all_vals = [v for _, vals in series for v in vals]
+    f = _benford_flag(all_vals, "补充数据/图内曲线")
+    if f:
+        flags.append(f)
+    return flags
+
+
+def statistical_flags_from_curve_points(
+    curve_points: list[dict],
+    *,
+    existing_flags: list[str] | None = None,
+) -> list[str]:
+    """把 figure_curves.extract_curve_points 的输出转成统计指纹检测输入。
+
+    按 series（颜色）分组取 y 值；不同 series 的 x 采样不对齐，
+    故 pairwise_offset=False（只做等差/重复/Benford）。
+    """
+    grouped: dict[str, list[float]] = {}
+    for p in curve_points or []:
+        series_label = str(p.get("series", "?"))
+        y = p.get("y")
+        if isinstance(y, (int, float)):
+            grouped.setdefault(series_label, []).append(float(y))
+    series = [(f"图内曲线 {s}", vals) for s, vals in grouped.items()]
+    return statistical_flags_from_series(
+        series, existing_flags=existing_flags, pairwise_offset=False
+    )
+
+
+def statistical_flags_from_table_file(
+    path: str,
+    *,
+    existing_flags: list[str] | None = None,
+) -> list[str]:
+    """从 CSV/TSV 补充数据表读取数值列并跑统计指纹检测。
+
+    首行视为表头；逐列收集数值（行对齐，故恒定偏移列间比对开启）。
+    读取失败/无数值 fail-open 返回原 flags。
+    """
+    flags = list(existing_flags or [])
+    try:
+        with open(path, newline="", encoding="utf-8-sig") as fh:
+            sample = fh.read(2048)
+            fh.seek(0)
+            dialect = "excel-tab" if sample.count("\t") > sample.count(",") else "excel"
+            reader = csv.reader(fh, dialect)
+            rows = [row for row in reader if any(c.strip() for c in row)]
+    except (OSError, UnicodeDecodeError):
+        return flags
+    if not rows:
+        return flags
+
+    header = [c.strip() or f"col{i + 1}" for i, c in enumerate(rows[0])]
+    ncols = len(header)
+    columns: list[tuple[str, list[float]]] = []
+    for j in range(ncols):
+        vals: list[float] = []
+        for row in rows[1:]:
+            if j >= len(row):
+                continue
+            try:
+                vals.append(float(row[j].strip()))
+            except ValueError:
+                continue
+        if vals:
+            columns.append((header[j], vals))
+    if not columns:
+        return flags
+
+    basename = os.path.basename(path)
+    series = [(f"{basename} {name}", vals) for name, vals in columns]
+    return statistical_flags_from_series(series, existing_flags=flags, pairwise_offset=True)
 
 
 def _eval_params_snapshot() -> dict:

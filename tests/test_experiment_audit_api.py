@@ -165,9 +165,10 @@ class TestAuditEndpoints:
         resp = client.get("/api/experiment-audit/finding-types")
         assert resp.status_code == 200
         types = resp.json()
-        assert len(types) == 10
+        assert len(types) == 11
         assert {t["type"] for t in types} >= {
             "NUMERIC_MISMATCH",
             "DATA_LEAKAGE_CANDIDATE",
             "FIGURE_REUSE_CANDIDATE",
+            "SUSPICIOUS_DATA_PATTERN",
         }

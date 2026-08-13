@@ -22,6 +22,21 @@ logger = logging.getLogger(__name__)
 
 _TABLE_CAPTION_RE = re.compile(r"\bTable\s+(\d+)\s*[:.]?", re.IGNORECASE)
 
+
+def pymupdf_available() -> bool:
+    """PyMuPDF 是否可导入（表格提取的硬依赖）。
+
+    供编排层在运行前探测：缺失时显式记 skipped，避免把「提取不到表」
+    和「根本没装提取器」混淆。
+    """
+    try:
+        import fitz  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
 # P0-8：全文统计检验线索（任一命中即视为「已报告某种不确定度/显著性」）
 _SIGNIFICANCE_TEXT_RE = re.compile(
     r"standard deviation|standard error|confidence interval|error bar"
@@ -80,6 +95,8 @@ class ExtractedTable:
 def extract_tables_from_pdf(pdf_bytes: bytes) -> list[ExtractedTable]:
     """从 PDF 字节流提取全部表格（pymupdf find_tables）。
 
+    提取策略：优先 lines 策略（网格/实线表），单页 0 结果时回退
+    text 策略（三线表/booktabs 无线表格常见，lines 会漏）。
     失败 fail-open 返回空列表——表格不可得时数值类检测自动跳过，
     由编排层在 checks_run 标注，不中断审计。
     """
@@ -110,6 +127,12 @@ def extract_tables_from_pdf(pdf_bytes: bytes) -> list[ExtractedTable]:
                 for b in page.get_text("blocks")
                 if len(b) >= 5 and isinstance(b[4], str) and b[4].strip()
             ]
+            # 三线表/无线表格 lines 策略常漏：单页无结果时回退 text 策略
+            if not finder.tables and page.get_text().strip():
+                try:
+                    finder = page.find_tables(strategy="text")
+                except Exception:  # noqa: BLE001 - 回退失败不影响 lines 结果
+                    pass
             for t_idx, tab in enumerate(finder.tables):
                 try:
                     raw = tab.extract()

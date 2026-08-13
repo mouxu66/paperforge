@@ -19,7 +19,16 @@ from sqlalchemy.orm import Session
 
 from ..models import ExperimentAudit
 from ..models import Paper as PaperORM
-from . import ablation, baseline, figure_reuse, figures, metrics, reproducibility, tables
+from . import (
+    ablation,
+    baseline,
+    figure_reuse,
+    figures,
+    metrics,
+    reproducibility,
+    table_numbers,
+    tables,
+)
 from .schemas import assign_finding_ids, coerce_findings
 
 logger = logging.getLogger(__name__)
@@ -106,7 +115,15 @@ class AuditService:
 
             # ── 表格提取（P0-1/P0-8 的前置）──
             extracted: list[tables.ExtractedTable] = []
-            if pdf_bytes:
+            if pdf_bytes and not tables.pymupdf_available():
+                checks_run.append(
+                    {
+                        "check": "table_extraction",
+                        "status": "skipped",
+                        "reason": "PyMuPDF 未安装，表格提取不可用（数值类检测随之跳过）",
+                    }
+                )
+            elif pdf_bytes:
                 extracted = self._timed(
                     checks_run,
                     "table_extraction",
@@ -181,19 +198,53 @@ class AuditService:
 
             # ── P0-4 图表坐标轴审计（PaperFigure + OpenCV + VLM 兜底）──
             if enabled("P0-4_figure_axis"):
+                if not figures.opencv_available():
+                    checks_run.append(
+                        {
+                            "check": "P0-4_figure_axis.opencv",
+                            "status": "skipped",
+                            "reason": "OpenCV 未安装，断轴/子图尺度确定性检测跳过（axis_info 截断仍运行）",
+                        }
+                    )
                 findings += self._timed_list(
                     checks_run,
                     "P0-4_figure_axis",
                     lambda: figures.check_figure_axis_risks(db, paper_id),
                 )
 
+            # ── P0-11 图内数值造假指纹（VLM 转写数值 → 统计指纹）──
+            if enabled("P0-11_figure_numbers"):
+                if not table_numbers.vision_available():
+                    checks_run.append(
+                        {
+                            "check": "P0-11_figure_numbers",
+                            "status": "skipped",
+                            "reason": "vision_http_url 未配置，图内数值转写不可用",
+                        }
+                    )
+                else:
+                    findings += self._timed_list(
+                        checks_run,
+                        "P0-11_figure_numbers",
+                        lambda: table_numbers.check_figure_number_patterns(db, paper_id),
+                    )
+
             # ── P0-9 曲线/图片复用候选（pHash + SIFT/RANSAC）──
             if enabled("P0-9_figure_reuse"):
-                findings += self._timed_list(
-                    checks_run,
-                    "P0-9_figure_reuse",
-                    lambda: figure_reuse.detect_figure_reuse(db, paper_id),
-                )
+                if not figure_reuse.reuse_deps_available():
+                    checks_run.append(
+                        {
+                            "check": "P0-9_figure_reuse",
+                            "status": "skipped",
+                            "reason": "cv2/imagehash/Pillow 缺失，图片复用检测跳过",
+                        }
+                    )
+                else:
+                    findings += self._timed_list(
+                        checks_run,
+                        "P0-9_figure_reuse",
+                        lambda: figure_reuse.detect_figure_reuse(db, paper_id),
+                    )
 
             # ── P0-8 标准差/显著性缺失 ──
             if extracted and enabled("P0-8_significance_missing"):
