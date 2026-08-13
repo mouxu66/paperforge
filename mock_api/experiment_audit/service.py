@@ -64,7 +64,8 @@ def _per_page_texts(pdf_bytes: bytes) -> list[str]:
         return []
     try:
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    except Exception:  # noqa: BLE001 - fail-open
+    except Exception as e:  # noqa: BLE001 - fail-open
+        logger.warning("[audit] PDF 打开失败: %s", e)
         return []
     try:
         return [doc[i].get_text() for i in range(doc.page_count)]
@@ -275,8 +276,8 @@ class AuditService:
             # session 已被污染（PendingRollbackError），不回滚则失败态也写不进。
             try:
                 db.rollback()
-            except Exception:  # noqa: BLE001 - 连接彻底壤掉时放弃落库
-                pass
+            except Exception as e:  # noqa: BLE001 - 连接彻底坏掉时放弃落库
+                logger.warning("[audit] db.rollback() 失败 [%s]: %s", paper_id, e)
             try:
                 audit.status = "failed"
                 audit.error_message = str(e)[:2000]
@@ -288,8 +289,8 @@ class AuditService:
                 logger.exception("审计失败态落库也失败 [%s]", paper_id)
                 try:
                     db.rollback()
-                except Exception:  # noqa: BLE001
-                    pass
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("[audit] 二次 db.rollback() 也失败 [%s]: %s", paper_id, e)
             return audit
 
     # ── 内部工具 ────────────────────────────────────────────────

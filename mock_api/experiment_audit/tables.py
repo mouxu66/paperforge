@@ -131,12 +131,15 @@ def extract_tables_from_pdf(pdf_bytes: bytes) -> list[ExtractedTable]:
             if not finder.tables and page.get_text().strip():
                 try:
                     finder = page.find_tables(strategy="text")
-                except Exception:  # noqa: BLE001 - 回退失败不影响 lines 结果
-                    pass
+                except Exception as e:  # noqa: BLE001 - 回退失败不影响 lines 结果
+                    logger.debug("[audit] 表格 text 策略回退失败 (page %d): %s", page_idx + 1, e)
             for t_idx, tab in enumerate(finder.tables):
                 try:
                     raw = tab.extract()
-                except Exception:  # noqa: BLE001 - 单表失败跳过
+                except Exception as e:  # noqa: BLE001 - 单表失败跳过
+                    logger.debug(
+                        "[audit] 单表提取失败 (page %d, table %d): %s", page_idx + 1, t_idx, e
+                    )
                     continue
                 rows = [[(c or "").strip() for c in row] for row in raw if row]
                 if not rows:

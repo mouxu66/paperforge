@@ -7,9 +7,12 @@ FINDING_TYPES 是 10 种 Finding 的唯一事实源：severity 默认值、中�
 from __future__ import annotations
 
 import itertools
+import logging
 from typing import Any
 
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 # ── Finding 类型注册表（指南第 2 节，唯一事实源）──────────────────
 FINDING_TYPES: dict[str, dict[str, str]] = {
@@ -176,7 +179,8 @@ def coerce_findings(findings: Any) -> list[dict[str, Any]]:
     for f in findings:
         try:
             out.append(Finding.model_validate(f).model_dump())
-        except Exception:  # noqa: BLE001 - 读路径容错，任何脏数据都降级不抛
+        except Exception as e:  # noqa: BLE001 - 读路径容错，任何脏数据都降级不抛
+            logger.debug("[audit] Finding schema 校验失败，降级展示: %s", e)
             # 继承原始 finding_id（若有），保住 F-xxx 编号序列；否则报告里出现空编号行
             orig_id = f.get("finding_id") if isinstance(f, dict) else None
             out.append(

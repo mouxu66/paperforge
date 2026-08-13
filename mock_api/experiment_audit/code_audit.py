@@ -72,20 +72,49 @@ _PAPER_VALUE_RES: dict[str, re.Pattern] = {
 # 相对容差（数值比较）：差距超此比例视为不一致
 _REL_TOLERANCE = 0.05
 
+# 递归扫描时跳过的目录（避免 node_modules/.git 等大目录拖慢扫描）
+_SKIP_DIRS = frozenset(
+    {
+        ".git",
+        "node_modules",
+        "__pycache__",
+        ".venv",
+        "venv",
+        "env",
+        ".tox",
+        ".mypy_cache",
+        ".pytest_cache",
+        "dist",
+        "build",
+        ".eggs",
+    }
+)
+
+# 最大递归深度（防止超深目录结构导致极慢扫描）
+_MAX_DEPTH = 5
+
 
 def _find_config_files(repo_dir: str) -> list[Path]:
-    """递归收集仓库内常见 config 文件，限制深度防超长扫描。"""
+    """递归收集仓库内常见 config 文件，限制深度并跳过常见大目录。"""
     root = Path(repo_dir)
     if not root.is_dir():
         return []
     out: list[Path] = []
     try:
         for p in root.rglob("*"):
+            # 跳过常见大目录
+            if any(skip in p.parts for skip in _SKIP_DIRS):
+                continue
+            # 限制递归深度
+            depth = len(p.relative_to(root).parts)
+            if depth > _MAX_DEPTH:
+                continue
             if not p.is_file():
                 continue
             if p.name in CONFIG_GLOBS or p.suffix.lower() in (".yaml", ".yml"):
                 out.append(p)
-    except OSError:
+    except OSError as e:
+        logger.debug("[audit] 配置文件目录遍历失败: %s - %s", repo_dir, e)
         return []
     return out
 
@@ -109,7 +138,8 @@ def extract_config_values(repo_dir: str) -> dict[str, str]:
     for path in _find_config_files(repo_dir):
         try:
             lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
-        except OSError:
+        except OSError as e:
+            logger.debug("[audit] 配置文件读取失败: %s - %s", path, e)
             continue
         for line in lines:
             for key in _KEY_ALIASES:

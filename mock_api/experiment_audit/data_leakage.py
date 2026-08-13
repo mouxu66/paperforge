@@ -70,12 +70,14 @@ def check_data_leakage(
         for p in train_paths:
             try:
                 train_hashes.setdefault(_sha256_file(p), p)
-            except OSError:
+            except OSError as e:
+                logger.debug("[audit] SHA256 计算失败 (train): %s - %s", p, e)
                 continue
         for p in test_paths:
             try:
                 h = _sha256_file(p)
-            except OSError:
+            except OSError as e:
+                logger.debug("[audit] SHA256 计算失败 (test): %s - %s", p, e)
                 continue
             if h in train_hashes:
                 collisions.append((train_hashes[h], p))
@@ -117,7 +119,8 @@ def check_data_leakage(
             try:
                 with Image.open(p) as im:
                     out.append((imagehash.phash(im), p))
-            except Exception:  # noqa: BLE001 - 坏图跳过
+            except Exception as e:  # noqa: BLE001 - 坏图跳过
+                logger.debug("[audit] pHash 计算失败 (坏图跳过): %s - %s", p, e)
                 continue
         return out
 

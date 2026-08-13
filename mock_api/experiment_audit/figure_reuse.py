@@ -59,7 +59,8 @@ def _resolve_figure_path(fig: PaperFigure, paper_id: str) -> Path | None:
         try:
             if c.exists():
                 return c
-        except OSError:
+        except OSError as e:
+            logger.debug("[audit] 图片路径检查失败: %s - %s", c, e)
             continue
     return None
 
@@ -101,7 +102,8 @@ def detect_figure_reuse(
         try:
             with Image.open(p) as im:
                 hashed.append((f, p, imagehash.phash(im)))
-        except Exception:  # noqa: BLE001 - 坏图跳过
+        except Exception as e:  # noqa: BLE001 - 坏图跳过
+            logger.debug("[audit] pHash 计算失败 (坏图跳过): %s - %s", p, e)
             continue
     pairs: list[tuple[PaperFigure, Path, PaperFigure, Path, int]] = []
     for (f1, p1, h1), (f2, p2, h2) in combinations(hashed, 2):
@@ -126,7 +128,8 @@ def detect_figure_reuse(
             continue
         try:
             matches = bf.knnMatch(des1, des2, k=2)
-        except cv2.error:
+        except cv2.error as e:
+            logger.debug("[audit] SIFT knnMatch 失败: %s vs %s - %s", p1, p2, e)
             continue
         good = [
             pair[0]
@@ -189,7 +192,8 @@ def detect_cross_paper_reuse(
             try:
                 with Image.open(p) as im:
                     entries.append((str(paper_id), str(p), imagehash.phash(im)))
-            except Exception:  # noqa: BLE001 - 坏图跳过
+            except Exception as e:  # noqa: BLE001 - 坏图跳过
+                logger.debug("[audit] 跨论文 pHash 计算失败 (坏图跳过): %s - %s", p, e)
                 continue
 
     candidates: list[dict] = []
