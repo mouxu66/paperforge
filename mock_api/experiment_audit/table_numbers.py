@@ -201,6 +201,70 @@ def detect_digit_preference(values: list[float]) -> str | None:
     )
 
 
+def _decimal_places(v: float) -> int:
+    """返回浮点数的小数位数（字符串表示）。"""
+    s = f"{v:.10f}".rstrip("0")  # 去掉末尾 0 但保留至少 1 位
+    if "." not in s:
+        return 0
+    return len(s.split(".")[1])
+
+
+def detect_decimal_precision_consistency(
+    series: list[tuple[str, list[float]]],
+) -> str | None:
+    """同一组内多个值的小数精度完全一致 → 人造数据指纹。
+
+    真实测量值的精度会因仪器/读数/四舍五入而不同；独立重复实验的比值
+    精度不可能完全一致（如 3 次实验的 A/C 比值全部是 7 位小数）。
+    命中条件：≥3 个值全部精度相同，且精度 ≥5 位小数。
+    """
+    for label, vals in series:
+        if len(vals) < 3:
+            continue
+        precisions = [_decimal_places(v) for v in vals]
+        if len(set(precisions)) == 1 and precisions[0] >= 5:
+            return (
+                f"[精度一致] {label} 的 {len(vals)} 个数值全部为 {precisions[0]} 位小数，"
+                f"独立实验的精度不可能完全一致，疑似从同一数据源复制"
+            )
+    return None
+
+
+def detect_complementary_groups(
+    series: list[tuple[str, list[float]]],
+) -> list[str]:
+    """检测两组数值是否互补（和为常数）或数值高度相似。
+
+    真实实验中，两个不同处理组的数值之和不会恰好是常数（如 100）；
+    如果 WT 和 M 的每对数值之和都恰好是同一个数，说明数据是人为构造的。
+    """
+    flags: list[str] = []
+    for i in range(len(series)):
+        la, va = series[i]
+        for j in range(i + 1, len(series)):
+            lb, vb = series[j]
+            if len(va) != len(vb) or len(va) < 3:
+                continue
+            # 检查是否互补（和为常数，容忍 0.01 误差）
+            sums = [a + b for a, b in zip(va, vb)]
+            mean_sum = sum(sums) / len(sums)
+            if all(abs(s - mean_sum) < 0.01 for s in sums):
+                flags.append(
+                    f"[互补] {la} 与 {lb} 的 {len(va)} 对数值之和全部为 {mean_sum:.2f}，"
+                    f"不同组数值不可能完全互补，疑似人为构造"
+                )
+            # 检查数值高度相似（相对差异 <5%）
+            if len(va) == len(vb):
+                diffs = [abs(a - b) / max(abs(a), abs(b), 1e-10) for a, b in zip(va, vb)]
+                mean_diff = sum(diffs) / len(diffs)
+                if mean_diff < 0.05 and len(va) >= 3:
+                    flags.append(
+                        f"[高度相似] {la} 与 {lb} 的 {len(va)} 对数值平均相对差异仅 {mean_diff * 100:.1f}%，"
+                        f"不同处理组的数值不可能如此接近"
+                    )
+    return flags
+
+
 def detect_cross_figure_duplicates(
     fig_data: list[tuple[str, list[tuple[str, list[float]]]]],
 ) -> list[dict]:
@@ -458,6 +522,13 @@ def check_figure_number_patterns(
         pref = detect_digit_preference(all_vals)
         if pref:
             flags.append(pref)
+        # 精度一致性（比值小数位数完全相同）
+        prec = detect_decimal_precision_consistency(series)
+        if prec:
+            flags.append(prec)
+        # 对照组互补/高度相似
+        comp = detect_complementary_groups(series)
+        flags += comp
         if not flags:
             continue
 

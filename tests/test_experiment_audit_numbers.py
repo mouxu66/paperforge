@@ -363,3 +363,67 @@ class TestDetectCrossFigureDuplicates:
         flags = table_numbers.detect_cross_figure_duplicates(fig_data)
         assert len(flags) == 2
         assert all(f["shared_count"] == 2 for f in flags)
+
+
+class TestDecimalPrecisionConsistency:
+    def test_all_same_precision_flagged(self):
+        """3 个值全部 7 位小数 → 命中。"""
+        series = [("A/C", [0.7694589, 0.7462303, 0.8444331])]
+        flag = table_numbers.detect_decimal_precision_consistency(series)
+        assert flag is not None
+        assert "精度一致" in flag
+        assert "7 位小数" in flag
+
+    def test_different_precision_not_flagged(self):
+        """精度不同 → 不命中。"""
+        series = [("A/D", [1.59203, 1.47695, 1.5254])]  # 5, 5, 4 位小数
+        assert table_numbers.detect_decimal_precision_consistency(series) is None
+
+    def test_too_few_values_not_flagged(self):
+        """只有 2 个值 → 不命中。"""
+        series = [("A/B", [1.14118, 1.14661])]
+        assert table_numbers.detect_decimal_precision_consistency(series) is None
+
+    def test_low_precision_not_flagged(self):
+        """精度 <5 位 → 不命中（避免误报）。"""
+        series = [("X", [1.12, 2.34, 3.56])]  # 全部 2 位小数
+        assert table_numbers.detect_decimal_precision_consistency(series) is None
+
+
+class TestComplementaryGroups:
+    def test_sums_to_constant_flagged(self):
+        """两组数值之和全部为 100 → 命中。"""
+        series = [
+            ("WT", [72.83951, 78.75, 76.2176]),
+            ("M", [27.16049, 21.25, 23.7824]),
+        ]
+        flags = table_numbers.detect_complementary_groups(series)
+        assert len(flags) >= 1
+        assert any("互补" in f for f in flags)
+
+    def test_highly_similar_flagged(self):
+        """两组数值高度相似（相对差异 <5%）→ 命中。"""
+        series = [
+            ("WT", [50.0, 60.0, 70.0]),
+            ("M", [50.1, 59.9, 70.2]),  # 差异 <1%
+        ]
+        flags = table_numbers.detect_complementary_groups(series)
+        assert any("高度相似" in f for f in flags)
+
+    def test_different_groups_not_flagged(self):
+        """两组数值差异大 → 不命中。"""
+        series = [
+            ("WT", [50.0, 60.0, 70.0]),
+            ("M", [10.0, 20.0, 30.0]),
+        ]
+        flags = table_numbers.detect_complementary_groups(series)
+        assert flags == []
+
+    def test_too_few_pairs_not_flagged(self):
+        """只有 2 对 → 不命中（需要 ≥3）。"""
+        series = [
+            ("WT", [50.0, 60.0]),
+            ("M", [50.0, 60.0]),
+        ]
+        flags = table_numbers.detect_complementary_groups(series)
+        assert flags == []
