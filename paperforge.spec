@@ -1,10 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller 打包配置：生成 PaperForge 教师版 .exe。
+"""PyInstaller 打包配置：生成 PaperForge 桌面版 .exe。
 
 打包命令：
     pyinstaller paperforge.spec --noconfirm
 
-产物：dist/PaperForge_Teacher/PaperForge_Teacher.exe（单文件模式可直接分发）
+产物：dist/PaperForge/PaperForge.exe（单文件模式可直接分发）
 
 注意：
 - datas 中前端静态资源指向 web/dist（npm run build 后生成）
@@ -60,13 +60,13 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='PaperForge_Teacher',
+    name='PaperForge',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
     runtime_tmpdir=None,
-    console=True,  # 教师版保留控制台窗口便于查看日志
+    console=True,  # 桌面版保留控制台窗口便于查看日志
     disable_windowed_traceback=False,
     target_arch=None,
     codesign_identity=None,

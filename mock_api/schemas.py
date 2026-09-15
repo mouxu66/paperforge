@@ -297,7 +297,7 @@ class ZipUploadResponse(BaseModel):
     papers: list[UploadedPaper] = Field(default_factory=list, description="已入库的论文列表")
 
 
-# ==================== 打包教师版 ====================
+# ==================== 打包桌面版 ====================
 
 
 class PackageResponse(BaseModel):

@@ -967,8 +967,8 @@
     "packDone": "Packaging complete! Downloading...",
     "packFailed": "Packaging failed",
     "dockerCheck": "Please check if Docker is running: {{detail}}",
-    "packTooltip": "One-click package Teacher Edition .exe (requires Docker)",
-    "packButton": "Export Teacher Edition",
+    "packTooltip": "One-click package Desktop Edition .exe (requires Docker)",
+    "packButton": "Export Desktop Edition",
     "packing": "Packaging (approx. 1-2 minutes)..."
   },
   "outlinePreview": {

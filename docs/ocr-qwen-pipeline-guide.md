@@ -23,7 +23,7 @@
 - Redis：项目刻意不引入（export_tasks.py:12 明确「进度存内存 dict，不引入 Redis」）；
   幂等性(X-Request-ID)与结果缓存用内存 dict / 现有 TTL 缓存即可，别为单机本地工具加 Redis 依赖。
 - WebSocket：已有 SSE，不要另起一套。
-- Docker/HTTPS/Nginx/AES 加密存储：PaperForge 是本地桌面工具（含教师版 PaperForge_Teacher.exe 分发），
+- Docker/HTTPS/Nginx/AES 加密存储：PaperForge 是本地桌面工具（含桌面版 PaperForge.exe 分发），
   按需取舍，非必做；若要对外发布再考虑。
 
 🔧 需纠偏/对齐：

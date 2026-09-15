@@ -59,7 +59,7 @@
 
 ```
 create_app()
-  ├─ admin_router         (package — 教师版打包)
+  ├─ admin_router         (package — 桌面版打包)
   ├─ api_keys_router      (admin — API Key 管理)
   ├─ health_router        (PR1)
   ├─ papers_router        (论文 CRUD + PDF 代理 — 直挂)

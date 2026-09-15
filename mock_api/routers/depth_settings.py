@@ -4,7 +4,7 @@
 覆盖值保存在 runtime_settings 的进程级字典中，对后续 DEPTH 审稿立即生效。
 
 安全说明（2026-08-03 修复）：原实现挂在 /api/admin/depth 下并依赖
-require_admin_auth（仅显式开发态可用），导致生产模式（教师版 exe）下
+require_admin_auth（仅显式开发态可用），导致生产模式（桌面版 exe）下
 「设置 → DEPTH 参数调优」整块功能 403 不可用。本路由为用户可见的常规设置
 （与 compute/model 等设置同级、仅 loopback + 可选 token 保护），因此改为
 非 admin 前缀 /api/depth。进程重启后覆盖值丢失（runtime 语义，符合预期）。

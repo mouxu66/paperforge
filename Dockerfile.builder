@@ -1,4 +1,4 @@
-# PaperForge 教师版打包构建镜像
+# PaperForge 桌面版打包构建镜像
 # 基础镜像：python:3.11-slim，内置 Node.js 20 + PyInstaller
 # 用途：开发者执行 docker build -f Dockerfile.builder -t paperforge-builder . 后，
 #       后端 /api/admin/package 接口会调用本镜像执行 pyinstaller 打包

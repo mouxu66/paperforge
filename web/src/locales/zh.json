@@ -967,8 +967,8 @@
     "packDone": "打包完成！开始下载...",
     "packFailed": "打包失败",
     "dockerCheck": "请检查 Docker 是否运行：{{detail}}",
-    "packTooltip": "一键打包教师版 .exe（需 Docker）",
-    "packButton": "导出教师版",
+    "packTooltip": "一键打包桌面版 .exe（需 Docker）",
+    "packButton": "导出桌面版",
     "packing": "正在打包（约 1-2 分钟）..."
   },
   "outlinePreview": {

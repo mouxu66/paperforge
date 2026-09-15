@@ -1,4 +1,4 @@
-"""教师版打包模块（PyInstaller 一键生成 .exe）。
+"""桌面版打包模块（PyInstaller 一键生成 .exe）。
 
 通过 APIRouter 挂载到主应用，提供：
 - POST /api/admin/package   触发打包（前端构建 + PyInstaller）
@@ -103,8 +103,8 @@ def _restore_env_after_dist(env_file: Path, env_backup: Path) -> None:
 
 
 @router.post("/api/admin/package", response_model=PackageResponse)
-def package_teacher_version() -> PackageResponse:
-    """触发一键打包教师版（PyInstaller 生成 .exe）。
+def package_desktop_version() -> PackageResponse:
+    """触发一键打包桌面版（PyInstaller 生成 .exe）。
 
     安全校验：由路由级 Depends(require_admin_auth) 保证（loopback + token + 显式开发态）。
     """
@@ -112,7 +112,7 @@ def package_teacher_version() -> PackageResponse:
     web_dir = project_root / "web"
     spec_file = project_root / "paperforge.spec"
     dist_dir = project_root / "dist"
-    out_exe = dist_dir / "PaperForge_Teacher.exe"
+    out_exe = dist_dir / "PaperForge.exe"
 
     # D1/B8 修复：分发构建时使用安全的 .env.dist
     env_file, _env_dist, env_backup = _swap_env_for_dist(project_root)
@@ -196,7 +196,7 @@ def package_teacher_version() -> PackageResponse:
                 message=f"打包完成但未找到输出文件: {out_exe}。请检查 PyInstaller 日志。",
             )
 
-        download_url = "/api/admin/download/PaperForge_Teacher.exe"
+        download_url = "/api/admin/download/PaperForge.exe"
         return PackageResponse(
             success=True,
             message="打包完成！\n" + "\n".join(logs),

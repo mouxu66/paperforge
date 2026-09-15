@@ -94,7 +94,7 @@ class TestDepthSettings:
         """回归：生产模式（ENV=production）下设置端点必须可用。
 
         原实现挂在 /api/admin 前缀 + require_admin_auth，生产模式一律 403，
-        导致「设置 → DEPTH 参数调优」在教师版 exe 中不可用。本测试确保修复有效。
+        导致「设置 → DEPTH 参数调优」在桌面版 exe 中不可用。本测试确保修复有效。
         """
         monkeypatch.setenv("ENV", "production")
         reset_settings()

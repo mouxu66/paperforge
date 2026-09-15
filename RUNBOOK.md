@@ -9,7 +9,7 @@
 | 模式 | 命令 | 说明 |
 |------|------|------|
 | 开发模式 | `python -m mock_api.main` | 后端 8770 端口，前端 `cd web && npm run dev` |
-| 教师版 | 双击 `PaperForge_Teacher.exe` | 自动启动后端 + 打开浏览器 |
+| 桌面版 | 双击 `PaperForge.exe` | 自动启动后端 + 打开浏览器 |
 | Windows 一键 | 双击 `start_paperforge.bat` | 自动启动后端 + 前端，打开浏览器 |
 | Uvicorn | `uvicorn mock_api.main:app --reload --port 8770` | 开发热重载 |
 
@@ -28,7 +28,7 @@
 ## 2. 数据库
 
 ### 数据库位置
-- **教师版（frozen）**：`%APPDATA%/PaperForge/paperforge_mock.db`（Windows）
+- **桌面版（frozen）**：`%APPDATA%/PaperForge/paperforge_mock.db`（Windows）
 - **开发者模式**：`mock_api/paperforge_mock.db`
 
 ### 备份
@@ -54,7 +54,7 @@
 
 ## 4. 常见排障
 
-### 4.1 启动后数据库为空（教师版）
+### 4.1 启动后数据库为空（桌面版）
 **原因**：旧版 exe 未含 DB 持久化修复，数据写在临时 `_MEIPASS` 目录。
 **解决**：使用 2026-07-07 后重新打包的 exe，数据库会持久化到 `%APPDATA%/PaperForge/`。
 

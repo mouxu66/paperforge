@@ -9,7 +9,7 @@ import http from "@/api/client";
  * 开发者工具栏。
  *
  * 仅在开发模式（import.meta.env.DEV）下渲染。
- * 包含“导出教师版”按钮，点击后触发后端 PyInstaller 打包，
+ * 包含“导出桌面版”按钮，点击后触发后端 PyInstaller 打包，
  * 成功后自动下载 .exe 文件。
  */
 export default function DevTools() {

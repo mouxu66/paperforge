@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PaperForge 教师版打包镜像一键构建脚本（Mac/Linux）
+# PaperForge 桌面版打包镜像一键构建脚本（Mac/Linux）
 # 用法：./build-builder.sh
 set -e
 
@@ -30,5 +30,5 @@ docker build -f Dockerfile.builder -t paperforge-builder .
 echo
 echo "[2/2] 构建完成！"
 echo
-echo "后续可在网页右上角点击「导出教师版」按钮，自动生成 .exe。"
+echo "后续可在网页右上角点击「导出桌面版」按钮，自动生成 .exe。"
 echo

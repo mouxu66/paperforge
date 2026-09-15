@@ -1,23 +1,79 @@
 # PaperForge · 基于本地论文库的学术写作助手
 
-PaperForge 是一个本地化的学术写作桌面工具，覆盖从文献检索到论文初稿导出的完整链路。它整合了论文管理、智能问答和写作工作台，所有引用都来自本地真实论文，绝不编造参考文献。
+PaperForge 是一个本地化的学术写作桌面工具，覆盖**从文献检索到初稿导出**的完整链路：把论文收进本地库，用混合检索和 RAG 问答读懂它们，在写作台里写章节并插入真实引用，最后导出带参考文献的 Word / LaTeX / Markdown。
+
+**它和普通 AI 写作工具最大的区别**：所有引用只能来自你自己库里的论文，库里没有的文献一律不给编，导出时还会自动附上 AI 使用声明。
 
 **核心承诺**：零幻觉 · 隐私优先 · 开箱即用
 
 ---
 
-## ✨ 主要功能
+## ✨ 功能总览
 
-- **论文库管理**：支持 arXiv 搜索/导入、PDF 拖拽上传（自动解析元数据）、Zotero 导入
-- **混合检索**：FTS5 关键词 + 向量语义 + RRF 融合排序
-- **智能问答**：基于 RAG 的问答系统，回答全部来自真实论文
-- **写作工作台**：项目管理、大纲编辑、章节写作、AI 续写/改写/结构建议、引用推荐
-- **多格式导出**：Markdown / Word / LaTeX，自动生成参考文献列表
-- **被引情感分析**：基于引用上下文 + LLM，识别其他文献对目标论文的支持 / 批评 / 背景引用
-- **关系图可视化**：中心论文 + 被引情感边 / 语义相似度 fallback，直观展示学术影响力网络
-- **模型管理**：支持 OpenAI 兼容 API（本地 Ollama / 智谱 / DeepSeek 等），运行时切换
-- **多语言**：中 / 英文界面切换
-- **完全离线**：可选本地模型（llama.cpp / Ollama），数据不上传
+### 1. 建库：把论文收进来
+
+| 能力 | 说明 |
+| :--- | :--- |
+| arXiv 搜索导入 | 按关键词/ID 批量拉取，自动补全标题、作者、摘要、年份 |
+| PDF 拖拽上传 | 自动解析元数据并分块建索引，支持批量 |
+| Zotero 导入 | 直接同步已有文献库 |
+| 元数据补全 | 可接 Semantic Scholar 补全缺失字段 |
+| 查重与去重 | 标题/DOI 相似度识别重复条目 |
+
+### 2. 检索与阅读：三种方式找得到
+
+- **混合检索**：SQLite FTS5 关键词 + 向量语义 + RRF 融合排序，关键词命中和语义相关都不漏
+- **PDF 标注**：在内置阅读器里高亮、批注，标注可回链到笔记
+- **论文笔记**：为每篇论文记笔记，写作时可检索引用
+
+### 3. 问答：答案只来自你的库
+
+基于 RAG 的问答，回答必须给出处。**问到库里没有的文献时，系统会明确说"库中没有"，而不是编一段像模像样的参考文献。**
+
+### 4. 深度评审（DEPTH v4.2）
+
+这是 PaperForge 最有分量的功能。不是让模型"打个分"，而是把它拆成一条多节点流水线：
+
+```
+Q0 ∥ Q1 → QE → Q234 ∥ QF → Q5a → Q5b → Q5c
+```
+
+- **Q0/Q1 并行**：方法与实验两条线各自独立评估
+- **QE 证据聚合**：把分散在各节点的证据收拢
+- **Q234/QF 并行**：创新性、严谨性、清晰度与"致命缺陷"检查同时跑
+- **Q5a/b/c 收敛**：交叉校验、稳分（弹性权重 + 自适应 delta ±0.25）、输出终评
+
+输出是**分项分数 + 每一分对应的依据**，不是一句"这篇不错"。评分经过金标集校准（415 篇抽样盲评，Cohen's κ 从 0.189 提到 0.375），详见 `docs/adr/014-eval-rigorization.md`。
+
+### 5. 写作工作台
+
+- 项目管理 → 大纲编辑 → 逐章写作
+- AI 续写 / 改写 / 结构建议
+- **引用推荐与插入**：根据当前段落语义从库中推荐可引文献，一键插入
+- 章节版本快照，可回溯
+
+### 6. 导出
+
+| 格式 | 说明 |
+| :--- | :--- |
+| Markdown | 纯文本，含引用列表 |
+| Word (.docx) | python-docx 生成，保留格式 |
+| LaTeX | `.tex` + `.bib` 引用文件 |
+| PDF | 浏览器原生 `window.print()`，无需额外依赖 |
+
+导出时自动：生成参考文献列表、**注入「AI 使用声明」章节**、校验引用是否真实存在于库中。
+
+### 7. 学术关系分析
+
+- **被引情感分析**：读引用上下文，判断其他文献对目标论文是支持 / 批评 / 背景引用
+- **关系图可视化**：中心论文 + 情感边 + 语义相似度 fallback，看清一篇论文在领域里的位置
+
+### 8. 模型与部署
+
+- 接入任何 **OpenAI 兼容 API**（本地 llama.cpp / Ollama、智谱、DeepSeek 等），运行时可切换
+- 推荐本地模型 **Ornith-1.5-9B**（Q4_K_M，llama.cpp 推理服务）
+- 可**完全离线**运行，论文与写作数据不离开本机
+- 中 / 英文界面切换
 
 ---
 
@@ -25,20 +81,23 @@ PaperForge 是一个本地化的学术写作桌面工具，覆盖从文献检索
 
 | 层级 | 技术栈 |
 | :--- | :--- |
-| 前端 | React 18 + TypeScript + Ant Design 5 + Zustand + Vite |
+| 前端 | React 19 + TypeScript + Ant Design 6 + Zustand + Vite |
 | 后端 | FastAPI + SQLAlchemy + SQLite |
-| AI 网关 | OpenAI 兼容协议，支持多 Provider 运行时切换 |
-| 本地模型 | llama.cpp / Ollama（推荐 Ornstein-V2） |
-| 向量引擎 | Fastembed (ONNX Runtime) + BAAI/bge-small-en-v1.5 |
+| AI 网关 | OpenAI 兼容协议，多 Provider 运行时切换 |
+| 本地推理 | llama.cpp（Ornith-1.5-9B Q4_K_M） |
+| 向量引擎 | Fastembed (ONNX Runtime) + BAAI/bge-small-en-v1.5（384 维） |
+| 视觉理解 | 云端 GLM-4V-Flash（图表提取 / 图文一致性） |
 
 ---
 
-## 📊 项目数据
+## 📊 项目规模（实测）
 
-- 后端路由：≥135 条（`main.py` 仅 73 行装配入口，业务路由已拆为 16 个独立路由器，见 `mock_api/routers/`）
-- 论文数据：410 篇（24 篇种子 + 386 篇从 arXiv 拉取，实际数量随使用增长）
-- 单元测试：405 个（393 通过，12 跳过）
-- 数据库表：16 张
+- 论文：**950 篇**，其中 386 篇已建向量索引
+- DEPTH v4 评审记录：**854 条**
+- 数据库表：**32 张**
+- 后端：19 个路由模块，`main.py` 仅 73 行装配入口
+- 前端：19 个页面 / 104 个组件
+- 测试：**1720 个**（pytest 收集数）
 
 ---
 
@@ -47,104 +106,84 @@ PaperForge 是一个本地化的学术写作桌面工具，覆盖从文献检索
 ### 前置条件
 - Python 3.10+
 - Node.js 18+
-- （可选）本地 Ollama 或兼容 OpenAI 协议的 LLM API Key
+- （可选）本地 llama.cpp / Ollama，或任意 OpenAI 兼容 API
 
-### 方式一：教师版（推荐）
-1. 下载 `PaperForge_Teacher.exe`（见 Releases）
+### 方式一：桌面版 .exe（最省事）
+
+1. 从 Releases 下载打包好的 `.exe`
 2. 双击运行，浏览器自动打开
-3. 如需 AI 功能，在「模型管理」页面配置本地 Ollama 或云端 API
-4. 数据持久化位置：`%APPDATA%/PaperForge/paperforge_mock.db`（教师版），
-   `mock_api/paperforge_mock.db`（开发者模式）
+3. 在「模型管理」里配置本地或云端模型即可用 AI 功能
+4. 数据保存在 `%APPDATA%/PaperForge/paperforge_mock.db`
 
 ### 方式二：一键启动（Windows）
 
-Windows 用户可直接双击项目根目录的 `start_paperforge.bat`：
+双击项目根目录的 `start_paperforge.bat`，脚本会自动探测端口、启动后端、按需构建前端并打开浏览器。
 
 ```bash
 start_paperforge.bat
 ```
 
-该脚本会自动探测端口、启动后端、按需构建前端并打开浏览器。
-
-### 方式三：Docker Compose（一键启动推理服务）
-
-如果你需要本地 LLM 推理服务，可以使用 Docker Compose 一键启动：
+### 方式三：开发者模式
 
 ```bash
-# 1. 将模型文件放入 ./models/ 目录
-# 2. 启动服务
-docker compose up -d
-# 3. 启动 PaperForge
-python -m mock_api.main
-```
-
-详见 [docker-compose.yml](docker-compose.yml)。
-
-### 方式四：开发者模式
-```bash
-# 克隆项目
-git clone https://github.com/你的用户名/paperforge.git
+git clone https://github.com/mouxu66/paperforge.git
 cd paperforge
 
-# 安装后端依赖
+# 后端
 pip install -r mock_api/requirements.txt
+cp .env.example .env          # 可选，默认即为安全的生产模式
+python -m mock_api.main       # 监听 8770
 
-# 配置环境变量（可选，默认生产模式安全）
-cp .env.example .env
-# 开发模式（启用 admin 打包端点）：在 .env 中设 ENV=development
-
-# 启动后端（推荐入口）
-python -m mock_api.main
-# 或：uvicorn mock_api.main:app --reload --port 8770
-
-# 启动前端（另开终端）
-cd web
-npm install
-npm run dev
+# 前端（另开终端）
+cd web && npm install && npm run dev
 ```
 
-访问 http://localhost:5173 即可使用。
+访问 http://localhost:5173 使用；只用后端时访问 http://127.0.0.1:8770 也能加载已构建的前端。
 
-### 构建与打包（教师版 .exe）
-
-PaperForge 支持通过 PyInstaller 打包为单文件 `.exe` 分发：
+### 方式四：Docker Compose（带本地推理服务）
 
 ```bash
-# 1. 前置条件：ENV=development（admin 端点需显式开发态）
-export ENV=development
-
-# 2. 构建前端静态资源
-cd web && npm install && npm run build && cd ..
-
-# 3. PyInstaller 打包（本地）
-pyinstaller paperforge.spec --noconfirm
-# 或通过 Docker（更可重现）：
-#   docker build -f Dockerfile.builder -t paperforge-builder .
-#   docker run --rm -v "$(pwd):/app" paperforge-builder pyinstaller paperforge.spec --noconfirm
-
-# 4. 产物在 dist/PaperForge_Teacher.exe
-#    启动后数据库持久化到 %APPDATA%/PaperForge/paperforge_mock.db
+# 1) 把模型放进 ./models/
+# 2) 启动推理服务
+docker compose up -d
+# 3) 启动 PaperForge
+python -m mock_api.main
 ```
 
-也可通过 API 触发打包（需开发态）：`POST /api/admin/package`（需本机访问 + `ENV=development`）
+---
 
-### 导出格式
+## 📦 打包分发
 
-PaperForge 支持以下导出格式：
-- **Markdown**：纯文本 Markdown，含引用列表
-- **Word (.docx)**：python-docx 生成，保留格式
-- **LaTeX**：生成 `.tex` 文件 + `.bib` 引用文件
-- **PDF**：通过前端 `window.print()` 导出（浏览器原生，无需额外依赖）
+用 PyInstaller 打成单文件 `.exe`：
+
+```bash
+export ENV=development                                  # admin 端点需显式开发态
+cd web && npm install && npm run build && cd ..          # 先构建前端静态资源
+pyinstaller paperforge.spec --noconfirm                  # 产物在 dist/
+```
+
+也可走 Docker（更可重现）：
+
+```bash
+docker build -f Dockerfile.builder -t paperforge-builder .
+docker run --rm -v "$(pwd):/app" paperforge-builder pyinstaller paperforge.spec --noconfirm
+```
+
+或调用 API 触发（需开发态 + 本机访问）：`POST /api/admin/package`
+
+---
 
 ## 🖼️ 图表提取
 
-PaperForge DEPTH v4.2 支持图表提取和图文一致性分析。详见 [docs/figure_extraction.md](docs/figure_extraction.md)。
+DEPTH v4.2 支持从 PDF 提取图表并做图文一致性分析，详见 [docs/figure_extraction.md](docs/figure_extraction.md)。
 
 | 方案 | 特点 | 推荐场景 |
-|------|------|----------|
+| :--- | :--- | :--- |
 | 内置 Vector Extractor | 零配置，PDF 矢量图直接渲染 | 快速上手 |
-| Qwen3-VL-4B | 多模态视觉理解，OCR + 语义摘要 | 需要深层理解 |
-| PicAxe | 轻量 Python 库，开箱即用 | 批量处理 |
+| 云端视觉模型（GLM-4V-Flash） | 多模态理解，OCR + 语义摘要 | 需要深层理解 |
+| PicAxe | 轻量 Python 库 | 批量处理 |
+
+---
 
 ## 📁 项目结构
 
@@ -152,31 +191,29 @@ PaperForge DEPTH v4.2 支持图表提取和图文一致性分析。详见 [docs/
 paperforge/
 ├── mock_api/           # 后端核心
 │   ├── llm/            # AI 网关（多 Provider）
-│   ├── crud/           # 数据访问层（papers/notes/search 等）
-│   ├── routers/        # 按业务拆分的路由（当前 papers.py）
-│   ├── services/       # 业务服务层（PDF 代理等）
-│   ├── admin/          # 管理功能（打包等）
-│   ├── app.py          # FastAPI 应用工厂（中间件/生命周期）
-│   ├── main.py         # 路由装配主入口（薄入口 ~73 行，路由见 routers/）
-│   ├── models.py       # 数据库模型（16 张表）
-│   └── settings.py     # 集中式配置（ADR-003）
+│   ├── crud/           # 数据访问层
+│   ├── routers/        # 19 个按业务拆分的路由模块
+│   ├── services/       # 业务服务层
+│   ├── admin/          # 打包等管理功能
+│   ├── app.py          # FastAPI 应用工厂
+│   ├── main.py         # 路由装配入口（~73 行）
+│   ├── models.py       # 数据库模型（32 张表）
+│   └── settings.py     # 集中式配置
 ├── web/                # 前端 React 应用
-│   ├── src/
-│   │   ├── api/        # API 客户端
-│   │   ├── components/ # UI 组件
-│   │   ├── pages/      # 页面
-│   │   └── store/      # Zustand 状态
-│   └── package.json
-├── scripts/            # 工具脚本（测试、数据拉取）
-├── tests/              # 单元测试（405 个）
-├── .github/workflows/  # CI/CD 流水线
+│   └── src/            # api / components / pages / store
+├── scripts/            # 工具脚本（数据拉取、校准、基准）
+├── tests/              # 单元测试
+├── docs/adr/           # 架构决策记录（含评分严谨化 ADR-014）
+├── .github/workflows/  # CI：ruff 硬门禁 + pytest 覆盖率
 ├── RUNBOOK.md          # 运维手册与排障指南
 └── README.md
 ```
 
+---
+
 ## 🤝 贡献与反馈
 
-欢迎提交 Issue 和 Pull Request。如果你在使用中遇到问题，请在 Issue 中详细描述。
+欢迎提交 Issue 和 Pull Request。
 
 ## 📄 许可证
 

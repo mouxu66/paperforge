@@ -1,7 +1,7 @@
 """PaperForge 论文推荐重排层（推荐视角）· 实施骨架
 
 独立于 DEPTH 审稿流水线，与召回层（FTS5 + 向量 + RRF）解耦。
-真实业务目的：给学生推荐可引用文献、辅助写作（教师版场景）。
+真实业务目的：给学生推荐可引用文献、辅助写作（桌面版场景）。
 
 设计规格见 deliverables/recommend_ranking_spec.html。
 本文件为 P0/P1 主体逻辑的实施骨架，**不修改 depth_eval_v4.py / depth_prompts_v4.py**。

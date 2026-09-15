@@ -3,7 +3,7 @@
 设计要点：
 1. 向量模型：BAAI/bge-small-en-v1.5（384 维，纯 CPU 推理，无 PyTorch 依赖）。
    通过 fastembed 库加载（基于 ONNX Runtime），首次使用时自动下载到
-   ~/.cache/fastembed/。教师版打包不含模型文件，首次联网下载；
+   ~/.cache/fastembed/。桌面版打包不含模型文件，首次联网下载；
    未联网或下载失败时自动降级为纯 FTS5 关键词检索。
 2. 懒加载：fastembed 作为可选依赖，未安装时 get_embedder() 返回 None，
    调用方自动降级为 FTS5 检索。首次加载失败后标记不可用，避免重复尝试。

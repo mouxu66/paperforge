@@ -1,5 +1,5 @@
 @echo off
-REM PaperForge 教师版打包镜像一键构建脚本（Windows）
+REM PaperForge 桌面版打包镜像一键构建脚本（Windows）
 REM 双击运行一次即可，后续 /api/admin/package 会自动调用本镜像
 echo ========================================
 echo   PaperForge Builder 镜像构建
@@ -42,6 +42,6 @@ if errorlevel 1 (
 echo.
 echo [2/2] 构建完成！
 echo.
-echo 后续可在网页右上角点击「导出教师版」按钮，自动生成 .exe。
+echo 后续可在网页右上角点击「导出桌面版」按钮，自动生成 .exe。
 echo.
 pause

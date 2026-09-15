@@ -87,7 +87,7 @@ __all__ = [
 # 是否启用模型切换功能（前端通过 /api/model/current 的 enabled 字段感知）
 MODEL_SWITCH_ENABLED: bool = _settings.model_switch_enabled
 
-# 教师版打包接口的安全开关：仅显式开发环境允许调用。
+# 桌面版打包接口的安全开关：仅显式开发环境允许调用。
 # 🛡️ P0-1 修复：翻转默认为 production（False），避免漏配 ENV 即全网开放 admin 高危端点。
 IS_DEV_ENV: bool = _settings.is_dev_env
 
