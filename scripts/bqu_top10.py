@@ -3,7 +3,7 @@
 import csv
 from pathlib import Path
 
-DEL = Path(r'C:/Users/<user>\WorkBuddy\2026-06-13-21-30-08\paperforge\deliverables')
+DEL = Path(r'C:\Users\<user>\WorkBuddy\2026-06-13-21-30-08\paperforge\deliverables')
 with open(DEL/'wb_43_baseline.csv', newline='', encoding='utf-8-sig') as f:
     rows = list(csv.DictReader(f))
 

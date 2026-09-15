@@ -3,7 +3,7 @@
 import csv, statistics, json
 from pathlib import Path
 
-DEL = Path(r'C:/Users/<user>\WorkBuddy\2026-06-13-21-30-08\paperforge\deliverables')
+DEL = Path(r'C:\Users\<user>\WorkBuddy\2026-06-13-21-30-08\paperforge\deliverables')
 
 # ---------- 1. 加载各源文件的 total ----------
 def load_total_csv(path, sid_col='sid', total_col='total'):

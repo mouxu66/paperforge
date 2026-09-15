@@ -3,7 +3,7 @@
 import csv, statistics, shutil, json
 from pathlib import Path
 
-DEL = Path(r'C:/Users/<user>\WorkBuddy\2026-06-13-21-30-08\paperforge\deliverables')
+DEL = Path(r'C:\Users\<user>\WorkBuddy\2026-06-13-21-30-08\paperforge\deliverables')
 SRC = {
     'bufy_v2': (DEL/'bufy_scores_43.csv', 'sid', 'bufy_average'),
     'bufy_v1': (DEL/'buffy_full_41.csv', 'sid', 'total'),

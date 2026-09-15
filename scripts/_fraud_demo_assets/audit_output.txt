@@ -13,17 +13,17 @@ warning: The `fitz` API is deprecated and will be removed in future. Use `import
 [audit] 图内数值转写失败: HTTPConnectionPool(host='127.0.0.1', port=8082): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=8082): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。"))
 检测项 P0-11_figure_numbers 失败: 视觉模型转写全部失败：3 张图均未得到转写结果（视觉服务不可达或无响应），P0-11 图内数值指纹未实际运行
 Traceback (most recent call last):
-  File "C:/Users/<user>\WorkBuddy\2026-06-13-21-30-08\paperforge\mock_api\experiment_audit\service.py", line 558, in _timed_list
+  File "C:\Users\<user>\WorkBuddy\2026-06-13-21-30-08\paperforge\mock_api\experiment_audit\service.py", line 558, in _timed_list
     result = fn() or []
              ^^^^
-  File "C:/Users/<user>\WorkBuddy\2026-06-13-21-30-08\paperforge\mock_api\experiment_audit\service.py", line 232, in <lambda>
+  File "C:\Users\<user>\WorkBuddy\2026-06-13-21-30-08\paperforge\mock_api\experiment_audit\service.py", line 232, in <lambda>
     lambda: table_numbers.check_figure_number_patterns(db, paper_id),
             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:/Users/<user>\WorkBuddy\2026-06-13-21-30-08\paperforge\mock_api\experiment_audit\table_numbers.py", line 562, in check_figure_number_patterns
+  File "C:\Users\<user>\WorkBuddy\2026-06-13-21-30-08\paperforge\mock_api\experiment_audit\table_numbers.py", line 562, in check_figure_number_patterns
     raise FigureTranscriptionUnavailable(
 mock_api.experiment_audit.table_numbers.FigureTranscriptionUnavailable: 视觉模型转写全部失败：3 张图均未得到转写结果（视觉服务不可达或无响应），P0-11 图内数值指纹未实际运行
-PDF 生成: C:/Users/<user>\WorkBuddy\2026-06-13-21-30-08\paperforge\scripts\_fraud_demo_assets\fraud_paper.pdf
-[1] PDF 已上传到 C:/Users/<user>\WorkBuddy\2026-06-13-21-30-08\paperforge\uploads\fraud_demo_001.pdf（711912 bytes，全文 1894 字符）
+PDF 生成: C:\Users\<user>\WorkBuddy\2026-06-13-21-30-08\paperforge\scripts\_fraud_demo_assets\fraud_paper.pdf
+[1] PDF 已上传到 C:\Users\<user>\WorkBuddy\2026-06-13-21-30-08\paperforge\uploads\fraud_demo_001.pdf（711912 bytes，全文 1894 字符）
 [2] 抽取 figure: 3 张
 [3] 已入库 figure: 3 张
 Consider using the pymupdf_layout package for a greatly improved page layout analysis.

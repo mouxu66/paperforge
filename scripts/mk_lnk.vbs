@@ -10,8 +10,8 @@ End If
 
 ' 2. Create shortcut
 Set shortcut = ws.CreateShortcut(desktop & "\PaperForge.lnk")
-shortcut.TargetPath = "C:/Users/<user>\WorkBuddy\2026-06-13-21-30-08\paperforge\start_paperforge.bat"
-shortcut.WorkingDirectory = "C:/Users/<user>\WorkBuddy\2026-06-13-21-30-08\paperforge"
+shortcut.TargetPath = "C:\Users\<user>\WorkBuddy\2026-06-13-21-30-08\paperforge\start_paperforge.bat"
+shortcut.WorkingDirectory = "C:\Users\<user>\WorkBuddy\2026-06-13-21-30-08\paperforge"
 shortcut.Description = "PaperForge - Academic Writing Assistant"
 shortcut.Save()
 
