@@ -110,6 +110,9 @@ class PanelResult:
     agreement_status: str = "ok"  # ok | low | error
     note: str = ""
     error: str | None = None
+    cloud_cross_check: dict | None = (
+        None  # ADR-014 P8：云端交叉复核记录（仅记录，不覆盖本地维度分）
+    )
 
     def to_dict(self) -> dict:
         return {
@@ -121,6 +124,7 @@ class PanelResult:
             "agreement_status": self.agreement_status,
             "note": self.note,
             "error": self.error,
+            "cloud_cross_check": self.cloud_cross_check,
         }
 
 
@@ -217,6 +221,23 @@ def run_panel(
             if res.agreement_status == "low"
             else "一致性可接受"
         )
+        # ── ADR-014 P8：云端交叉复核（本地主 + 云端副，默认开，fail-open）──
+        # 仅对聚合均分做一次独立云端评审并记录分歧；面板是多维一致性工具，
+        # 不覆盖本地维度分（否则会扭曲 Krippendorff α），覆盖语义由调用方（如 DEPTH）承担。
+        try:
+            from .second_opinion import run_second_opinion
+
+            _agg = None
+            _all = [v for vs in scores.values() for v in vs if isinstance(v, (int, float))]
+            if _all:
+                _agg = round(sum(_all) / len(_all), 4)
+            _cc = run_second_opinion(
+                text[:6000], primary_score=_agg, primary_verdict=None, kind="paper", db=None
+            )
+            if _cc.get("enabled"):
+                res.cloud_cross_check = _cc
+        except Exception as _cc_err:  # noqa: BLE001 - 云端复核异常不影响面板主结果
+            logger.warning("run_panel 云端交叉复核失败（非致命）: %s", _cc_err)
         return res
     except Exception as e:  # noqa: BLE001 - 面板异常隔离
         logger.warning("run_panel 异常降级: %s", e)

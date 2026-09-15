@@ -672,11 +672,13 @@ class TestDepthReviewerFullPipeline:
         assert result.reproducibility_score == 0.88
         assert result.evidence_checks["Q4"] is True
 
-        # --- Q5a ---
+        # --- Q5a（落库为平衡者降级后的 severity：fatal 被辩护#1成功反驳 → minor）---
         assert len(result.critique_points) == 2
-        assert result.critique_points[0].severity == "fatal"
+        assert result.critique_points[0].severity == "minor"
         assert result.critique_points[1].severity == "minor"
         assert result.evidence_checks["Q5a"] is True
+        # 降级轨迹必须留痕（落库 severity 与裁决一致，且可回溯 fatal→minor）
+        assert "fatal→minor" in result.balancer_log
 
         # --- Q5b ---
         assert len(result.defense_points) == 2
@@ -736,6 +738,31 @@ class TestDepthReviewerFullPipeline:
         assert result.evidence_checks["Q5a"] is True
         # 应该有重试日志
         assert any("重试" in log for log in result.node_logs)
+
+    def test_statistical_redline_rejects_fabricated_data(self):
+        """≥2 条确定性造假指纹（std过低 + p值不可能）→ 直接 reject。
+
+        即便 LLM/分数对齐本应判 accept，硬红线也应升级为 reject，
+        不受 chair/辩护降级稀释。
+        """
+        redline_text = MOCK_FULL_TEXT + (
+            "\n\nWe evaluate on the benchmark with std=±0.2% over 5 seeds. "
+            "All comparisons show p<0.001 with 5 seeds.\n"
+        )
+        mock_llm = MockLLM()
+        reviewer = DepthReviewer(llm_func=mock_llm)
+        result = reviewer.review(
+            paper_id=MOCK_PAPER_ID,
+            title=MOCK_TITLE,
+            full_text=redline_text,
+            abstract=MOCK_ABSTRACT,
+        )
+        assert result.final_verdict == "reject", (
+            f"expected reject, got {result.final_verdict}: {result.override_reason}"
+        )
+        assert "[统计红线]" in result.override_reason
+        assert any(f.startswith("[std过低]") for f in result.statistical_flags)
+        assert any(f.startswith("[p值不可能]") for f in result.statistical_flags)
 
 
 class TestFastMode:
@@ -878,13 +905,14 @@ class TestHardVerdict:
         assert "0.35" in final.override_reason or "0.350" in final.override_reason
 
     def test_no_defects_medium_score(self):
-        """无缺陷，中等分数 0.75，LLM 判 accept → semantic_override 触发 accept。
+        """无缺陷，中等分数 0.75 → minor_revision（minor 档不再被 accept 吞掉）。
 
-        v4.2: verdict_accept_threshold=0.6。0.75 ≥ 0.6 + LLM accept → semantic_override accept。
+        修复：accept 下界 clamp 到 0.8 后，0.75 落入 [0.7, 0.8) minor 档，
+        而不是像历史 acc=0.6 那样被直接判 accept。
         """
         q5c = self.make_q5c(0.75, "accept")
         final = self.reviewer._apply_hard_verdict(q5c, [])
-        assert final.final_verdict == "accept"
+        assert final.final_verdict == "minor_revision"
 
 
 # ===========================================================================
@@ -945,7 +973,9 @@ def test_full_pipeline_with_logs():
     assert result.influence_score == 0.85
     assert result.reproducibility_score == 0.88
     assert len(result.critique_points) == 2
-    assert result.critique_points[0].severity == "fatal"
+    # 落库为平衡者降级后的 severity：fatal 被辩护成功反驳 → minor（修复落库不一致）
+    assert result.critique_points[0].severity == "minor"
+    assert "fatal→minor" in result.balancer_log
     assert len(result.defense_points) == 2
     # 消融上调 + 平衡者降级 fatal→minor → 0 fatal, 高分 → accept
     assert result.final_verdict == "accept"

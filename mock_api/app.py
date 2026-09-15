@@ -109,13 +109,17 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if path in _PUBLIC_PATHS:
             return await call_next(request)
 
-        from .auth import authenticate_and_authorize
+        from .auth import _is_loopback, authenticate_and_authorize
 
         # 2. 统一鉴权（含 GET/HEAD/OPTIONS）
-        #    EventSource 无法自定义请求头，仅对 SSE/stream 路径允许通过 query param ?token= 传递 token
+        #    EventSource 无法自定义请求头，仅对 SSE/stream 路径允许通过 query
+        #    param ?token= 传递 token；query token 会进访问日志/代理日志/历史，
+        #    因此只对 loopback 来源放行，远端调用必须走请求头。
         token = request.headers.get("X-PaperForge-Token")
         if token is None and path.endswith("/stream"):
-            token = request.query_params.get("token")
+            client = request.client
+            if client is not None and _is_loopback(client.host):
+                token = request.query_params.get("token")
         try:
             auth_result = authenticate_and_authorize(request, token)
             request.state.auth_result = auth_result
@@ -476,6 +480,7 @@ def create_app() -> FastAPI:
     from .routers.depth import router as depth_router
     from .routers.depth_settings import router as depth_settings_router
     from .routers.experiment_audit import router as experiment_audit_router
+    from .routers.settings import router as settings_router
     from .routers.figures import router as figures_admin_router
     from .routers.models import router as models_router
     from .routers.papers import router as papers_router
@@ -498,6 +503,7 @@ def create_app() -> FastAPI:
     app.include_router(zotero_router)
     app.include_router(depth_router)
     app.include_router(depth_settings_router)
+    app.include_router(settings_router)
     app.include_router(reports_router)
     app.include_router(reflection_router)
     app.include_router(writing_router)

@@ -83,11 +83,41 @@ export function parseDefaultLocale(cslXml: string): string {
   }
 }
 
+/** 转义 HTML 特殊字符（与 utils/export.ts 的 escapeHtml 一致，另补引号）。 */
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/** 递归转义 CslItem 中的全部字符串字段（title/authors/容器名等不可信元数据）。 */
+function escapeCslItem(value: unknown): unknown {
+  if (typeof value === "string") return escapeHtml(value);
+  if (Array.isArray(value)) return value.map(escapeCslItem);
+  if (value !== null && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) {
+      out[k] = escapeCslItem(v);
+    }
+    return out;
+  }
+  return value;
+}
+
 /** Build a citeproc-js sys object for the given items and locale cache */
 function buildSys(items: CslItem[], localeCache: Map<string, string>) {
-  const itemMap = new Map(items.map((item) => [item.id, item]));
+  // 论文元数据（title/authors 等）来自用户上传 / arXiv 自动导入，不可信。
+  // citeproc-js 不做 HTML 转义，变量值会原样进入渲染结果，再被
+  // dangerouslySetInnerHTML 注入 → 存储型 XSS。在喂给引擎前递归转义全部
+  // 字符串字段；citeproc 自身的排版标签（<span>/<i> 等）不受影响。
+  const escapedMap = new Map<string, CslItem>(
+    items.map((item) => [item.id, escapeCslItem(item) as CslItem]),
+  );
   return {
-    retrieveItem: (id: string) => itemMap.get(id) ?? { id, title: "" },
+    retrieveItem: (id: string) => escapedMap.get(id) ?? { id, title: "" },
     retrieveLocale: (lang: string) => localeCache.get(lang) ?? null,
   };
 }

@@ -2,7 +2,7 @@
 
 与 smoke_online_full_11.py 同构，唯一差异：样本 = human_benchmark_full.csv 全部 41 篇。
 输出 6 维加权总分（coverage 0.35 / ii 0.35 / ad 0.15 / ua 0.05 / es 0.05 / fid 0.05），
-验证改动后（Ornstein 只喂标题+摘要 + 真语义嵌入）线上真实总分的区分度与 MAE。
+验证改动后（Ornstein-V2 只喂标题+摘要 + 真语义嵌入）线上真实总分的区分度与 MAE。
 
 用法：
   python scripts/smoke_online_full_41.py [--limit N]

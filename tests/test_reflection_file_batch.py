@@ -59,6 +59,7 @@ def _make_docx_minimal(name: str = "report.docx") -> tuple:
     return (name, buf.getvalue(), "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
 
+@pytest.mark.real_llm
 def test_batch_multi_txt_success():
     """3 valid .txt files → all 3 accepted with paperId + taskId."""
     files = [

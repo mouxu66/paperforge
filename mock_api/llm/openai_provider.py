@@ -83,7 +83,7 @@ def _env_positive_float(name: str, default: float) -> float:
 
 
 _LOCAL_TIMEOUT_CAP = _env_positive_float(
-    "PAPERFORGE_LOCAL_TIMEOUT_CAP", 100.0
+    "PAPERFORGE_LOCAL_TIMEOUT_CAP", 280.0
 )  # 用户配置的本机超时上限（秒），可用环境变量调大以支持超长生成
 _WATCHDOG_SAFETY_MARGIN = 10.0  # 需留给 JSON 解析 / 信号量交接的余量（秒）
 _timeout_convergence_warned = False
@@ -92,10 +92,10 @@ _timeout_convergence_warned = False
 def _watchdog_timeout() -> float:
     """读取并归一化 watchdog 超时，保证本地请求有可用的严格上界。"""
     try:
-        value = float(os.getenv("PAPERFORGE_LLM_WATCHDOG_TIMEOUT", "120.0"))
+        value = float(os.getenv("PAPERFORGE_LLM_WATCHDOG_TIMEOUT", "300.0"))
     except (TypeError, ValueError):
-        return 120.0
-    return value if value > 0.001 else 120.0
+        return 300.0
+    return value if value > 0.001 else 300.0
 
 
 def resolve_local_timeout(requested: float) -> float:
@@ -124,6 +124,48 @@ def resolve_local_timeout(requested: float) -> float:
     return max(min(effective, max(_watchdog_timeout() - 0.001, 0.001)), 0.001)
 
 
+def _validate_llm_runtime() -> None:
+    """DAG / 服务启动时的 LLM 运行时自检（详见 docs/ornith_reasoning_handoff.md §3）。
+
+    两条独立检查：
+
+    ① 硬不变式（防孤儿级联，不依赖 reasoning 状态）：
+        cap + margin < watchdog。默认 (100 + 10 = 110 < 120) 通过。
+        违反则本机调用可能在 watchdog 前未释放信号量 → 孤儿连接级联 → 批量评测锁死。
+        （注意：这是唯一一条安全防线，默认生产配置必须天然满足，否则新进程启动即自杀。）
+
+    ② 功能性检查（仅 reasoning=on 时生效，锁「慢节点存活」而非安全）：
+        effective = min(requested, cap, watchdog - margin) 必须 ≥ 200s，
+        否则慢节点（思考 CoT ~45–125s）必死在 requests 层。
+        这是 reasoning on 场景下的「三件套一起抬」约束——requested 来自
+        PAPERFORGE_LLM_REQUEST_TIMEOUT（默认 120），只抬 WATCHDOG+CAP 仍被它卡死。
+    """
+    watchdog = _watchdog_timeout()
+    cap = _LOCAL_TIMEOUT_CAP  # 与 resolve_local_timeout 同源，单一事实来源
+    margin = _WATCHDOG_SAFETY_MARGIN
+
+    # ① 硬不变式：安全不依赖 reasoning 状态，默认配置天然满足
+    if cap + margin >= watchdog:
+        raise RuntimeError(
+            f"LLM 超时配置破坏不变式：CAP({cap}) + MARGIN({margin}) = {cap + margin} "
+            f">= WATCHDOG({watchdog})。本机调用可能先于 watchdog 释放信号量，导致孤儿级联。"
+            f"请调大 PAPERFORGE_LLM_WATCHDOG_TIMEOUT 或调小 PAPERFORGE_LOCAL_TIMEOUT_CAP。"
+        )
+
+    # requested 来自 factory 默认 PAPERFORGE_LLM_REQUEST_TIMEOUT（默认 120）
+    requested = float(os.getenv("PAPERFORGE_LLM_REQUEST_TIMEOUT", "120"))
+    effective = min(requested, cap, watchdog - margin)
+
+    # ② 功能性检查：只在 reasoning on 时锁「慢节点存活」
+    reasoning_on = os.getenv("PAPERFORGE_LLAMA_SERVER_REASONING", "off") == "on"
+    if reasoning_on and effective < 200.0:
+        raise RuntimeError(
+            f"reasoning=on 但 effective={effective:.0f}s < 200s，慢节点（思考 CoT）必死在 "
+            f"requests 层。需同时调大三件套：PAPERFORGE_LLM_REQUEST_TIMEOUT / "
+            f"PAPERFORGE_LOCAL_TIMEOUT_CAP / PAPERFORGE_LLM_WATCHDOG_TIMEOUT。"
+        )
+
+
 def _is_local_url(base_url: str) -> bool:
     """判断 base_url 是否指向本机（需要施加并发限制）。"""
     try:
@@ -138,10 +180,102 @@ def _is_local_url(base_url: str) -> bool:
         return False
 
 
-# 推理模型思维标签剥离（--reasoning-format none 时 <think> 出现在 content 中，可能无闭合标签）
-# 仅移除 XML 标签本身，保留标签间文本供 safe_json_parse 提取 JSON
-_THINK_TAG_OPEN_RE = re.compile(r"<think>\s*", re.IGNORECASE)
-_THINK_TAG_CLOSE_RE = re.compile(r"</think>\s*", re.IGNORECASE)
+# 推理模型思维标签：兼容裸标签与 hash 变体（如 <think:6124c78e> / </think:6124c78e>）。
+# llama.cpp 在 reasoning 模式下可能注入 4–16 位十六进制 hash（Qwen 系 thinking token），
+# 解析层必须一并剥离，否则 hash 变体开关 token 泄漏进 content 会污染结构化抽取（即故障 B）。
+def _strip_think_open(text: str) -> str:
+    """去掉字符串中所有 <think...> 开标签（含 hash 变体），保留标签间文本。"""
+    out: list[str] = []
+    i = 0
+    n = len(text)
+    while i < n:
+        j = text.find("<think", i)
+        if j < 0:
+            out.append(text[i:])
+            break
+        out.append(text[i:j])
+        k = text.find(">", j)
+        if k < 0:
+            break
+        i = k + 1
+    return "".join(out)
+
+
+# Qwen3.5 思考模式开标签形如 <think:hash>，正常闭合为 </think>；但模型偶尔把
+# hash 残片写进答案首部（如 `</think>:abcd1234 答案`），须清掉。
+_HASH_REMNANT_RE = re.compile(r"^:[0-9a-fA-F]{4,16}\b\s*")
+
+
+def _strip_leading_hash_remnant(answer: str) -> str:
+    """去掉答案首部可能残留的 `:hash` 思考模式残片（见 _HASH_REMNANT_RE）。"""
+    return _HASH_REMNANT_RE.sub("", answer)
+
+
+def _split_think(text: str) -> tuple[str, str]:
+    """以最后一个 </think>（含 hash 变体）为界切分，返回 (思考文本, 最终答案文本)。
+
+    - 有闭合标签：标签前（去 <think> 开标签）为思考，标签后为答案；
+    - 无闭合但有开标签：整段视为思考，答案为空；
+    - 两者皆无：思考为空，整段视为答案。
+
+    闭合标签支持 `</think>` 与 `</think:hash>` 两种形态；答案首部若残留 `:hash`
+    思考模式残片（Qwen3.5 偶发）一并清理。
+    """
+    if not text:
+        return "", ""
+    idx = text.rfind("</think")
+    if idx < 0:
+        if "<think" in text:
+            return text.strip(), ""
+        return "", text.strip()
+    gt = text.find(">", idx)
+    if gt < 0:
+        gt = len(text) - 1
+    think = _strip_think_open(text[:idx]).strip()
+    answer = _strip_leading_hash_remnant(text[gt + 1:].strip())
+    return think, answer
+
+
+def _find_last_json_object(src: str) -> str | None:
+    """从文本中抓最后一个完整可解析的 JSON 对象（模型常在思维链里草拟最终 JSON）。"""
+    if not src:
+        return None
+    decoder = json.JSONDecoder()
+    best: tuple[int, str] | None = None
+    for m in re.finditer(r"\{", src):
+        try:
+            _obj, end = decoder.raw_decode(src, m.start())
+        except Exception:
+            continue
+        if best is None or end > best[0]:
+            best = (end, src[m.start():end])
+    return best[1] if best else None
+
+
+def _extract_final_answer(content: str, reasoning_content: str) -> tuple[str, str]:
+    """对 S1–S4 四形态免疫，返回 (最终答案, 审计用思考文本)。
+
+    S1 分离成功: content=答案, reasoning_content=CoT
+    S2 分离失败: content=<think>CoT</think>答案
+    S3 误路由:   content=<think>纯CoT（无闭合）, 答案缺失
+    S4 grammar 冲突: content=""，答案在 reasoning_content
+    """
+    c, r = (content or "").strip(), (reasoning_content or "").strip()
+    c_think, c_ans = _split_think(c)
+    if c_ans:
+        # 审计用思考 = content 里的 CoT，否则 reasoning_content
+        return c_ans, (c_think or r)
+    # S3/S4：content 为空或纯思考 → 从 reasoning_content 打捞
+    _r_think, r_ans = _split_think(r)
+    if r_ans:
+        # 审计用思考 = reasoning_content 里的 CoT，否则 content 里的 CoT
+        return r_ans, (_r_think or c_think)
+    # 最后兜底：两路文本里抓最后一个可解析 JSON 对象
+    for src in (r, c):
+        obj = _find_last_json_object(src)
+        if obj:
+            return obj, (r or c_think)
+    return "", (r or c_think)
 
 
 class OpenAIProvider(BaseLLMProvider):
@@ -166,6 +300,31 @@ class OpenAIProvider(BaseLLMProvider):
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
+
+    def build_payload(
+        self,
+        messages: list[ChatMessage],
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        **kwargs,
+    ) -> dict:
+        """本地 llama-server 默认关闭思维链（enable_thinking=false）。
+
+        ⚠️ 2026-08-22 实测背景：Ornith 等推理模型的 chat 模板默认开思维链，
+        而调用方（analysis/depth_panel/routers.chat/papers 等）大多不传任何
+        thinking 控制 → 每次调用偷偷生成 1-3k 字隐藏 CoT，单次调用耗时虚增
+        5-10 倍。本默认只对【本地】base_url 注入，且显式传了
+        chat_template_kwargs 的调用方（如 depth_eval_v4 思考模式）完全不受影响。
+        PAPERFORGE_LOCAL_DEFAULT_THINKING=1 可关掉此默认（恢复模板自身行为）。
+        """
+        payload = super().build_payload(messages, temperature, max_tokens, **kwargs)
+        if (
+            _is_local_url(self.base_url)
+            and "chat_template_kwargs" not in payload
+            and os.environ.get("PAPERFORGE_LOCAL_DEFAULT_THINKING", "") != "1"
+        ):
+            payload["chat_template_kwargs"] = {"enable_thinking": False}
+        return payload
 
     def _post(self, payload: dict) -> requests.Response:
         """POST 到 chat/completions，并按 base_url 是否本机施加全局并发限制。
@@ -207,12 +366,19 @@ class OpenAIProvider(BaseLLMProvider):
         resp.raise_for_status()
         data = resp.json()
         msg = data["choices"][0]["message"]
-        content = msg.get("content") or msg.get("reasoning_content") or ""
-        # 剥离推理模型的 <think> / </think> XML 标签（--reasoning-format none 时出现）
-        content = _THINK_TAG_CLOSE_RE.sub("", _THINK_TAG_OPEN_RE.sub("", content)).strip()
+        msg = data["choices"][0]["message"]
+        # 统一解析管线：对 S1–S4 四形态免疫，永远以提取出的答案为准；
+        # reasoning_content（无论是否含 hash 变体）仅作审计/日志用，不进解析。
+        content = msg.get("content")
+        reasoning_content = msg.get("reasoning_content") or ""
+        answer, think = _extract_final_answer(content, reasoning_content)
         usage = data.get("usage", {})
         return ChatResult(
-            content=content, model=self.model, provider=self.provider_name, usage=usage
+            content=answer,
+            model=self.model,
+            provider=self.provider_name,
+            usage=usage,
+            reasoning=think,  # ADR-014 审计字段：仅日志用，解析永远以 answer 为准
         )
 
     def chat_stream(

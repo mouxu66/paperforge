@@ -252,10 +252,12 @@ def run_depth_review_sync(
             "evidence_checks": result_dict.get("evidence_checks"),
             "node_score_stds": result_dict.get("node_score_stds", {}),
             # v4.2 QF 图文一致性（无新增列，随 final_verdict JSON 持久化）
+            "has_figures": result_dict.get("has_figures", False),
             "figure_consistency_score": result_dict.get("figure_consistency_score"),
             "figure_flags": result_dict.get("figure_flags", []),
             "figure_evidence_count": result_dict.get("figure_evidence_count", 0),
             "figure_coverage": result_dict.get("figure_coverage", "disabled"),
+            "w_fig": result_dict.get("w_fig", 0.0),
             "qf_reasoning": result_dict.get("qf_reasoning", ""),
         }
         # ── ADR-014 可复核性字段：评分如何产生、把握多大、可复现参数 ──
@@ -324,6 +326,13 @@ def run_depth_review_sync(
             )
             if _so.get("enabled"):
                 record.final_verdict["cross_check"] = _so
+                # 云端纠正本地：分歧超阈值且 override 开启时，以云端结果覆盖本地分数/verdict。
+                # original_* 已存档于 cross_check，供审计追溯；纯 fail-open，覆盖失败也不影响主评审。
+                if _so.get("corrected"):
+                    if _so.get("resolved_score") is not None:
+                        record.final_verdict["calibrated_score"] = _so["resolved_score"]
+                    if _so.get("resolved_verdict"):
+                        record.final_verdict["final_verdict"] = _so["resolved_verdict"]
         except Exception as _so_err:  # noqa: BLE001 - 第二评审异常不影响主评审
             logger.warning("DEPTH v4.2 双模型复核失败（非致命）: %s", _so_err)
 
@@ -402,6 +411,44 @@ def run_depth_review_async(paper_id: str) -> None:
 # ===========================================================================
 
 
+def _try_cloud_rescue_reflection(paper, db) -> dict | None:
+    """本地主评审解析失败/空返回时，尝试用云端第二评审直接评分兜底。
+
+    返回构造好的 reflection_result dict（含 rescued_by_cloud 标记）；
+    无可用云端或云端也失败则返回 None（fail-open，交回调用方原失败逻辑）。
+
+    ⚠️ 自身不抛异常：云端不可用属预期降级路径，不应让 rescue 变成新的失败源。
+    """
+    try:
+        from .second_opinion import is_enabled, run_second_opinion
+
+        if not is_enabled():
+            return None
+        _r = run_second_opinion(
+            paper.full_text or "",
+            primary_score=None,
+            primary_verdict=None,
+            kind="report",
+            db=db,  # 复用调用方 session（同上）
+        )
+        if not _r.get("rescued"):
+            return None
+        return {
+            "verdict": _r.get("resolved_verdict") or _r.get("verdict"),
+            "scores": {},
+            "average": _r.get("resolved_score") or _r.get("score"),
+            "analysis_v2": {"average": _r.get("resolved_score") or _r.get("score")},
+            "local_parse_failed": True,
+            "rescued_by_cloud": True,
+            "llm_failed": False,
+            "cross_check": _r,
+            "rescue_note": ("本地模型输出无法解析/空返回，已由云端第二评审直接兜底评分。"),
+        }
+    except Exception as e:  # noqa: BLE001 - 兜底自身异常仅 fail-open
+        logger.warning("reflection 云端兜底异常（非致命）: %s", e)
+        return None
+
+
 def run_depth_reflection_sync(paper_id: str) -> str:
     """同步执行 DEPTH reflection 报告评审，结果写入 depth_reviews_v4.reflection_result 列。
 
@@ -466,6 +513,23 @@ def run_depth_reflection_sync(paper_id: str) -> str:
         llm_empty = getattr(result, "llm_empty", 0)
         llm_empty_failed = isinstance(llm_empty, (bool, int, float)) and bool(llm_empty)
         if parse_failed or llm_empty_failed:
+            # ── 云端兜底：本地主评审解析失败/空返回时，先尝试云端第二评审直接评分 ──
+            # 兜底成功则该报告以 completed 收尾（标记 rescued_by_cloud），不再误判失败；
+            # 兜底不可用（云端未配/也失败/开关关）则回退原失败逻辑（fail-open）。
+            _rescued = _try_cloud_rescue_reflection(paper, db)
+            if _rescued is not None:
+                record.reflection_result = _rescued
+                record.status = "completed"
+                record.completed_at = datetime.now()
+                db.commit()
+                logger.info(
+                    "DEPTH reflection 云端兜底成功: paper=%s, verdict=%s, avg=%.3f",
+                    paper_id,
+                    _rescued.get("verdict"),
+                    _rescued.get("average") or 0,
+                )
+                return record_id
+            # 兜底未成功 → 原失败处理（持久化最小诊断 + 抛错统一终态）
             # 即使评审失败也持久化最小诊断结果。否则诚信报告/列表只能看到
             # reflection_result=NULL，无法区分「系统故障」与「报告证据不足」，
             # 还可能把失败记录误显示成普通 needs_evidence。
@@ -622,6 +686,15 @@ def run_depth_reflection_sync(paper_id: str) -> str:
                 )
                 if _so.get("enabled"):
                     rr["cross_check"] = _so
+                    # 云端纠正本地：覆盖报告 verdict 与均分（平均分为 primary_score 来源）。
+                    if _so.get("corrected"):
+                        if _so.get("resolved_verdict"):
+                            rr["verdict"] = _so["resolved_verdict"]
+                        if _so.get("resolved_score") is not None:
+                            if isinstance(rr.get("analysis_v2"), dict):
+                                rr["analysis_v2"]["average"] = _so["resolved_score"]
+                            else:
+                                rr["average"] = _so["resolved_score"]
             except Exception as _so_err:  # noqa: BLE001 - 第二评审异常不影响主评审
                 logger.warning("reflection 双模型复核失败（非致命）: %s", _so_err)
             if rr is not record.reflection_result:

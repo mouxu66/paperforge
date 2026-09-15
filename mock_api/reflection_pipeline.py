@@ -86,7 +86,7 @@ def _get_paper_text_emb(db, paper_id: str | None):
 def _get_paper_title_abstract(db, paper_id: str | None) -> str:
     """取绑定原论文的「标题 + 摘要」参考文本（供 LLM 判断理解准确性）。
 
-    2026-08-12 实测：把论文全文/长补充喂给本机 9B 模型（Ornstein）会压扁打分
+    2026-08-12 实测：把论文全文/长补充喂给本机 9B 模型（Ornstein-V2）会压扁打分
     区分度（11 篇跨度 0.112 vs 标题+摘要 0.425，MAE 也更差）——模型把「论文质量」
     和「报告质量」混为一谈。改为只注入标题+摘要：保留 UA 校验锚点（MAE 0.046），
     又不触发论文美化效应。忠实度（fidelity/coverage）仍由嵌入层用全文独立保证。
@@ -388,12 +388,41 @@ def analyze_reflection_file(
     # 开发自检开关：PAPERFORGE_BENCH_NO_LLM=1 时跳过 LLM，4 维用结构启发式（快速跑 fidelity）
     reviewer_verdict: str | None = None  # 评审器最终 verdict（含 crossval 加分），供 verdict 基线
 
-    # ADR-014 P9 停用（2026-08-12 实测）：原论文全文补充（正文原文块 + 关键句，
-    # ≈5000 字）与全文预览一样会压扁本机 9B 模型的打分区分度——模型拿到大段论文
-    # 正文后把「论文质量」混为「报告质量」，11 篇同批实验：全文+补充跨度 0.112、
-    # 标题+摘要跨度 0.425、无论文 0.300，且标题+摘要的 UA 校验 MAE 仅 0.046。
-    # 忠实度（fidelity/coverage）由嵌入层用全文独立保证，不受影响。
+    # 报告条件化证据检索（2026-08-22）：P9 全文补充已停用（压扁 9B 区分度，
+    # 见 2026-08-12 实测注释），改为按报告内容检索原论文章段——断言句优先取证
+    # （疑似编造处当面对质），经 paper_supplement 通道注入【原论文参考内容】。
+    # 默认关闭（PAPERFORGE_REFLECTION_EVIDENCE=1 开启），关闭时行为与旧版一致。
+    # 与 P9 的本质区别：注入内容由这份报告决定（短且针对性强），不是固定全文，
+    # 不会触发「论文美化效应」；fidelity/coverage 仍由嵌入层用全文独立保证。
     paper_supplement = ""
+    evidence_diag: dict = {
+        "status": "disabled",
+        "chars": 0,
+        "block_count": 0,
+        "blocks": [],
+        "budget_chars": 0,
+        "message": "",
+    }
+    try:
+        from .reflection_evidence import build_evidence_pack, evidence_enabled
+
+        if evidence_enabled() and (full or "").strip():
+            ev = build_evidence_pack(parse.sections, full)
+            evidence_diag.update(
+                status=ev.status,
+                chars=len(ev.pack_text),
+                block_count=len(ev.blocks),
+                blocks=[
+                    {"text": b["text"][:80], "sim": b["sim"], "query": b["query"][:60]}
+                    for b in ev.blocks
+                ],
+                budget_chars=ev.budget_chars,
+                message=ev.message,
+            )
+            if ev.pack_text:
+                paper_supplement = ev.pack_text
+    except Exception:  # noqa: BLE001 - 证据检索失败绝不影响评分主链路
+        evidence_diag.update(status="error", message="证据检索异常，已跳过")
 
     if os.environ.get("PAPERFORGE_BENCH_NO_LLM") == "1":
         four = _heuristic_four(parse.sections)
@@ -402,7 +431,8 @@ def analyze_reflection_file(
             from .depth_eval_reflection import ReflectionReviewer
 
             rid = f"report_{hashlib.sha1(parse.raw_text.encode()).hexdigest()[:12]}"
-            res = ReflectionReviewer().review(
+            reviewer = ReflectionReviewer()
+            res = reviewer.review(
                 rid,
                 parse.paper_title or "报告",
                 parse.raw_text,
@@ -441,6 +471,11 @@ def analyze_reflection_file(
                     evidence_rejections=_safe_int_map(getattr(res, "evidence_rejections", None)),
                     # ADR-014 P2：不确定门控报告（bootstrap CI），透传给上层供复核/展示。
                     score_uncertainty=_safe_dict(getattr(res, "score_uncertainty", None)),
+                    # 思考模式审计（PAPERFORGE_REFLECTION_THINKING=1 时非空）：
+                    # 每次 LLM 调用的 CoT 摘录，供离线 A/B / 前端查看。
+                    thinking_excerpts=[
+                        t[:600] for t in getattr(reviewer, "_thinking_excerpts", [])[:8]
+                    ],
                 )
                 # LLM 故障判定：解析彻底失败，或任一次调用空返回（超时/连接失败）。
                 # 此时四维分数是系统故障的产物，不代表报告质量，调用方须视为无效。
@@ -652,4 +687,8 @@ def analyze_reflection_file(
         "figure_fraud_flags": _figure_flags,
         # —— 统计红旗扣分（对齐论文侧 stat_penalty，最高 0.15）——
         "stat_penalty": round(stat_penalty, 4),
+        # —— 报告条件化证据检索（PAPERFORGE_REFLECTION_EVIDENCE=1 时非 disabled）——
+        "evidence_retrieval": evidence_diag,
+        # —— 思考模式 CoT 审计（PAPERFORGE_REFLECTION_THINKING=1 时非空，默认 []）——
+        "thinking_excerpts": diag.get("thinking_excerpts", []),
     }

@@ -143,7 +143,7 @@ d.text((600, 1240), "_compute_dwm 加权 + apply_score_offset 校准 + fatal_vet
 layer_bg(1960, 510, 400, 600, "④ LLM 调用层")
 box(2000, 600, 320, 120, C_LLM, "call_llm", ["depth_eval_v4.py:521", "缓存 300s + 重试 3 次", "+ ThreadPool 超时"], font_lbl, font_small)
 box(2000, 740, 320, 120, C_LLM, "LLMFactory", ["OpenAIProvider", "+ 并发信号量", "保护单实例"], font_lbl, font_small)
-box(2000, 880, 320, 120, C_LLM, "Qwen3.5-9B (8080)", ["纯文本模型", "Q3_K_M.gguf", "+ dflash 投机解码"], font_lbl, font_small)
+box(2000, 880, 320, 120, C_LLM, "Ornstein-V2 (8080)", ["纯文本模型", "Q4_K_M.gguf", "+ dflash 投机解码"], font_lbl, font_small)
 box(2000, 1020, 320, 120, C_LLM, "Qwen3-VL-4B (8082)", ["视觉多模态", "Q4_K_M + mmproj", "→ qwen_summary"], font_lbl, font_small)
 
 # 第5层：支撑与治理层

@@ -15,8 +15,12 @@ export interface AuditEvidenceSource {
   type: "table" | "figure" | "text";
   table_id?: string | null;
   figure_id?: string | null;
+  /** 跨论文比对类 finding（RELABELED_IMAGE_REUSE）的另一篇图名 */
+  other_figure_id?: string | null;
   page?: number | null;
   snippet?: string | null;
+  /** 证据标注图 URL（后端读路径注入，指向 evidence-image 端点；无则为 null） */
+  image_url?: string | null;
 }
 
 export interface AuditFinding {
@@ -78,6 +82,31 @@ export interface LeakageResponse {
   findings_count: number;
 }
 
+export interface RelabeledReuseResponse {
+  paper_a_id: string;
+  paper_b_id: string;
+  ncc_threshold: number;
+  findings: AuditFinding[];
+  findings_count: number;
+}
+
+/** 跨论文 Finding 聚合（高危论文榜）单条 */
+export interface FindingsSummaryPaper {
+  paper_id: string;
+  paper_title: string;
+  findings_count: number;
+  types: Record<string, number>;
+}
+
+/** GET /api/experiment-audit/findings/summary 返回体 */
+export interface FindingsSummary {
+  min_severity: string;
+  papers_with_findings: number;
+  total_findings: number;
+  by_type: Record<string, number>;
+  papers: FindingsSummaryPaper[];
+}
+
 // ---- 端点 ----
 
 /** 提交异步审计任务 */
@@ -100,14 +129,27 @@ export async function getExperimentAuditResult(paperId: string): Promise<AuditRe
   return data;
 }
 
-/** 审计历史列表 */
+/** 审计历史列表（minSeverity 走后端 audit_findings 索引表过滤） */
 export async function listExperimentAudits(
   limit = 20,
   offset = 0,
+  minSeverity?: "high" | "medium" | "low",
 ): Promise<{ total: number; items: AuditListItem[] }> {
   const { data } = await auditHttp.get("/experiment-audit/list", {
-    params: { limit, offset },
+    params: { limit, offset, ...(minSeverity ? { min_severity: minSeverity } : {}) },
   });
+  return data;
+}
+
+/** 跨论文改标图片复用比对（同步，含 VLM 调用，耗时随 max_pairs 增大到数十秒） */
+export async function relabeledReuse(
+  paperAId: string,
+  paperBId: string,
+): Promise<RelabeledReuseResponse> {
+  const { data } = await auditHttp.post<RelabeledReuseResponse>(
+    "/experiment-audit/relabeled-reuse",
+    { paper_a_id: paperAId, paper_b_id: paperBId },
+  );
   return data;
 }
 
@@ -125,6 +167,17 @@ export async function runLeakageCheck(payload: {
 /** 10 种 Finding 类型目录 */
 export async function getFindingTypes(): Promise<FindingTypeMeta[]> {
   const { data } = await auditHttp.get<FindingTypeMeta[]>("/experiment-audit/finding-types");
+  return data;
+}
+
+/** 跨论文 Finding 聚合（高危论文榜）。minSeverity: low/medium/high；limit 默认 50 */
+export async function getFindingsSummary(
+  minSeverity: "low" | "medium" | "high" = "high",
+  limit = 50,
+): Promise<FindingsSummary> {
+  const { data } = await auditHttp.get<FindingsSummary>("/experiment-audit/findings/summary", {
+    params: { min_severity: minSeverity, limit },
+  });
   return data;
 }
 

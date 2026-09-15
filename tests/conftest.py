@@ -70,6 +70,43 @@ def _reset_in_memory_db() -> None:
     _wait_for_test_workers()
 
 
+@pytest.fixture(autouse=True)
+def _seed_test_llm_config(request, _reset_in_memory_db):
+    """为带 @pytest.mark.real_llm 的集成测试向隔离内存库注入一条指向本地 8080 的启用模型配置。
+
+    本地 llama-server 已在 127.0.0.1:8080 运行（Ornstein-V2 Q4_K_M）。测试用 DB 被 patch 为
+    内存 SQLite 且每用例 drop_all 清空（_reset_in_memory_db 已先执行），故在此重新插入配置，
+    使 get_provider() 能取到可用 provider 并真实调用本地模型（而非 fake_llm）。
+
+    仅对显式标记 real_llm 的测试生效，避免污染不依赖真实 LLM 的 400+ 用例
+    （否则会让原本 fail-open 走规则回退的逻辑改走真模型而变慢/超时）。
+    teardown 时重置 factory 单例，防止 8080 provider 泄漏到后续非 real_llm 测试。
+    """
+    if not request.node.get_closest_marker("real_llm"):
+        yield
+        return
+    from mock_api.database import SessionLocal
+    from mock_api.models import LLMConfig
+    from mock_api.llm.factory import reset_provider_for_testing
+
+    db = SessionLocal()
+    try:
+        db.add(
+            LLMConfig(
+                display_name="Test Ornstein-V2 (local 8080)",
+                api_url="http://127.0.0.1:8080/v1",
+                api_key="",
+                model_id="ornstein-v2-Q4_K_M.gguf",
+                enabled=True,
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+    yield
+    reset_provider_for_testing()
+
+
 def _wait_for_test_workers(timeout: float = 0.5) -> None:
     """等待 PaperForge 测试期间启动的后台 worker 退出；生产不使用此 fixture。"""
     deadline = time.monotonic() + timeout

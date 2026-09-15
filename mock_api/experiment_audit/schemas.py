@@ -1,6 +1,6 @@
 """实验审计 Finding 类型注册表与 Pydantic schema。
 
-FINDING_TYPES 是 10 种 Finding 的唯一事实源：severity 默认值、中文描述、
+FINDING_TYPES 是所有 Finding 类型的唯一事实源：severity 默认值、中文描述、
 示例与检测方法说明都从这里取，检测器与报告渲染禁止各自硬编码。
 """
 
@@ -58,11 +58,17 @@ FINDING_TYPES: dict[str, dict[str, str]] = {
         "example": "train/test 存在相同文件 hash 或高度相似图像",
         "check": "file hash collision, perceptual hash distance, feature collision",
     },
-    "STD_OR_SIGNIFICANCE_MISSING": {
+    "UNCERTAINTY_MISSING": {
         "severity": "medium",
-        "description": "缺少标准差/置信区间/统计检验",
-        "example": "Table 3 只有均值，无标准差，无法判断显著性",
-        "check": "detect missing ± values, error bars, p-values",
+        "description": "结果表只报告均值，缺少不确定度（±/标准差/置信区间）；p 值等显著性检验不替代不确定度",
+        "example": "Table 3 只有均值，无 ±/标准差，虽有 p 值仍无法判断离散程度",
+        "check": "detect missing ±/std/CI on result-table means（p 值/显著性检验不豁免）",
+    },
+    "SIGNIFICANCE_MISSING": {
+        "severity": "medium",
+        "description": "报告了指标对比但全文无统计检验（p 值/t-test/显著性检验）",
+        "example": "全文比较多个方法，但没有任何 p 值或统计检验说明差异是否显著",
+        "check": "detect missing p-values/statistical tests for reported comparisons",
     },
     "CONFIG_MISMATCH": {
         "severity": "medium",
@@ -100,6 +106,42 @@ FINDING_TYPES: dict[str, dict[str, str]] = {
         "example": "Our method achieves 95.2% accuracy, outperforming baseline by 3.1%",
         "check": "LLM 论断抽取 + 规则回退（数值论断 + Figure/Table 引用）",
     },
+    "TEXT_DUPLICATION_CANDIDATE": {
+        "severity": "high",
+        "description": "全文与库内其他论文高度相似（重复发表/论文工厂嫌疑线索）",
+        "example": "本文正文与库内另一篇论文的 5-gram Jaccard 相似度达 0.82",
+        "check": "word n-gram shingling + Jaccard similarity 库内全文两两比对",
+    },
+    "SEMANTIC_DUPLICATION_CANDIDATE": {
+        "severity": "high",
+        "description": "全文与库内论文语义高度相似但措辞不同（换词重写/切香肠线索）",
+        "example": "两篇论文词 5-gram Jaccard 仅 0.05，但嵌入向量余弦相似度 0.92",
+        "check": "embedding 余弦相似度（语义）+ 词级 Jaccard（表层）双信号，表层低+语义高 → 换词重写",
+    },
+    "RELABELED_IMAGE_REUSE": {
+        "severity": "high",
+        "description": "同一张图片/条带像素级复用，但两处标注的目标蛋白/实验不同（改标复用）",
+        "example": "同一张 western blot 条带在 A 论文标为 AMPK、在 B 论文标为 GAPDH",
+        "check": "跨论文 NCC 条带复用（像素）+ Qwen3-VL 目标蛋白提取（语义）比对",
+    },
+    "GRIM_INCONSISTENCY": {
+        "severity": "medium",
+        "description": "报告的小数均值无法由整数样本量推出（GRIM 违例）",
+        "example": "mean=4.56, n=30：136/30=4.533→4.53、137/30=4.567→4.57，都不是 4.56",
+        "check": "GRIM：均值×样本量必须落在整数 k/n 的舍入区间内",
+    },
+    "PCURVE_ANOMALY": {
+        "severity": "medium",
+        "description": "p 值分布异常聚集在显著性阈值附近（p-hacking 线索）",
+        "example": "全文 20 个精确 p 值中 8 个落在 0.04~0.05，(0.05,0.1] 区间为 0",
+        "check": "p 值抽取 + 勉强显著聚集/重复 p 值/0.05 右侧断崖检测",
+    },
+    "IMAGE_TAMPERING_CANDIDATE": {
+        "severity": "high",
+        "description": "单张图内存在复制-粘贴/拼接篡改痕迹（copy-move / 条带克隆）",
+        "example": "同一张 western blot 内两条泳道/条带像素级重复，或一块区域被克隆到另一处",
+        "check": "SIFT 自匹配（原图/H翻转/V翻转）+ 仿射 RANSAC 几何验证 + 局部簇退化恢复 + 分离/紧凑/IoU 校验（copy-move，平移/旋转/缩放/镜像）；同图条带 NCC 自比对（克隆）",
+    },
 }
 
 SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2}
@@ -117,6 +159,9 @@ class EvidenceSource(BaseModel):
     shared_count: int | None = None
     overlap_pct: float | None = None
     sample_values: list[str] | None = None
+    # 证据标注图 URL（读路径由 API 层注入：snippet 为 uploads/figures/<pid>/_audit/*.png
+    # 时指向 /api/experiment-audit/evidence-image/<pid>/<filename>，前端 <img> 直用）
+    image_url: str | None = None
 
 
 class Finding(BaseModel):
@@ -173,6 +218,15 @@ class CodeAuditRequest(BaseModel):
 
     paper_id: str
     repo_dir: str
+
+
+class RelabeledReuseRequest(BaseModel):
+    """跨论文改标图片复用检测请求（两篇论文的图做 NCC 像素 + VLM 语义比对）。"""
+
+    paper_a_id: str
+    paper_b_id: str
+    ncc_threshold: float = Field(default=0.92, ge=0.0, le=1.0)
+    max_pairs: int = Field(default=20, ge=1, le=100)
 
 
 def coerce_findings(findings: Any) -> list[dict[str, Any]]:

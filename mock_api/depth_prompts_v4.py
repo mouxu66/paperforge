@@ -33,6 +33,7 @@ DEFAULT_HOTSPOTS = [
 PROMPT_Q0 = """[CRITICAL: Output ONLY these 4 lines. NO thinking. NO JSON. Start immediately.]
 
 你是顶会领域主席。阅读以下摘要+引言，给出整体判断。
+（expectation 是你对「是否值得顶会」的整体预期 0-1，按全体投稿的相对位置给，多数应 <0.8，不要默认高分。）
 
 论文：
 {paper}
@@ -50,6 +51,7 @@ expectation: 0.75"""
 PROMPT_Q1 = """[CRITICAL: Output ONLY these 5 lines. NO thinking. NO JSON. Start immediately.]
 
 你是资深审稿人。判断论文主类型和辅类型。A=理论突破 B=方法改进 C=应用迁移 D=综述。secondary_type 填 A/B/C/D 或 none。
+（confidence 是你对类型判断的把握 0-1，不确定就给低，不要默认 0.9。）
 
 论文：
 {paper}
@@ -83,6 +85,7 @@ E3: Transformer的训练时间远少于RNN/CNN模型。"""
 # =============================================================================
 PROMPT_Q2 = """[CRITICAL: DO NOT output thinking process. Output ONLY the 5 key:value lines. No JSON, no explanation.]
 
+【校准先验】真实顶会接收率约 20-30%：绝大多数论文创新分应落在 0.4-0.7，仅范式级突破值得 0.8+（占比 <10%），几乎不应给 0.9+ 除非证据确凿。请按论文在全体投稿中的相对位置打分，不要因「看起来不错」就慷慨；宁可略保守也不要虚高。
 评估以下论文的创新程度和热点契合度。评分标准：0.9=颠覆性创新（新范式/全新方法论），0.7=显著改进（新变体/改进基线），0.5=渐进式；仅范式突破或全新方法论可给 ≥0.85，单纯基线改进/新数据集/新任务应用归 0.5–0.7，不要虚高。
 
 论文类型：{paper_type}
@@ -112,6 +115,7 @@ evidence_id: E1"""
 # =============================================================================
 PROMPT_Q3_A = """[CRITICAL: Output ONLY these 4 lines. NO thinking. NO JSON. Start immediately.]
 
+【校准先验】严谨性评分极易虚高：绝大多数论文存在至少一处明显缺陷（缺边界讨论/假设不清/证明跳跃），应落在 0.5-0.7；仅「证明完整+假设清晰+边界充分讨论」齐备才给 0.8+。请先找缺陷再打分，不要默认给高分。
 理论论文严谨性审查。评分：0.9=证明完整假设清晰，0.7=缺边界讨论，0.5=证明跳跃。
 论文类型：{paper_type}（理论{secondary_type_info}）
 证据：{evidence_pool_text}{secondary_checklist}
@@ -125,6 +129,7 @@ evidence_id: E2"""
 
 PROMPT_Q3_B = """[CRITICAL: Output ONLY these 4 lines. NO thinking. NO JSON. Start immediately.]
 
+【校准先验】严谨性评分极易虚高：绝大多数论文存在至少一处明显缺陷（缺消融/缺显著性/未开源/局限未述），应落在 0.5-0.7；仅「消融+强基线+显著性+开源+局限深入」齐备才给 0.8+。请先找缺陷再打分，不要默认给高分。
 方法论文实验严谨性审查。评分：0.9=消融+强基线+显著性+开源，0.7=缺1-2项，0.5=仅基本对比。
 论文类型：{paper_type}（方法{secondary_type_info}）
 证据：{evidence_pool_text}{secondary_checklist}
@@ -138,6 +143,7 @@ evidence_id: E3"""
 
 PROMPT_Q3_C = """[CRITICAL: Output ONLY these 4 lines. NO thinking. NO JSON. Start immediately.]
 
+【校准先验】严谨性评分极易虚高：绝大多数应用论文存在至少一处明显缺陷（场景单一/指标不全/局限未述），应落在 0.5-0.7；仅「多真实场景+指标完整+局限深入」齐备才给 0.8+。请先找缺陷再打分，不要默认给高分。
 应用论文实践严谨性审查。评分：0.9=多真实场景+指标完整+局限深入，0.7=场景不足/指标缺失，0.5=依赖仿真。
 论文类型：{paper_type}（应用{secondary_type_info}）
 证据：{evidence_pool_text}{secondary_checklist}
@@ -151,6 +157,7 @@ evidence_id: E4"""
 
 PROMPT_Q3_D = """[CRITICAL: Output ONLY these 4 lines. NO thinking. NO JSON. Start immediately.]
 
+【校准先验】严谨性评分极易虚高：绝大多数综述存在至少一处明显缺陷（覆盖遗漏/缺批判/框架不自洽），应落在 0.5-0.7；仅「文献全面+框架自洽+批判深入」齐备才给 0.8+。请先找缺陷再打分，不要默认给高分。
 综述论文严谨性审查。评分：0.9=文献全面+框架自洽+批判深入，0.7=覆盖较广有遗漏，0.5=覆盖面窄缺批判。
 论文类型：{paper_type}（综述{secondary_type_info}）
 证据：{evidence_pool_text}{secondary_checklist}
@@ -177,6 +184,7 @@ Q3_SECONDARY_CHECKLIST = {
 # =============================================================================
 PROMPT_Q4 = """[CRITICAL: Output ONLY these 4 lines. NO thinking. NO JSON. Start immediately.]
 
+【校准先验】影响力与可复现极易虚高：只有里程碑级工作才值 0.8+ 影响力；未开源代码/数据的大多数工作可复现应 ≤0.7。先判断「是否真有公开代码/数据/权重」，再给可复现分，不要默认满高。
 评估论文的影响力与可复现性。影响力：0.9=里程碑级，0.7=显著推动，0.5=细分领域参考。可复现：0.9=完整代码+数据+环境，0.7=详细实验设置（超参/数据集/环境描述），0.5=仅算法描述无细节。若正文未提供任何代码/数据/权重公开获取方式（无 github/huggingface/开源声明），reproducibility 不应高于 0.6；只有完全缺少实验细节时才给 0.5 以下。
 
 证据池：{evidence_pool_text}
@@ -203,6 +211,7 @@ Q234_RIGOR_GUIDE = {
 
 PROMPT_Q234 = """[CRITICAL: DO NOT output thinking process. Output ONLY the key:value lines below. No JSON, no explanation.]
 
+【校准先验】真实顶会接收率约 20-30%：绝大多数论文应落在 0.4-0.7，仅范式级突破值得 0.8+（占比 <10%），几乎不应给 0.9+ 除非证据确凿。请按论文在全体投稿中的相对位置打分，不要因「看起来不错」就慷慨；宁可略保守也不要虚高。先找缺陷（创新不足/严谨缺口/复现缺失）再给分。
 你是顶会审稿人，基于论文与证据池一次性完成五个维度的评分。评分锚点：
 创新：0.9=颠覆性创新（新范式/全新方法论），0.7=显著改进（新变体/改进基线），0.5=渐进式；仅范式突破或全新方法论可给 ≥0.85，单纯基线改进/新数据集/新任务应用归 0.5–0.7，不要虚高。
 {rigor_guide}
@@ -248,6 +257,7 @@ q4_evidence_id: E5"""
 # =============================================================================
 PROMPT_QF = """[CRITICAL: Output ONLY these 4 lines. NO thinking. NO JSON. Start immediately.]
 
+【校准先验】图文一致性默认给高分是常见偏差：除非你逐条核对过图表数据确实支撑正文声明，否则不应给 0.9；发现任何缺基线/缺单位/曲线与正文数字不符即应 ≤0.6。
 你是严谨的审稿人，专门核对论文图表与正文的一致性。以下提供该论文的图表信息（作者图注 caption / OCR文字 / Qwen语义桥解读摘要）与正文节选。
 核对要点：图表数据是否支撑正文声明？正文与图表有无矛盾？图表是否缺失关键信息（基线/单位/图例）？
 
@@ -351,197 +361,8 @@ delta: 0.05
 verdict: accept"""
 
 
-# =============================================================================
-# COT 变体：允许模型输出 <thinking>...</thinking> 后再给出关键字段。
-# 解析时会先剔除 thinking 块，再按原正则提取。
-# =============================================================================
-_COT_HINT = """你可以在 <thinking>...</thinking> 标签内做简短推理，
-但标签之后必须按下方示例格式输出最终字段，不要省略任何字段。"""
-
-
-PROMPT_Q0_COT = f"""你是顶会领域主席。阅读以下摘要+引言，给出整体判断。
-
-{_COT_HINT}
-
-论文：
-{{paper}}
-
-示例：
-<thinking>这篇论文提出了新的理论框架...</thinking>
-reasoning: 提出了全新的理论框架并给出了证明思路。
-evidence: 首次将X与Y统一在一个框架中
-has_substance: true
-expectation: 0.75"""
-
-
-PROMPT_Q1_COT = f"""你是资深审稿人。判断论文主类型和辅类型。A=理论突破 B=方法改进 C=应用迁移 D=综述。secondary_type 填 A/B/C/D 或 none。
-
-{_COT_HINT}
-
-论文：
-{{paper}}
-
-示例：
-<thinking>本文主要提出新损失函数...</thinking>
-reasoning: 提出新损失函数并从理论上证明了收敛性，同时应用于医学图像分割。
-evidence: 证明了该损失的全局收敛性
-type: A
-secondary_type: C
-confidence: 0.88"""
-
-
-PROMPT_Q2_COT = f"""评估以下论文的创新程度和热点契合度。评分标准：0.9=颠覆性创新（新范式/全新方法论），0.7=显著改进（新变体/改进基线），0.5=渐进式；仅范式突破或全新方法论可给 ≥0.85，单纯基线改进/新数据集/新任务应用归 0.5–0.7，不要虚高。
-
-{_COT_HINT}
-
-论文类型：{{paper_type}}
-热点：{{hotspots}}
-证据池：{{evidence_pool_text}}
-
-论文：
-{{paper}}
-
-<thinking>...</thinking> 后直接输出以下5行（key: value格式，每行一个字段）：
-reasoning: 1-2句话分析
-core_contribution: 一句话概括核心贡献
-novelty_score: 创新程度数值(0-1)
-hotspot_alignment_score: 热点契合度数值(0-1)
-evidence_id: 证据ID（如E1，无证据则填none）"""
-
-
-PROMPT_Q3_A_COT = f"""理论论文严谨性审查。评分：0.9=证明完整假设清晰，0.7=缺边界讨论，0.5=证明跳跃。
-
-{_COT_HINT}
-
-论文类型：{{paper_type}}（理论{{secondary_type_info}}）
-证据：{{evidence_pool_text}}{{secondary_checklist}}
-论文：{{paper}}
-
-<thinking>...</thinking> 后输出：
-reasoning: 证明完整但未讨论假设失效场景。
-rigor_score: 0.65
-missing_items: 边界条件讨论
-evidence_id: E2"""
-
-
-PROMPT_Q3_B_COT = f"""方法论文实验严谨性审查。评分：0.9=消融+强基线+显著性+开源，0.7=缺1-2项，0.5=仅基本对比。
-
-{_COT_HINT}
-
-论文类型：{{paper_type}}（方法{{secondary_type_info}}）
-证据：{{evidence_pool_text}}{{secondary_checklist}}
-论文：{{paper}}
-
-<thinking>...</thinking> 后输出：
-reasoning: 缺消融实验和代码开源，但有强基线对比。
-rigor_score: 0.60
-missing_items: 消融实验, 代码开源
-evidence_id: E3"""
-
-
-PROMPT_Q3_C_COT = f"""应用论文实践严谨性审查。评分：0.9=多真实场景+指标完整+局限深入，0.7=场景不足/指标缺失，0.5=依赖仿真。
-
-{_COT_HINT}
-
-论文类型：{{paper_type}}（应用{{secondary_type_info}}）
-证据：{{evidence_pool_text}}{{secondary_checklist}}
-论文：{{paper}}
-
-<thinking>...</thinking> 后输出：
-reasoning: 多场景验证但未讨论局限性。
-rigor_score: 0.70
-missing_items: 局限性讨论
-evidence_id: E4"""
-
-
-PROMPT_Q3_D_COT = f"""综述论文严谨性审查。评分：0.9=文献全面+框架自洽+批判深入，0.7=覆盖较广有遗漏，0.5=覆盖面窄缺批判。
-
-{_COT_HINT}
-
-论文类型：{{paper_type}}（综述{{secondary_type_info}}）
-证据：{{evidence_pool_text}}{{secondary_checklist}}
-论文：{{paper}}
-
-<thinking>...</thinking> 后输出：
-reasoning: 文献覆盖全面但缺方法优劣对比。
-rigor_score: 0.75
-missing_items: 方法对比分析
-evidence_id: E1"""
-
-
-Q3_PROMPT_VARIANTS_COT = {
-    "A": PROMPT_Q3_A_COT,
-    "B": PROMPT_Q3_B_COT,
-    "C": PROMPT_Q3_C_COT,
-    "D": PROMPT_Q3_D_COT,
-}
-
-
-PROMPT_Q4_COT = f"""评估论文的影响力与可复现性。影响力：0.9=里程碑级，0.7=显著推动，0.5=细分领域参考。可复现：0.9=完整代码+数据+环境，0.7=详细实验设置（超参/数据集/环境描述），0.5=仅算法描述无细节。重要：代码未公开 ≠ 不可复现。
-
-{_COT_HINT}
-
-证据池：{{evidence_pool_text}}
-论文：
-{{paper}}
-
-<thinking>...</thinking> 后输出：
-reasoning: 该方法大幅提升效率，实验设置详细，虽未开源但可复现性较高。
-influence_score: 0.82
-reproducibility_score: 0.72
-evidence_id: E5"""
-
-
-PROMPT_Q5A_COT = f"""找出论文最可能被拒绝的2-3个关键理由。已知评分：类型={{paper_type}}/创新={{novelty}}/热点={{hotspot}}/严谨={{rigor}}/影响={{influence}}/复现={{reproducibility}}/图文={{figure_consistency}}。
-
-{_COT_HINT}
-
-证据池：{{evidence_pool_text}}
-论文：
-{{paper}}
-
-<thinking>...</thinking> 后输出（每条质疑一行，severity填fatal或minor）：
-critique: 消融实验缺失 | severity: fatal
-critique: 缺乏真实场景验证 | severity: minor
-evidence_id: E3"""
-
-
-PROMPT_Q5B_COT = f"""你是论文作者。针对以下质疑逐条辩护。严格基于原文，未涉及的回答"原文暂未涉及，将在终稿补充"。
-
-{_COT_HINT}
-
-审稿质疑：
-{{critique_points}}
-
-证据池：{{evidence_pool_text}}
-论文：
-{{paper}}
-
-<thinking>...</thinking> 后输出（每条辩护一行，顺序对应质疑）：
-defense: 消融实验已在附录A.3完成，正文因篇幅未展示
-defense: 原文暂未涉及，将在终稿补充
-evidence_id: E2"""
-
-
-PROMPT_Q5C_COT = f"""你是期刊主编，基于以下信息给出最终裁决。delta 范围 [{{delta_min}}, {{delta_max}}]，最终分 = clamp({{base_score:.2f}} + delta, 0, 1)。verdict 仅能为 accept/minor_revision/major_revision/reject。
-
-{_COT_HINT}
-
-多维评分：创新={{novelty}}/热点={{hotspot}}/严谨={{rigor}}/影响={{influence}}/复现={{reproducibility}}/图文={{figure_consistency}}/基础分={{base_score:.2f}}
-
-质疑：
-{{critique_points}}
-
-辩护：
-{{defense_points}}
-
-论文摘要与结论：
-{{paper_abstract_conclusion}}
-
-<thinking>...</thinking> 后输出：
-reasoning: 创新性突出且实验充分，辩论后质疑可控，建议接收。
-delta: 0.05
-verdict: accept"""
+# NOTE: 原 _COT 提示词变体（17 个）已于 2026-08-22 删除——思考模式仅由 chat_template 的 enable_thinking 标志控制，
+#       从不通过切换提示词实现，故其始终为死代码，全仓无任何 import。
 
 
 # =============================================================================

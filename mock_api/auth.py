@@ -76,17 +76,25 @@ def _is_loopback(host: str | None) -> bool:
 
 
 def _client_ip(request: Request) -> str:
-    """提取客户端 IP，优先 X-Forwarded-For 首个地址，退化到 request.client。
+    """提取客户端 IP（open 模式按 IP 限流用）。
 
-    注意：当前未维护可信代理列表，X-Forwarded-For 可被客户端伪造。
-    该 IP 仅用于 open 模式的基础按 IP 限流；在受信反向代理后部署时，
-    应补充可信代理白名单以正确识别客户端 IP。
+    默认只信直连 socket 地址（request.client.host）。仅当显式配置了可信代理
+    列表（settings.trusted_proxies）且直连来源在列表内时，才采信
+    X-Forwarded-For 首项 —— 空列表（默认）一律不采信 XFF，防止客户端伪造
+    该头绕过按 IP 限流。
     """
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip() or "unknown"
     client = request.client
-    return client.host if client else "unknown"
+    direct = client.host if client else None
+    if not direct:
+        return "unknown"
+    from .settings import get_settings
+
+    trusted = get_settings().trusted_proxies
+    if trusted and direct in trusted:
+        forwarded = request.headers.get("X-Forwarded-For")
+        if forwarded:
+            return forwarded.split(",")[0].strip() or direct
+    return direct
 
 
 def _check_loopback(request: Request) -> None:

@@ -129,6 +129,13 @@ class TestMigrationSafety:
             ).first()
             assert result is not None, f"paper_figures.{col} 列不存在"
 
+    def test_citation_sentiments_cloud_recheck_column_exists(self, fresh_db):
+        """被引情感云端复核审计列：citation_sentiments 应包含 cloud_recheck。"""
+        result = fresh_db.execute(
+            text("SELECT name FROM pragma_table_info('citation_sentiments') WHERE name='cloud_recheck'")
+        ).first()
+        assert result is not None, "citation_sentiments.cloud_recheck 列不存在"
+
     def test_schema_version_table_exists(self, fresh_db):
         """_schema_version 表应在迁移后存在。"""
         result = fresh_db.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='_schema_version'")).first()

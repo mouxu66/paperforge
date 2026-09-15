@@ -26,6 +26,16 @@ from .schemas import make_finding
 
 logger = logging.getLogger(__name__)
 
+
+class FigureTranscriptionUnavailable(RuntimeError):
+    """图内数值转写全部失败（视觉模型不可达/无响应），P0-11 无法实际运行。
+
+    与「无 figure 记录」或「无可用视觉配置（service 层已提前标 skipped）」不同：
+    此异常表示确实发起了转写却一张都没成功，check 必须响亮失败（failed）而非
+    静默 ok findings=0——否则用户无法区分「查完没造假」和「视觉模型挂了根本没查」。
+    """
+
+
 _TABLE_NUMBERS_PROMPT = """图里可能包含一张数据表或带数值的统计图。请把图中可见的所有数值逐行转写出来，每行固定格式：
 
 组别|数值
@@ -59,12 +69,13 @@ def transcribe_figure_numbers(image_path: str, caption: str = "", timeout: int =
         from ..settings import get_settings
         from ..vram_scheduler import vram_guard
 
-        vision_url = get_settings().vision_http_url
+        st = get_settings()
+        vision_url = st.vision_http_url
         if not vision_url:
             return ""
         img_b64 = base64.b64encode(path.read_bytes()).decode("utf-8")
         payload = {
-            "model": "qwen3-vl",
+            "model": st.vision_model or "qwen3-vl",
             "messages": [
                 {
                     "role": "user",
@@ -81,9 +92,12 @@ def transcribe_figure_numbers(image_path: str, caption: str = "", timeout: int =
             "max_tokens": 1024,
             "stream": False,
         }
+        headers = {"Content-Type": "application/json"}
+        if st.vision_api_key:
+            headers["Authorization"] = f"Bearer {st.vision_api_key}"
         url = f"{vision_url.rstrip('/')}/v1/chat/completions"
         with vram_guard("vision"):
-            resp = requests.post(url, json=payload, timeout=timeout)
+            resp = requests.post(url, json=payload, headers=headers, timeout=timeout)
             resp.raise_for_status()
             return (resp.json()["choices"][0]["message"].get("content") or "").strip()
     except Exception as exc:  # noqa: BLE001 - VLM 不可用属正常降级
@@ -182,13 +196,26 @@ def detect_cross_group_duplicates(series: list[tuple[str, list[float]]]) -> list
     return flags
 
 
+def _last_digit(v: float) -> str:
+    """返回数值末位有效数字（31.0 → '1'，0.31 → '1'，0.000031 → '1'）。
+
+    用 f"{v:.10f}" 规避科学计数法（str(0.000031)='3.1e-05' 会把指数位误当末位），
+    再剥掉末尾 0 与小数点，使整数 31 的末位是 1 而非 float 表示 '31.0' 里的 0。
+    """
+    s = f"{v:.10f}".rstrip("0").rstrip(".")
+    for ch in reversed(s):
+        if ch.isdigit():
+            return ch
+    return ""
+
+
 def detect_digit_preference(values: list[float]) -> str | None:
     """末位数字分布偏离均匀（卡方 p<0.05，n≥8）→ 人肉随机数指纹。"""
-    last = [str(v).split(".")[1][-1] for v in values if "." in str(v) and str(v).split(".")[1]]
-    n = len(last)
+    digits = [d for v in values if (d := _last_digit(v))]
+    n = len(digits)
     if n < 8:
         return None
-    obs = Counter(last)
+    obs = Counter(digits)
     exp = n / 10.0
     chi2 = sum(((obs.get(d, 0) - exp) ** 2) / exp for d in "0123456789")
     if chi2 <= 16.92:  # 9 自由度，p=0.05 临界值
@@ -340,6 +367,59 @@ def detect_cross_figure_duplicates(
     return results
 
 
+# ── 轴刻度/归一化基线过滤 ────────────────────────────────────
+# VLM 会把柱状图 y 轴刻度（0/50/100/150/200/250/300）或 western blot
+# 归一化基线（control=100%、fold-change=1.0）当成数据点转写，让跨组重复、
+# 末位偏好等统计指纹大量误报。这些「圆整数」不是测量值，进指纹检测前剔除。
+_AXIS_TICK_STEPS = (100, 50, 25, 20, 10, 5)
+_SMALL_INT_BASELINE = 5
+
+
+def _is_axis_tick_like(v: float) -> bool:
+    """非负整数且是「圆整数」（≤5 的小整数，或常见轴刻度步长的倍数）。
+
+    真实测量值通常带小数（0.13398、77.40741）；轴刻度/归一化基线是圆整数
+    （0/1/2/3/4/5、100/150/200/250/300…）。
+    """
+    if v < 0 or abs(v - round(v)) > 1e-9:
+        return False
+    iv = int(round(v))
+    if iv <= _SMALL_INT_BASELINE:
+        return True
+    return any(iv % step == 0 for step in _AXIS_TICK_STEPS)
+
+
+def filter_axis_ticks_and_baseline(
+    series: list[tuple[str, list[float]]],
+) -> list[tuple[str, list[float]]]:
+    """过滤坐标轴刻度与归一化基线值，只保留真实数据点。
+
+    过滤后：轴刻度/基线（圆整数）被剔除，真实测量值保留；值被剔空的组整组丢弃。
+    """
+    out: list[tuple[str, list[float]]] = []
+    for label, vals in series:
+        kept = [v for v in vals if not _is_axis_tick_like(v)]
+        if kept:
+            out.append((label, kept))
+    return out
+
+
+def _axis_tick_filter_enabled(override: bool | None) -> bool:
+    """轴刻度过滤开关：显式参数优先，否则读运行时配置（默认开启）。
+
+    配置读取失败时 fail-open 按默认开启（保留误报过滤能力，不因配置
+    缺失而把轴刻度当数据点）。
+    """
+    if override is not None:
+        return override
+    try:
+        from ..settings import get_settings
+
+        return bool(get_settings().depth_axis_tick_filter_enabled)
+    except Exception:  # noqa: BLE001 - 配置读取失败不影响审计
+        return True
+
+
 def transcribe_multi(
     image_path: str, caption: str = "", n_runs: int = 3, timeout: int = 120
 ) -> list[str]:
@@ -416,7 +496,11 @@ def merge_transcripts(transcripts: list[str]) -> list[tuple[str, list[float]]]:
 
 
 def check_figure_number_patterns(
-    db: Session, paper_id: str, *, allow_vlm: bool = True
+    db: Session,
+    paper_id: str,
+    *,
+    allow_vlm: bool = True,
+    filter_axis_ticks: bool | None = None,
 ) -> list[dict]:
     """P0-11 入口：对论文所有 PaperFigure 做「图内数值 → 统计指纹」审计。
 
@@ -426,6 +510,10 @@ def check_figure_number_patterns(
     1. 对每张图跑多遍转写取多数（默认 3 遍），消除标签噪声
     2. 跨表完全复制检测（不同 figure 共享相同数值 → 铁证）
     3. 单图内统计指纹（等差/重复/恒定偏移/Benford/跨组重复/末位偏好）
+
+    Args:
+        filter_axis_ticks: 是否在指纹检测前过滤轴刻度/归一化基线（圆整数）。
+            None 时读运行时配置 depth_axis_tick_filter_enabled（默认开启）。
     """
     figs = (
         db.query(PaperFigure)
@@ -441,6 +529,8 @@ def check_figure_number_patterns(
 
     # 第一轮：收集所有 figure 的转写结果
     fig_data: list[tuple[str, list[tuple[str, list[float]]], PaperFigure, list[str]]] = []
+    attempted = 0  # 有图文件、确实发起了 VLM 转写的 figure 数
+    transcribed = 0  # 至少得到一段非空转写的 figure 数
     for fig in figs:
         img_path = uploads / Path(fig.figure_path).name if fig.figure_path else None
         if not (img_path and img_path.exists()):
@@ -448,15 +538,31 @@ def check_figure_number_patterns(
         if not allow_vlm:
             continue
 
+        attempted += 1
         transcripts = transcribe_multi(str(img_path), fig.caption_text or "")
         if not transcripts:
             continue
+        transcribed += 1
         series = merge_transcripts(transcripts)
+        if not series:
+            continue
+        # 过滤轴刻度/归一化基线（圆整数），让统计指纹只作用于真实数据点；
+        # 可经 filter_axis_ticks 显式关闭（None 时读运行时配置，默认开启）。
+        if _axis_tick_filter_enabled(filter_axis_ticks):
+            series = filter_axis_ticks_and_baseline(series)
         if not series:
             continue
 
         fid = _figure_id(fig)
         fig_data.append((fid, series, fig, transcripts))
+
+    # 视觉模型转写全部失败（如 8082 停机）→ 响亮失败，不静默报 ok findings=0。
+    # 部分成功（至少一张图转写出来）时不触发，正常继续。
+    if attempted > 0 and transcribed == 0:
+        raise FigureTranscriptionUnavailable(
+            f"视觉模型转写全部失败：{attempted} 张图均未得到转写结果"
+            f"（视觉服务不可达或无响应），P0-11 图内数值指纹未实际运行"
+        )
 
     if not fig_data:
         return []

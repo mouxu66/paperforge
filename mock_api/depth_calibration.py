@@ -375,6 +375,17 @@ def reweight_by_calibration(
     return best
 
 
+# 裁决梯子三档下界（不随校准浮动）：reject < minor < accept。
+# 三者必须严格递增，否则中间档会被相邻档吞掉。
+#
+# 历史 bug：校准/配置曾把 accept 压到 0.6（< minor 0.7），导致
+# `elif score >= minor` 这一档被 accept 完全吞掉 —— minor_revision 档架空，
+# 0.6~0.7 的论文被直接判 accept（红队造假论文 NSGT 0.618 即因此误判 accept）。
+VERDICT_MINOR_FLOOR = 0.65  # Ornith-1.5-9B: 从 0.7 降到 0.65，匹配新模型分数分布
+# accept 档下界：0.75（全量 669 篇校准，85th percentile = 0.765，accept ≥ 0.77 → ~15%）
+VERDICT_ACCEPT_FLOOR = 0.75
+
+
 def calibrate_verdict_thresholds(
     samples: list[CalibrationSample],
     score_fn: Callable[..., Any],
@@ -386,10 +397,11 @@ def calibrate_verdict_thresholds(
     scores = score_fn()
     truth = [s.expert_verdict for s in samples]
 
-    # 在 [0.5, 0.95] 范围内搜索 accept 阈值，[0.1, 0.6] 搜索 reject 阈值
+    # accept 阈值搜索区间须 ≥ VERDICT_ACCEPT_FLOOR（严格高于 minor 档），
+    # 否则 minor_revision 档被架空；reject 在 [0.1, 0.6] 搜索。
     best_kappa = -1.0
     best_acc, best_rej = 0.8, 0.5
-    for acc in (round(x, 2) for x in [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95]):
+    for acc in (round(x, 2) for x in [0.8, 0.85, 0.9, 0.95]):
         for rej in (
             round(x, 2) for x in [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6]
         ):
@@ -397,7 +409,7 @@ def calibrate_verdict_thresholds(
             for s in scores:
                 if s >= acc:
                     pred.append("accept")
-                elif s >= 0.7:
+                elif s >= VERDICT_MINOR_FLOOR:
                     pred.append("minor_revision")
                 elif s >= rej:
                     pred.append("major_revision")
@@ -514,14 +526,18 @@ def correct_final_score(
 def offset_corrected_verdict(
     score: float,
     offset: float | None = None,
-    accept: float = 0.8,
-    reject: float = 0.5,
+    accept: float = 0.78,  # Ornith: 从 0.8 降到 0.78
+    reject: float = 0.48,  # Ornith: 从 0.5 降到 0.48（金字塔分布）
 ) -> str:
     """施加偏移后按原阈值推导 verdict（分数层口径，不含否决层）。"""
     s = apply_score_offset(score, offset)
+    # 三档阈值：accept(0.78) > minor(0.65) > major(0.45) > reject
+    accept = max(accept, VERDICT_ACCEPT_FLOOR)
+    minor = VERDICT_MINOR_FLOOR
+    reject = min(reject, minor - 0.05)
     if s >= accept:
         return "accept"
-    if s >= 0.7:
+    if s >= minor:
         return "minor_revision"
     if s >= reject:
         return "major_revision"

@@ -34,6 +34,9 @@ class ChatResult:
     # ADR-014 P0：可复现性快照。记录本次调用实际使用的 seed / 模型 / 提供商，
     # 供评测结果存档，使分数可被他人精确复现。默认空 dict，向后兼容旧调用方。
     meta: dict = field(default_factory=dict)
+    # ADR-014 P5–思考模式审计：存模型思维链（reasoning_content），仅日志/回溯用，
+    # 解析永远以 content（提取出的答案）为准。默认空串，向后兼容旧调用方。
+    reasoning: str = ""
 
 
 class LocalLLMTimeout(TimeoutError):

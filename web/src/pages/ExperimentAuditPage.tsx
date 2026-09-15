@@ -1,11 +1,12 @@
 /**
  * 论文实验审计页（CS Paper Experiment Auditor P0）。
  *
- * 三个视图：
+ * 四个视图：
  * 1. 论文审计：选论文 → 触发异步审计 → 轮询结果 → Finding 列表（severity
  *    色标 / 类型筛选 / 证据展开）→ HTML 报告下载。
  * 2. 数据泄漏初筛（P0-7）：独立端点，输入 train/test 目录。
- * 3. 审计历史：列表 + 报告入口。
+ * 3. 跨论文改标比对（RELABELED_IMAGE_REUSE）：两篇论文 paper_id → 同步端点。
+ * 4. 审计历史：列表 + 报告入口。
  *
  * 设计：所有 Finding 展示「良性解释」列，防止把审计误读为定罪工具。
  */
@@ -18,6 +19,7 @@ import {
   Collapse,
   Descriptions,
   Empty,
+  Image,
   Input,
   InputNumber,
   Row,
@@ -27,30 +29,38 @@ import {
   Table,
   Tabs,
   Tag,
+  Tooltip,
   Typography,
   message,
 } from "antd";
 import {
   AuditOutlined,
   FileSearchOutlined,
+  FireOutlined,
   HistoryOutlined,
   PlayCircleOutlined,
   SafetyCertificateOutlined,
+  SwapOutlined,
 } from "@ant-design/icons";
 import type {
   AuditFinding,
   AuditListItem,
   AuditResult,
+  FindingsSummary,
+  FindingsSummaryPaper,
   FindingTypeMeta,
 } from "@/api/experimentAudit";
 import {
   auditReportUrl,
   getExperimentAuditResult,
   getFindingTypes,
+  getFindingsSummary,
   listExperimentAudits,
+  relabeledReuse,
   runLeakageCheck,
   startExperimentAudit,
 } from "@/api/experimentAudit";
+import { API_BASE } from "@/api/client";
 import { fetchAllPapers } from "@/api/papers";
 import type { Paper } from "@/api/types";
 
@@ -62,17 +72,68 @@ const SEVERITY_META: Record<string, { color: string; label: string }> = {
   low: { color: "default", label: "低" },
 };
 
+// Finding 类型短中文标签（优先）+ 后端 description（tooltip）。
+// 后端 FINDING_TYPES 已维护中文描述，但标签太长，这里用简短中文便于列表展示。
+const FINDING_TYPE_LABELS: Record<string, string> = {
+  NUMERIC_MISMATCH: "数字不一致",
+  METRIC_INCONSISTENCY: "指标不自洽",
+  ABLATION_UNSUPPORTED: "Ablation 无据",
+  CHART_AXIS_RISK: "坐标轴风险",
+  BASELINE_UNFAIR: "基线不公平",
+  MISSING_REPRO_INFO: "缺少复现信息",
+  DATA_LEAKAGE_CANDIDATE: "数据泄漏候选",
+  UNCERTAINTY_MISSING: "缺少不确定度",
+  SIGNIFICANCE_MISSING: "缺少显著性检验",
+  CONFIG_MISMATCH: "超参不一致",
+  FIGURE_REUSE_CANDIDATE: "图片复用候选",
+  SUSPICIOUS_DATA_PATTERN: "可疑数据模式",
+  REPRODUCTION_BLOCKER: "无法复现",
+  CITATION_INTEGRITY: "引用问题",
+  CLAIMS_EXTRACTION: "实验论断",
+  TEXT_DUPLICATION_CANDIDATE: "文本重复候选",
+  SEMANTIC_DUPLICATION_CANDIDATE: "语义重复候选",
+  RELABELED_IMAGE_REUSE: "改标图片复用",
+  GRIM_INCONSISTENCY: "GRIM 不一致",
+  PCURVE_ANOMALY: "p 值分布异常",
+  IMAGE_TAMPERING_CANDIDATE: "图片篡改候选",
+  STD_OR_SIGNIFICANCE_MISSING: "标准差/显著性缺失",
+};
+
+/** 取 Finding 类型的中文短标签；优先用静态映射，再回退后端 description，最后保留原文。 */
+function getFindingTypeLabel(type: string, catalog: FindingTypeMeta[] = []): string {
+  if (FINDING_TYPE_LABELS[type]) return FINDING_TYPE_LABELS[type];
+  const found = catalog.find((t) => t.type === type);
+  if (found?.description) return found.description;
+  return type;
+}
+
+/** 取 Finding 类型的详细中文描述（用于 tooltip）。 */
+function getFindingTypeTooltip(type: string, catalog: FindingTypeMeta[] = []): string | undefined {
+  const found = catalog.find((t) => t.type === type);
+  return found?.description;
+}
+
 const POLL_INTERVAL_MS = 2000;
 const POLL_TIMEOUT_MS = 5 * 60 * 1000;
 
-function FindingCard({ finding }: { finding: AuditFinding }) {
+// 与 FigureSearchPage 一致：后端返回的相对 /api/... 地址需按 VITE_API_BASE
+// 拼成完整地址，否则自定义 API 基址部署时 <img> 会指向错误源站。
+function resolveAssetUrl(url: string): string {
+  if (url.startsWith("/api")) return `${API_BASE}${url.slice("/api".length)}`;
+  return url;
+}
+
+function FindingCard({ finding, catalog }: { finding: AuditFinding; catalog?: FindingTypeMeta[] }) {
   const sev = SEVERITY_META[finding.severity] ?? SEVERITY_META.low;
+  const typeTooltip = getFindingTypeTooltip(finding.type, catalog);
   return (
     <Card size="small" style={{ marginBottom: 8 }} title={
       <Space wrap>
         <Text strong>{finding.finding_id}</Text>
         <Tag color={sev.color}>{sev.label}</Tag>
-        <Tag>{finding.type}</Tag>
+        <Tooltip title={typeTooltip}>
+          <Tag>{getFindingTypeLabel(finding.type, catalog)}</Tag>
+        </Tooltip>
         <Text>{finding.title}</Text>
         {finding.page != null && <Tag>p.{finding.page}</Tag>}
         {finding.needs_human_review && <Tag color="purple">需人工复核</Tag>}
@@ -88,12 +149,27 @@ function FindingCard({ finding }: { finding: AuditFinding }) {
         )}
         {finding.evidence_sources && finding.evidence_sources.length > 0 && (
           <Descriptions.Item label="证据">
-            <Space orientation="vertical" size={0}>
+            <Space orientation="vertical" size={4}>
               {finding.evidence_sources.map((e, i) => (
-                <Text key={i} type="secondary">
-                  {e.table_id || e.figure_id || `p.${e.page ?? "?"}`}
-                  {e.snippet ? `：${e.snippet.slice(0, 120)}` : ""}
-                </Text>
+                <div key={i}>
+                  <Text type="secondary">
+                    {e.table_id ||
+                      (e.other_figure_id ? `${e.figure_id} ↔ ${e.other_figure_id}` : e.figure_id) ||
+                      `p.${e.page ?? "?"}`}
+                    {/* 有标注图时不再展示 snippet（多为生成本地路径，对用户无意义） */}
+                    {!e.image_url && e.snippet ? `：${e.snippet.slice(0, 120)}` : ""}
+                  </Text>
+                  {e.image_url && (
+                    <div style={{ marginTop: 4 }}>
+                      <Image
+                        src={resolveAssetUrl(e.image_url)}
+                        alt={`${e.figure_id ?? "figure"} 证据标注图`}
+                        width={320}
+                        style={{ borderRadius: 4, border: "1px solid #e8e8e8" }}
+                      />
+                    </div>
+                  )}
+                </div>
               ))}
             </Space>
           </Descriptions.Item>
@@ -108,7 +184,7 @@ function FindingCard({ finding }: { finding: AuditFinding }) {
   );
 }
 
-function FindingList({ findings }: { findings: AuditFinding[] }) {
+function FindingList({ findings, catalog }: { findings: AuditFinding[]; catalog?: FindingTypeMeta[] }) {
   const [sevFilter, setSevFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const types = Array.from(new Set(findings.map((f) => f.type)));
@@ -137,13 +213,19 @@ function FindingList({ findings }: { findings: AuditFinding[] }) {
           size="small"
           value={typeFilter}
           onChange={setTypeFilter}
-          style={{ width: 260 }}
-          options={[{ value: "all", label: "全部类型" }, ...types.map((t) => ({ value: t, label: t }))]}
+          style={{ width: 280 }}
+          options={[
+            { value: "all", label: "全部类型" },
+            ...types.map((t) => ({
+              value: t,
+              label: `${getFindingTypeLabel(t, catalog)} (${t})`,
+            })),
+          ]}
         />
         <Text type="secondary">{filtered.length} / {findings.length} 条</Text>
       </Space>
       {filtered.map((f) => (
-        <FindingCard key={f.finding_id} finding={f} />
+        <FindingCard key={f.finding_id} finding={f} catalog={catalog} />
       ))}
     </>
   );
@@ -165,12 +247,32 @@ export default function ExperimentAuditPage() {
   const [leakRunning, setLeakRunning] = useState(false);
   const [leakFindings, setLeakFindings] = useState<AuditFinding[] | null>(null);
 
+  // ── 跨论文改标比对 tab ──
+  const [relabelPaperA, setRelabelPaperA] = useState("");
+  const [relabelPaperB, setRelabelPaperB] = useState("");
+  const [relabelRunning, setRelabelRunning] = useState(false);
+  const [relabelFindings, setRelabelFindings] = useState<AuditFinding[] | null>(null);
+  const [relabelError, setRelabelError] = useState<string | null>(null);
+
   // ── 历史 tab ──
   const [history, setHistory] = useState<AuditListItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
   // ── Finding 类型说明 ──
   const [findingTypes, setFindingTypes] = useState<FindingTypeMeta[]>([]);
+
+  // ── 高危论文榜 tab ──
+  const [summary, setSummary] = useState<FindingsSummary | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summarySeverity, setSummarySeverity] = useState<"low" | "medium" | "high">("high");
+
+  const loadFindingsSummary = useCallback((sev: "low" | "medium" | "high") => {
+    setSummaryLoading(true);
+    getFindingsSummary(sev)
+      .then(setSummary)
+      .catch(() => message.error("高危论文榜加载失败"))
+      .finally(() => setSummaryLoading(false));
+  }, []);
 
   useEffect(() => {
     fetchAllPapers()
@@ -187,13 +289,16 @@ export default function ExperimentAuditPage() {
     };
   }, []);
 
-  const refreshHistory = useCallback(() => {
-    setHistoryLoading(true);
-    listExperimentAudits(30)
-      .then((r) => setHistory(r.items))
-      .catch(() => {})
-      .finally(() => setHistoryLoading(false));
-  }, []);
+  const refreshHistory = useCallback(
+    (minSeverity?: "high" | "medium" | "low") => {
+      setHistoryLoading(true);
+      listExperimentAudits(30, 0, minSeverity)
+        .then((r) => setHistory(r.items))
+        .catch(() => {})
+        .finally(() => setHistoryLoading(false));
+    },
+    [],
+  );
 
   const pollResult = useCallback(
     (pid: string) => {
@@ -268,6 +373,30 @@ export default function ExperimentAuditPage() {
       // 错误 toast 由 http 拦截器处理
     } finally {
       setLeakRunning(false);
+    }
+  };
+
+  const handleRelabeled = async () => {
+    if (!relabelPaperA.trim() || !relabelPaperB.trim()) {
+      message.warning("请填写两篇论文的 paper_id");
+      return;
+    }
+    setRelabelRunning(true);
+    setRelabelFindings(null);
+    setRelabelError(null);
+    try {
+      const resp = await relabeledReuse(relabelPaperA.trim(), relabelPaperB.trim());
+      setRelabelFindings(resp.findings);
+      if (!resp.findings_count) message.success("未发现改标图片复用候选");
+    } catch (err) {
+      // 拦截器已弹 detail toast；这里保留可读错误态（404 论文不存在 / 400 图不足等）
+      const detail =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+        (err as Error)?.message ||
+        "改标比对失败";
+      setRelabelError(detail);
+    } finally {
+      setRelabelRunning(false);
     }
   };
 
@@ -382,7 +511,7 @@ export default function ExperimentAuditPage() {
                         }]}
                       />
                     </Card>
-                    <FindingList findings={result.findings} />
+                    <FindingList findings={result.findings} catalog={findingTypes} />
                   </>
                 )}
               </Space>
@@ -430,7 +559,60 @@ export default function ExperimentAuditPage() {
                     建议样本数 ≤ 2000 张）。
                   </Paragraph>
                 </Card>
-                {leakFindings !== null && <FindingList findings={leakFindings} />}
+                {leakFindings !== null && <FindingList findings={leakFindings} catalog={findingTypes} />}
+              </Space>
+            ),
+          },
+          {
+            key: "relabeled",
+            label: <span><SwapOutlined /> 跨论文改标比对</span>,
+            children: (
+              <Space orientation="vertical" style={{ width: "100%" }} size="middle">
+                <Card size="small">
+                  <Row gutter={12}>
+                    <Col span={10}>
+                      <Input
+                        placeholder="论文 A 的 paper_id（如 fraud_berberine）"
+                        value={relabelPaperA}
+                        onChange={(e) => setRelabelPaperA(e.target.value)}
+                      />
+                    </Col>
+                    <Col span={10}>
+                      <Input
+                        placeholder="论文 B 的 paper_id（如 kjpp）"
+                        value={relabelPaperB}
+                        onChange={(e) => setRelabelPaperB(e.target.value)}
+                      />
+                    </Col>
+                    <Col span={4}>
+                      <Button
+                        type="primary"
+                        block
+                        loading={relabelRunning}
+                        onClick={handleRelabeled}
+                      >
+                        开始比对
+                      </Button>
+                    </Col>
+                  </Row>
+                  <Paragraph
+                    type="secondary"
+                    style={{ marginTop: 8, marginBottom: 0, fontSize: 12 }}
+                  >
+                    跨论文改标图片复用证据链：NCC 条带像素复用 + Qwen3-VL 目标蛋白标签比对，
+                    两图标签无交集时出 RELABELED_IMAGE_REUSE。需两篇论文均已上传并抽取
+                    figure；含 VLM 调用，可能耗时数十秒。
+                  </Paragraph>
+                </Card>
+                {relabelRunning && (
+                  <Card size="small">
+                    <Spin description="跨论文改标比对中（NCC 像素比对 + 视觉模型标签提取）…" />
+                  </Card>
+                )}
+                {relabelError && <Alert type="error" showIcon title={relabelError} />}
+                {relabelFindings !== null && !relabelRunning && (
+                  <FindingList findings={relabelFindings} catalog={findingTypes} />
+                )}
               </Space>
             ),
           },
@@ -438,39 +620,57 @@ export default function ExperimentAuditPage() {
             key: "history",
             label: <span><HistoryOutlined /> 审计历史</span>,
             children: (
-              <Table
-                rowKey="audit_id"
-                size="small"
-                loading={historyLoading}
-                dataSource={history}
-                columns={[
-                  { title: "论文", dataIndex: "paper_title", ellipsis: true },
-                  {
-                    title: "状态",
-                    dataIndex: "status",
-                    width: 100,
-                    render: (s: string) => (
-                      <Tag color={s === "completed" ? "green" : s === "failed" ? "red" : "blue"}>{s}</Tag>
-                    ),
-                  },
-                  { title: "发现数", dataIndex: "findings_count", width: 90 },
-                  { title: "时间", dataIndex: "created_at", width: 170 },
-                  {
-                    title: "操作",
-                    width: 120,
-                    render: (_: unknown, row: AuditListItem) => (
-                      <Button
-                        size="small"
-                        type="link"
-                        onClick={() => window.open(auditReportUrl(row.audit_id), "_blank")}
-                      >
-                        查看报告
-                      </Button>
-                    ),
-                  },
-                ]}
-                pagination={{ pageSize: 15 }}
-              />
+              <>
+                <Space style={{ marginBottom: 8 }}>
+                  <Text type="secondary">最低严重度：</Text>
+                  <Select
+                    size="small"
+                    style={{ width: 120 }}
+                    defaultValue={undefined}
+                    allowClear
+                    placeholder="全部"
+                    options={[
+                      { value: "high", label: "高" },
+                      { value: "medium", label: "中及以上" },
+                      { value: "low", label: "全部级别" },
+                    ]}
+                    onChange={(v) => refreshHistory(v)}
+                  />
+                </Space>
+                <Table
+                  rowKey="audit_id"
+                  size="small"
+                  loading={historyLoading}
+                  dataSource={history}
+                  columns={[
+                    { title: "论文", dataIndex: "paper_title", ellipsis: true },
+                    {
+                      title: "状态",
+                      dataIndex: "status",
+                      width: 100,
+                      render: (s: string) => (
+                        <Tag color={s === "completed" ? "green" : s === "failed" ? "red" : "blue"}>{s}</Tag>
+                      ),
+                    },
+                    { title: "发现数", dataIndex: "findings_count", width: 90 },
+                    { title: "时间", dataIndex: "created_at", width: 170 },
+                    {
+                      title: "操作",
+                      width: 120,
+                      render: (_: unknown, row: AuditListItem) => (
+                        <Button
+                          size="small"
+                          type="link"
+                          onClick={() => window.open(auditReportUrl(row.audit_id), "_blank")}
+                        >
+                          查看报告
+                        </Button>
+                      ),
+                    },
+                  ]}
+                  pagination={{ pageSize: 15 }}
+                />
+              </>
             ),
           },
           {
@@ -496,9 +696,81 @@ export default function ExperimentAuditPage() {
               />
             ),
           },
+          {
+            key: "summary",
+            label: <span><FireOutlined /> 高危论文榜</span>,
+            children: (
+              <Space orientation="vertical" style={{ width: "100%" }} size="middle">
+                <Card size="small">
+                  <Space wrap>
+                    <Text type="secondary">最低严重度：</Text>
+                    <Select
+                      size="small"
+                      style={{ width: 140 }}
+                      value={summarySeverity}
+                      onChange={(v: "low" | "medium" | "high") => {
+                        setSummarySeverity(v);
+                        loadFindingsSummary(v);
+                      }}
+                      options={[
+                        { value: "high", label: "高" },
+                        { value: "medium", label: "中及以上" },
+                        { value: "low", label: "全部级别" },
+                      ]}
+                    />
+                    <Text type="secondary">
+                      {summary
+                        ? `共 ${summary.papers_with_findings} 篇含发现 · ${summary.total_findings} 条发现`
+                        : ""}
+                    </Text>
+                  </Space>
+                  {summary && summary.total_findings > 0 && (
+                    <div style={{ marginTop: 8 }}>
+                      {Object.entries(summary.by_type).map(([type, count]) => (
+                        <Tooltip key={type} title={getFindingTypeTooltip(type, findingTypes)}>
+                          <Tag style={{ marginBottom: 4 }}>
+                            {getFindingTypeLabel(type, findingTypes)}: {count}
+                          </Tag>
+                        </Tooltip>
+                      ))}
+                    </div>
+                  )}
+                </Card>
+                <Table
+                  rowKey="paper_id"
+                  size="small"
+                  loading={summaryLoading}
+                  dataSource={summary?.papers ?? []}
+                  locale={{ emptyText: <Empty description={summaryLoading ? "加载中…" : "无符合条件的发现"} /> }}
+                  pagination={{ pageSize: 15 }}
+                  columns={[
+                    { title: "论文", dataIndex: "paper_title", ellipsis: true },
+                    {
+                      title: "发现数",
+                      dataIndex: "findings_count",
+                      width: 90,
+                      sorter: (a: FindingsSummaryPaper, b: FindingsSummaryPaper) => a.findings_count - b.findings_count,
+                      defaultSortOrder: "descend",
+                    },
+                    {
+                      title: "类型分布",
+                      dataIndex: "types",
+                      render: (t: Record<string, number>) =>
+                        Object.entries(t).map(([type, count]) => (
+                          <Tooltip key={type} title={getFindingTypeTooltip(type, findingTypes)}>
+                            <Tag>{getFindingTypeLabel(type, findingTypes)} ×{count}</Tag>
+                          </Tooltip>
+                        )),
+                    },
+                  ]}
+                />
+              </Space>
+            ),
+          },
         ]}
         onChange={(k) => {
           if (k === "history") refreshHistory();
+          if (k === "summary") loadFindingsSummary(summarySeverity);
         }}
       />
     </div>

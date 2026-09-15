@@ -299,7 +299,11 @@ def get_qf_timeline(db: Session) -> dict[str, Any]:
     paper_breakdown: list[dict[str, Any]] = []
     for pid in set(old_stats.keys()) | set(new_stats.keys()):
         old_total, old_captioned = old_stats.get(pid, (0, 0))
+        old_total = old_total or 0
+        old_captioned = old_captioned or 0
         new_total, new_captioned = new_stats.get(pid, (0, 0))
+        new_total = new_total or 0
+        new_captioned = new_captioned or 0
         paper_breakdown.append(
             {
                 "paperId": pid,

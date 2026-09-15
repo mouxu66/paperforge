@@ -9,10 +9,14 @@
 - P0-5 实验信息完整性（MISSING_REPRO_INFO）
 - P0-6 Baseline 公平性初筛（BASELINE_UNFAIR）
 - P0-7 数据泄漏初筛（DATA_LEAKAGE_CANDIDATE）
-- P0-8 标准差/显著性缺失（STD_OR_SIGNIFICANCE_MISSING）
+- P0-8 标准差/显著性缺失（UNCERTAINTY_MISSING / SIGNIFICANCE_MISSING）
 - P0-9 曲线复用候选（FIGURE_REUSE_CANDIDATE）
 - P0-10 审计报告生成（report.py）
 - P0-11 图内数值造假指纹（SUSPICIOUS_DATA_PATTERN）
+- P0-12 全文相似度/重复发表线索（TEXT_DUPLICATION_CANDIDATE）
+- P0-14 单图内 copy-move / 条带克隆（IMAGE_TAMPERING_CANDIDATE，含旋转/缩放/镜像克隆）
+- P1-2 GRIM 均值一致性（GRIM_INCONSISTENCY，纯规则离线）
+- P1-3 p-curve / p-hacking 检测（PCURVE_ANOMALY，纯规则离线）
 
 设计原则（与 integrity_report.py 一致）：
 - **确定性优先**：能用公式/规则判定的绝不让 LLM 猜；LLM 仅用于语义抽取。

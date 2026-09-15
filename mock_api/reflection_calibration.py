@@ -1,7 +1,7 @@
 """感悟报告 4 维 LLM 分的确定性校准层（reflection 侧 per-dim 偏移）。
 
 解决 II（innovative_insights）残余系统性偏高（+0.070，来自 41 篇人工金标 vs
-Ornstein 9B 模型配对拟合）。与论文侧 depth_calibration 的「金标回归 offset」同构，
+Ornstein-V2 9B 模型配对拟合）。与论文侧 depth_calibration 的「金标回归 offset」同构，
 但这里按 4 个维度分别拟合偏差、推理时逐维减去，而不是单一全局平移。
 
 设计约束：

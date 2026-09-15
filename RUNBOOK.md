@@ -86,6 +86,17 @@
 - 想隔离测试 → 确认该路径就是你要的新库，然后在「模型管理」页添加模型配置。
 - 误建了空库 → 删掉该文件，用正确路径重启即可。
 
+### 4.8 多模型 VLM 图表审计 pipeline 排障
+**场景**：用 `scripts/run_glm_orchestrate.py`（glm-4v-flash 初筛 → 本地 Ornstein-V2 规划 → glm-4.1v-thinking 复扫 → 本地收敛 → glm-4.7-flash 复核）批量审计论文图表。详见 `docs/vlm-audit-pipeline-guide.md`。
+
+**排障速查**：
+- **阶段0 整篇极慢/全图「失败退避重试」**：初筛误走 Agnes。`.env` 的 `PAPERFORGE_GLM_VISION_PROVIDER=agnes` 会锁死初筛到 Agnes（20RPM 硬限 + ~3s/次节流）。运行须显式覆盖 `PAPERFORGE_GLM_VISION_PROVIDER=glm`（见指南 §五 启动器）。
+- **阶段4 崩 `MissingSchema: Invalid URL '/chat/completions'`**：`.env` 中 `PAPERFORGE_GLM_VISION_BASE_URL=` 空串清空了默认智谱端点。`_call_glm_text` 已加兜底回落，但仍建议显式设 `PAPERFORGE_GLM_VISION_BASE_URL=https://open.bigmodel.cn/api/paas/v4`。
+- **大图数论文（>~20 图）阶段1 本地 400 `exceeds context size (24576)`**：规划 prompt 把所有图塞进本地窗口。已修复为只喂「可疑图」+ 超长截断；若仍遇，减小 `MAX_PLAN_CHARS` 或降低单图信号块长度。
+- **`0xC000000A` native crash（阶段0 偶发）**：Windows 原生崩溃，Python try/except 抓不到。用 `scripts/run_orch_retry.py` 带进程级重试（最多 3 次）自愈；多为单张图触发，重启进程即可恢复。
+- **阶段4 复核「无产出」/ 跳过**：glm-4.7-flash 限速严重（实测 6 次仅 1 次成功），调用失败已 `try/except` 降级为仅告警，不阻塞主流程——属预期行为，非 bug。
+- **本地模型「调用失败（8080 未起？）」**：阶段1/3 走本地 Ornstein-V2 @8080，确认 `http://127.0.0.1:8080/v1/models` 存活。
+
 ---
 
 ## 5. 日志
@@ -351,3 +362,10 @@ copy %USERPROFILE%\backups\paperforge_YYYY-MM-DD.db %APPDATA%\PaperForge\paperfo
 ### 自动备份
 
 每次启动时冷快照到 `DATA_DIR/backups/auto_*.db`（保留 7 天 / 最多 10 个）。
+
+---
+
+## 16. 相关文档
+
+- [多模型 VLM 分级图表审计 Pipeline 指南](docs/vlm-audit-pipeline-guide.md) — 模型限速实测、三层架构、已修复 Bug、批量运行配方（§4.8 排障的详解版）。
+- [OCR + Qwen 全链路集成指南](docs/ocr-qwen-pipeline-guide.md) — **已废弃**（2026-08-17）。PaddleOCR-VL 已于 2026-07-27 退役，图中文字识别改由 Qwen3-VL-4B 视觉模型完成。现行 figure 视觉仲裁见 `docs/adr/013-vram-scheduler-text-vision-arbitration.md`。

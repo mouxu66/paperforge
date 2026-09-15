@@ -5,8 +5,9 @@
   ``page.find_tables()`` 纯 Python 即可完成网格/无线表格识别，零新依赖。
 - 表号（Table N）通过「表格 bbox 邻近文本块匹配 caption」定位，
   供 metrics.py 做正文-表格交叉比对时引用。
-- P0-8（标准差/显著性缺失）的确定性部分也在本模块：结果表无 ± 值
-  且全文无统计检验描述 → STD_OR_SIGNIFICANCE_MISSING。
+- P0-8（标准差/显著性缺失）的确定性部分也在本模块：结果表无 ± 值且
+  全文无不确定度描述（±/std/CI）→ UNCERTAINTY_MISSING；全文无统计检验
+  （p 值/t-test）→ SIGNIFICANCE_MISSING（两维度互不豁免）。
 """
 
 from __future__ import annotations
@@ -37,11 +38,20 @@ def pymupdf_available() -> bool:
         return False
 
 
-# P0-8：全文统计检验线索（任一命中即视为「已报告某种不确定度/显著性」）
-_SIGNIFICANCE_TEXT_RE = re.compile(
-    r"standard deviation|standard error|confidence interval|error bar"
-    r"|statistical(ly)?\s+significan|p\s*[-=]\s*0?\.\d|t-test|paired test"
-    r"|bootstrap|±|\bstd\b",
+# P0-8：结果表均值缺不确定度判定。
+# 仅「不确定度」类描述可豁免（±/std/CI/error bar）——它们直接给出均值的
+# 离散程度。显著性检验（p 值 / t-test / bootstrap）不豁免：p 值只说明「差异
+# 是否显著」，不提供均值离散程度，无法替代 ±/标准差（故 P0-8 与 P1-3
+# p-curve 可对同一篇论文同时命中，不互斥）。
+_UNCERTAINTY_TEXT_RE = re.compile(
+    r"standard deviation|standard error|confidence interval|error bar|±|\bstd\b|\bvariance\b",
+    re.IGNORECASE,
+)
+# 显著性检验类描述：仅用于区分 Finding 文案（只缺不确定度 vs 两者都缺）。
+_SIGNIFICANCE_TEST_RE = re.compile(
+    r"statistical(ly)?\s+significan"
+    r"|\bp\s*(?:-?\s*value\b)?\s*[=<>≤≥]\s*0?\.\d+"
+    r"|t-test|paired test|bootstrap",
     re.IGNORECASE,
 )
 
@@ -230,38 +240,61 @@ def find_cell_value(
 
 
 def detect_significance_missing(tables: list[ExtractedTable], full_text: str) -> list[dict]:
-    """P0-8：检测结果表缺标准差/显著性报告。
+    """P0-8：结果表缺不确定度 / 显著性检验，两个维度分别报告。
 
-    判定（保守，防误报）：
-    1. 存在至少一张结果表（表头含已知指标）；
-    2. 所有结果表均无 ± 值；
-    3. 全文无任何统计检验/不确定度描述线索。
-    三条同时满足 → 每条无 ± 的结果表产出一条 Finding。
+    - UNCERTAINTY_MISSING：结果表无 ± 且全文无不确定度描述（±/std/CI/error bar）。
+      p 值不豁免——p 值只说明差异是否显著，不提供均值离散程度。
+      每条无 ± 的结果表产出一条。
+    - SIGNIFICANCE_MISSING：全文无统计检验（p 值/t-test/显著性检验）。
+      仅当存在结果表（即有指标对比）时产出一条（论文级，不逐表重复）。
+
+    两者互不豁免：一篇论文可只缺不确定度、只缺显著性，或两者都缺。
     """
     results_tables = [t for t in tables if t.header_metrics()]
     if not results_tables:
         return []
-    if any(t.has_uncertainty_values() for t in results_tables):
-        return []
-    if _SIGNIFICANCE_TEXT_RE.search(full_text or ""):
-        return []
+    text = full_text or ""
+    has_uncertainty = any(t.has_uncertainty_values() for t in results_tables) or bool(
+        _UNCERTAINTY_TEXT_RE.search(text)
+    )
+    has_significance = _SIGNIFICANCE_TEST_RE.search(text) is not None
 
-    findings = []
-    for t in results_tables:
-        metrics = ", ".join(t.header_metrics()[:5])
+    findings: list[dict] = []
+    if not has_uncertainty:
+        for t in results_tables:
+            metrics = ", ".join(t.header_metrics()[:5])
+            findings.append(
+                make_finding(
+                    "UNCERTAINTY_MISSING",
+                    title=f"{t.label()} 只报告均值，缺少标准差/不确定度",
+                    page=t.page,
+                    bbox=t.bbox or None,
+                    claim=f"表格报告指标: {metrics}，无 ± 值",
+                    computed="全文未发现 ±/std/置信区间等均值不确定度描述",
+                    method="结果表单元格无 ± 值 且 全文无不确定度描述（±/std/CI）",
+                    evidence_sources=[{"type": "table", "table_id": t.label(), "page": t.page}],
+                    normal_explanation=(
+                        "单 seed 结果在部分场景可接受，但指标差异较小时"
+                        "无法排除随机性，建议补充多次运行统计"
+                    ),
+                    needs_human_review=True,
+                )
+            )
+    if not has_significance:
+        labels = "、".join(t.label() for t in results_tables)
         findings.append(
             make_finding(
-                "STD_OR_SIGNIFICANCE_MISSING",
-                title=f"{t.label()} 只报告均值，缺少标准差/显著性",
-                page=t.page,
-                bbox=t.bbox or None,
-                claim=f"表格报告指标: {metrics}，无 ± 值",
-                computed="全文未发现 std/error bar/p-value 描述",
-                method="结果表单元格无 ± 值 且 全文无统计检验关键词",
-                evidence_sources=[{"type": "table", "table_id": t.label(), "page": t.page}],
+                "SIGNIFICANCE_MISSING",
+                title="报告了指标对比但全文无统计检验",
+                page=results_tables[0].page,
+                claim=f"结果表: {labels}",
+                computed="全文未发现 p 值/t-test/显著性检验描述",
+                method="全文无统计检验关键词（p 值/t-test/statistically significant）",
+                evidence_sources=[
+                    {"type": "table", "table_id": t.label(), "page": t.page} for t in results_tables
+                ],
                 normal_explanation=(
-                    "单 seed 结果在部分场景可接受，但指标差异较小时"
-                    "无法排除随机性，建议补充多次运行统计"
+                    "部分领域只报点估计不报显著性，但差异较小时无法判断是否显著，建议补充显著性检验"
                 ),
                 needs_human_review=True,
             )

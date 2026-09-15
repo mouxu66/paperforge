@@ -170,6 +170,18 @@ def main() -> None:
             log.warning("[%d/%d] FAIL %s: %s (%.1fs)", idx, total, pid, exc, time.time() - t0)
             per_paper.append((pid, False, time.time() - t0, None, None, None))
         done += 1
+        # 每 10 篇打印一次实时进度汇总
+        if done % 10 == 0:
+            elapsed_so_far = time.time() - t_start
+            avg_per = elapsed_so_far / ok if ok else 0
+            remaining_papers = total - done
+            eta_s = avg_per * remaining_papers
+            from collections import Counter as _C
+            recent_v = _C(v for _, ok_, _, _, v, _ in per_paper[-10:] if ok_ and v)
+            log.info(
+                "--- 进度 %d/%d | OK=%d FAIL=%d | 过去10篇: %s | 平均%.1fs/篇 | 剩余%.0f分钟 ---",
+                done, total, ok, failed, dict(recent_v), avg_per, eta_s / 60,
+            )
 
     elapsed = time.time() - t_start
     log.info(

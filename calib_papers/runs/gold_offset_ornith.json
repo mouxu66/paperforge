@@ -1,0 +1,11 @@
+{
+  "model": "Ornith-1.5-9B-Q4_K_M",
+  "recommended_offset": -0.15,
+  "recommended_kappa": 0.2258,
+  "adopted_offset": -0.15,
+  "kappa_before_raw": -0.0746,
+  "kappa_before_old_offset": -0.0746,
+  "n_samples": 16,
+  "old_model_offset": -0.09,
+  "note": "Recalibrated for Ornith-1.5-9B. Optimal offset=-0.150 (kappa=0.226) vs old -0.09 (kappa=-0.075)"
+}

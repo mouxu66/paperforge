@@ -1,5 +1,6 @@
 <!--
 本文由用户于 2026-07-15 提供，作为「OCR + Qwen 全链路集成到 PaperForge」的设计/避坑参考。
+【2026-08-17 已废弃：OCR(PaddleOCR-VL) 已于 2026-07-27 退役，见正文顶部横幅。】
 工程保障团队主理人已对照 PaperForge 实际架构做核对，核心结论速记：
 
 ✅ 已具备、勿重做：
@@ -31,9 +32,24 @@
 - 「严格顺序加载、taskkill 杀进程树释放显存」完全匹配你真实运行方式（llama.cpp 单实例），保留。
 -->
 
+> ## ⚠️ 本文档已废弃（DEPRECATED）
+>
+> **废弃日期：2026-08-17。** 自 **2026-07-27** 起，独立的 PaddleOCR-VL 引擎已从
+> PaperForge 移除（`mock_api/llm/figure_qwen.py` 已删除 PaddleOCR-VL 回退路径），
+> 图中文字识别改由本地 **Qwen3-VL-4B** 视觉模型（`PAPERFORGE_VISION_HTTP_URL`，
+> 端口 8082）顺带完成，等效 "OCR + 语义摘要"。因此：
+> - 本文档所述的 "OCR ↔ Qwen 显存互斥 / taskkill 杀 OCR 进程树 / OCR VRAM bracket"
+>   等机制**已不再适用**（见 `docs/adr/010-figure-trigger-discipline.md`、
+>   `docs/adr/013-vram-scheduler-text-vision-arbitration.md`）。
+> - 现行 figure 视觉链路以 **text-Qwen(8080) ↔ vision-Qwen(8082)** 双模型仲裁，
+>   详见 `docs/adr/013-vram-scheduler-text-vision-arbitration.md`。
+>
+> 本文档仅作历史/避坑参考保留，**请勿按其中 OCR 流程做新开发**。
+
 # PaperForge + OCR + Qwen 全链路集成指南（对齐版）
 
-> 用户提供的设计/避坑参考文档，2026-07-15。本版已对照 PaperForge 实际架构做修正，开发 OCR + Qwen 集成模块时以此为准。
+> ~~用户提供的设计/避坑参考文档，2026-07-15。本版已对照 PaperForge 实际架构做修正，开发 OCR + Qwen 集成模块时以此为准。~~
+> **（已废弃，见上方横幅。现行实现见 ADR-013。）**
 
 ## 一、 核心架构与稳定性设计
 *解决单机资源瓶颈与高并发崩溃问题。*

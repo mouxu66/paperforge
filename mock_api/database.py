@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import logging
 import os
+import sqlite3
 import sys
 from collections.abc import Generator
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import cast
 
@@ -18,6 +19,13 @@ from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 logger = logging.getLogger(__name__)
+
+# Python 3.12 起 sqlite3 默认 datetime/date 适配器已弃用（3.14 将移除，届时
+# cursor.execute 直接报错）。显式注册等价的 ISO 格式适配器：存储格式与旧默认
+# 完全一致（datetime.isoformat(sep=" ") / date.isoformat()），无需数据迁移，
+# 同时消除 DeprecationWarning 并前瞻兼容未来 Python 版本。
+sqlite3.register_adapter(datetime, lambda dt: dt.isoformat(sep=" "))
+sqlite3.register_adapter(date, lambda d: d.isoformat())
 
 # 默认 schema 版本号 —— 任何破坏性 migration 前必须 <=
 # migration 检查这里以保证 DROP 后留有追责余地。
@@ -477,6 +485,17 @@ def _migrate_schema(db: Session) -> None:
         db.commit()
     _bump_schema_version(db, "papers", 8)
 
+    # WP-5.1: PDF 批注来源（auto=自动从 PDF 提取；manual=用户手动创建）。
+    # 模型 PdfAnnotation.source 新增后漏进迁移，导致查询报 no such column（500）。
+    ann_cols = db.execute(text("PRAGMA table_info(pdf_annotations)")).all()
+    ann_col_names = {row[1] for row in ann_cols}
+    if ann_col_names and "source" not in ann_col_names:
+        db.execute(text("ALTER TABLE pdf_annotations ADD COLUMN source VARCHAR DEFAULT 'manual'"))
+        db.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_pdf_annotations_source ON pdf_annotations(source)")
+        )
+        db.commit()
+
     # paper_figures.qwen_summary（图表 OCR 的 LLM 解读摘要）
     # M0/Rec4: paper_figures.caption_text（图注文本）
     fig_cols = db.execute(text("PRAGMA table_info(paper_figures)")).all()
@@ -702,6 +721,14 @@ def _migrate_schema(db: Session) -> None:
         acl_table.create(bind=db.get_bind(), checkfirst=True)
         db.commit()
     _bump_schema_version(db, "api_call_logs", 1)
+
+    # citation_sentiments.cloud_recheck（被引情感云端复核审计列：original/corrected JSON）
+    cs_cols = db.execute(text("PRAGMA table_info(citation_sentiments)")).all()
+    cs_col_names = {row[1] for row in cs_cols}
+    if cs_col_names and "cloud_recheck" not in cs_col_names:
+        db.execute(text("ALTER TABLE citation_sentiments ADD COLUMN cloud_recheck TEXT"))
+        db.commit()
+    _bump_schema_version(db, "citation_sentiments", 1)
 
 
 def _dump_forensic_snapshot(db: Session, table_name: str, reason: str) -> Path | None:

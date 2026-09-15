@@ -1,0 +1,130 @@
+{
+  "2606.27156": {
+    "base_score": 0.6445,
+    "calibrated_score": 0.6945,
+    "novelty_score": 0.62,
+    "rigor_score": 0.75,
+    "influence_score": 0.68,
+    "final_verdict": "minor_revision"
+  },
+  "2606.24099": {
+    "base_score": 0.5335,
+    "calibrated_score": 0.3335,
+    "novelty_score": 0.55,
+    "rigor_score": 0.52,
+    "influence_score": 0.58,
+    "final_verdict": "reject"
+  },
+  "2606.27186": {
+    "base_score": 0.7505,
+    "calibrated_score": 0.6705,
+    "novelty_score": 0.78,
+    "rigor_score": 0.85,
+    "influence_score": 0.72,
+    "final_verdict": "minor_revision"
+  },
+  "2606.24359": {
+    "base_score": 0.4825,
+    "calibrated_score": 0.3325,
+    "novelty_score": 0.55,
+    "rigor_score": 0.45,
+    "influence_score": 0.45,
+    "final_verdict": "reject"
+  },
+  "2606.27060": {
+    "base_score": 0.52,
+    "calibrated_score": 0.54,
+    "novelty_score": 0.5,
+    "rigor_score": 0.5,
+    "influence_score": 0.6,
+    "final_verdict": "major_revision"
+  },
+  "2606.18205": {
+    "base_score": 0.5425,
+    "calibrated_score": 0.3925,
+    "novelty_score": 0.55,
+    "rigor_score": 0.55,
+    "influence_score": 0.55,
+    "final_verdict": "reject"
+  },
+  "2606.26811": {
+    "base_score": 0.6385,
+    "calibrated_score": 0.4885,
+    "novelty_score": 0.65,
+    "rigor_score": 0.72,
+    "influence_score": 0.55,
+    "final_verdict": "reject"
+  },
+  "2606.27216": {
+    "base_score": 0.693,
+    "calibrated_score": 0.593,
+    "novelty_score": 0.72,
+    "rigor_score": 0.65,
+    "influence_score": 0.72,
+    "final_verdict": "major_revision"
+  },
+  "2606.26157": {
+    "base_score": 0.5955,
+    "calibrated_score": 0.4355,
+    "novelty_score": 0.72,
+    "rigor_score": 0.55,
+    "influence_score": 0.62,
+    "final_verdict": "major_revision"
+  },
+  "2606.22429": {
+    "base_score": 0.575,
+    "calibrated_score": 0.525,
+    "novelty_score": 0.65,
+    "rigor_score": 0.55,
+    "influence_score": 0.6,
+    "final_verdict": "major_revision"
+  },
+  "2606.27294": {
+    "base_score": 0.6745,
+    "calibrated_score": 0.5245,
+    "novelty_score": 0.72,
+    "rigor_score": 0.65,
+    "influence_score": 0.68,
+    "final_verdict": "reject"
+  },
+  "2606.27263": {
+    "base_score": 0.7795,
+    "calibrated_score": 0.8295,
+    "novelty_score": 0.85,
+    "rigor_score": 0.82,
+    "influence_score": 0.72,
+    "final_verdict": "accept"
+  },
+  "2606.26341": {
+    "base_score": 0.741,
+    "calibrated_score": 0.791,
+    "novelty_score": 0.75,
+    "rigor_score": 0.65,
+    "influence_score": 0.72,
+    "final_verdict": "reject"
+  },
+  "2606.27023": {
+    "base_score": 0.7085,
+    "calibrated_score": 0.7585,
+    "novelty_score": 0.62,
+    "rigor_score": 0.72,
+    "influence_score": 0.68,
+    "final_verdict": "minor_revision"
+  },
+  "2402.09353": {
+    "base_score": 0.643,
+    "calibrated_score": 0.723,
+    "novelty_score": 0.65,
+    "rigor_score": 0.6,
+    "influence_score": 0.72,
+    "final_verdict": "minor_revision"
+  },
+  "2606.21847": {
+    "base_score": 0.738,
+    "calibrated_score": 0.638,
+    "novelty_score": 0.72,
+    "rigor_score": 0.75,
+    "influence_score": 0.72,
+    "final_verdict": "reject"
+  }
+}

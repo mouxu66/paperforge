@@ -728,6 +728,66 @@ def route_vlm_for_figure(figure: dict[str, Any], *, ocr_text: str = "") -> dict[
 # 低于该占比的区域视为图标/logo/装饰/碎图，不抽为 figure —— 既避免过分割，
 # 也避免下游消费层对每个碎片跑 VLM 导致显存/时间爆炸。
 FIGURE_MIN_AREA_FRAC = 0.02
+# 位图最大面积占比：高于该占比（占满整页）的位图是整页快照/页面背景图
+# （如排版引擎把整页渲染成一张底图），不是 figure；若照抽会让所有页面共享
+# 同一张整页图，跨页互相 pHash/SIFT 匹配，产生 FIGURE_REUSE 假阳性。
+FIGURE_MAX_AREA_FRAC = 0.9
+# 装饰性横幅过滤（矢量路径）：横跨整页宽度、高度极小的矢量簇（期刊刊头/logo
+# 横幅）是装饰而非 figure，跳过。真实图表不会横跨 >80% 页宽且高度 <5% 页高。
+FIGURE_BANNER_WIDTH_FRAC = 0.8
+FIGURE_BANNER_HEIGHT_FRAC = 0.05
+
+# 矢量簇文本主导判定：正文/摘要/版权等文本块会被 cluster_drawings 聚成
+# 一个「矢量簇」，但其文字词数与 ink 覆盖率远高于真实图表。超过任一阈值
+# 即判定为文本块而非 figure，跳过抽取（否则摘要页会被当成图，污染 P0-9/P0-11）。
+VECTOR_CLUSTER_MAX_WORDS = 50
+VECTOR_CLUSTER_TEXT_INK_FRAC = 0.2
+
+
+def _vector_cluster_text_stats(page, rect) -> tuple[int, float]:
+    """统计矢量簇区域内的文本词数与文字 ink 覆盖率（0~1）。
+
+    用于区分「正文文本块」与「真实图表」：文本块的词数多且文字 bbox
+    覆盖簇面积比例高；图表的文字稀疏（仅轴标签/图例）。get_text 失败时
+    fail-open 返回 (0, 0.0)（不拦截，保持原行为）。
+    """
+    try:
+        words = page.get_text("words", clip=rect)
+    except Exception:  # noqa: BLE001 - 文本统计失败不影响抽取
+        return 0, 0.0
+    if not words:
+        return 0, 0.0
+    area = rect.width * rect.height
+    if area <= 0:
+        return len(words), 0.0
+    ink = 0.0
+    for w in words:
+        try:
+            x0, y0, x1, y1 = w[0], w[1], w[2], w[3]
+        except (IndexError, TypeError):
+            continue
+        ix0 = max(x0, rect.x0)
+        iy0 = max(y0, rect.y0)
+        ix1 = min(x1, rect.x1)
+        iy1 = min(y1, rect.y1)
+        if ix1 > ix0 and iy1 > iy0:
+            ink += (ix1 - ix0) * (iy1 - iy0)
+    return len(words), ink / area
+
+
+def _is_decorative_banner(rect, page_width: float, page_height: float) -> bool:
+    """装饰性横幅判定：横跨整页宽、极矮的矢量簇（期刊刊头/logo 横幅）。
+
+    真实图表不会横跨 >80% 页宽且高度 <5% 页高；这类「无文字、跨整页宽
+    的细长条」是封面页的装饰刊头而非 figure，应跳过抽取（否则会被 VLM
+    当实验图、被 P0-11 当数据表读）。
+    """
+    if page_width <= 0 or page_height <= 0:
+        return False
+    return (
+        rect.width > page_width * FIGURE_BANNER_WIDTH_FRAC
+        and rect.height < page_height * FIGURE_BANNER_HEIGHT_FRAC
+    )
 
 
 def extract_figures_for_paper(
@@ -805,12 +865,16 @@ def extract_figures_for_paper(
                 except Exception:  # noqa: BLE001
                     pass
 
-                # 面积过滤（与矢量路径共用阈值）：丢弃小于页面阈值的位图
+                # 面积过滤（与矢量路径共用最小阈值）：丢弃小于页面阈值的位图
                 # （图标/logo/装饰/碎图），避免过分割 + 下游消费层对每个碎片跑 VLM 致显存/时间爆炸。
+                # 同时丢弃占满整页的位图（整页快照/背景），防止跨页同图误报为 figure 复用。
                 if bbox is not None and page_area > 0:
                     bw = bbox[2] - bbox[0]
                     bh = bbox[3] - bbox[1]
-                    if bw * bh < page_area * FIGURE_MIN_AREA_FRAC:
+                    area = bw * bh
+                    if area < page_area * FIGURE_MIN_AREA_FRAC:
+                        continue
+                    if area > page_area * FIGURE_MAX_AREA_FRAC:
                         continue
                 if bbox is None:
                     # 未知 bbox 时用一个页面中心小矩形占位，避免把整张页面当作 figure
@@ -860,6 +924,19 @@ def extract_figures_for_paper(
                         continue
                     # 面积过滤：丢弃小于页面阈值的碎片（与位图路径共用 FIGURE_MIN_AREA_FRAC）
                     if rect.width * rect.height < page_area * FIGURE_MIN_AREA_FRAC:
+                        continue
+                    # 文本主导簇过滤：摘要页/正文页的矢量文字块会被 cluster_drawings
+                    # 聚成「figure」，但正文不是图（词数多、文字 ink 覆盖率高），跳过。
+                    # 真实图表只有少量文字（轴标签/图例），不会命中这两个阈值。
+                    n_text_words, text_ink_frac = _vector_cluster_text_stats(page, rect)
+                    if (
+                        n_text_words >= VECTOR_CLUSTER_MAX_WORDS
+                        or text_ink_frac >= VECTOR_CLUSTER_TEXT_INK_FRAC
+                    ):
+                        continue
+                    # 装饰性横幅过滤：横跨整页宽、极矮的刊头/logo 横幅是装饰
+                    # 而非 figure（如封面页顶部期刊刊头），跳过，避免被当成图。
+                    if _is_decorative_banner(rect, page.rect.width, page.rect.height):
                         continue
                     # 与已有位图 bbox 高度重叠则跳过（避免同一张图被抽两次）
                     overlapped = False

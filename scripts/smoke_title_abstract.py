@@ -1,4 +1,4 @@
-"""「只喂标题+摘要」实验：Ornstein 打分时只给论文标题+摘要，不喂正文/补充。
+"""「只喂标题+摘要」实验：Ornstein-V2 打分时只给论文标题+摘要，不喂正文/补充。
 
 对比三档（同 11 篇）：
   A) 标题+摘要（本实验）：paper_text = "标题\n摘要"，supplement 空
@@ -156,7 +156,7 @@ def summarize() -> None:
         print(f"\nUA 失真: 标题+摘要版 vs 人工 UA 的 MAE = {sum(ua_diffs)/len(ua_diffs):.3f} "
               f"({len(ua_diffs)} 篇)")
         for r in sorted(rows, key=lambda x: abs(float(x["UA"]) - float(x["human_UA"])), reverse=True)[:3]:
-            print(f"  UA 偏差最大 {r['sid']}: Ornstein={r['UA']} human={r['human_UA']} "
+            print(f"  UA 偏差最大 {r['sid']}: Ornstein-V2={r['UA']} human={r['human_UA']} "
                   f"(Δ{float(r['UA'])-float(r['human_UA']):+.2f})")
 
 

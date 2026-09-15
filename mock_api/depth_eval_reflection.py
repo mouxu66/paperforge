@@ -308,7 +308,7 @@ MAX_PAPER_PREVIEW_CHARS = _env_int("PAPERFORGE_PAPER_PREVIEW_CHARS", 4000)
 #     +模板最坏 ≈ 25.6K 字符 ≈ 10.8K tokens，加 5000 token 输出共 ~15.8K tokens，
 #     因此 ctx 默认 16384 保底；8GB 卡 + q4_0 KV 可到 24576（KV 约 0.9GB，余量充足）。
 #
-# 【默认 0.0 的原因（2026-08-12 实测）】本机 9B 模型（Ornstein）拿到长论文预览后
+# 【默认 0.0 的原因（2026-08-12 实测）】本机 9B 模型（Ornstein-V2）拿到长论文预览后
 # 会把每篇报告都往高打（≥0.85），随后被 R1.5 硬帽钉住（旧版统一 0.85，现按证据数分级 0.75/0.80/0.85）→ 不同报告分数几乎
 # 相同，区分度坍缩：同 4 篇报告、同温度 0.2 下，16000 字预览跨度 0.057、4000 字
 # 基础预览跨度 0.150、无预览跨度 0.200。默认不再补给，仅注入基础 4000 字（保留
@@ -319,7 +319,7 @@ PAPER_PREVIEW_MAX_CHARS = _env_int(
     "PAPERFORGE_PAPER_PREVIEW_MAX", 16000, minimum=MAX_PAPER_PREVIEW_CHARS
 )
 
-# II 维中位数采样（2026-08-13 措辞噪声抑制）：9B 模型（Ornstein）对同一报告的
+# II 维中位数采样（2026-08-13 措辞噪声抑制）：9B 模型（Ornstein-V2）对同一报告的
 # innovative_insights 打分有显著措辞噪声（同 prompt 不同 seed 下抖动，实测同一报告
 # 差可达 0.05-0.10），单次采样会被一次随机措辞带偏 → 排名不稳定。
 # 对 II 维额外跑 2-3 次（不同 seed）取中位数，只在 II 上做以控制成本（UA/AD/ES 单次）。
@@ -328,9 +328,29 @@ REFLECTION_II_SAMPLES_DEFAULT = 3
 
 
 def _reflection_ii_samples() -> int:
-    """动态读取 II 中位数采样次数（默认 3，1=关闭）。每次调用现读环境变量，
-    支持运行时/测试热切换（与 reflection_calibration 的开关模式一致）。"""
-    return _env_int("PAPERFORGE_REFLECTION_II_SAMPLES", REFLECTION_II_SAMPLES_DEFAULT, minimum=1)
+    """动态读取 II 中位数采样次数（默认 3，1=关闭）。
+
+    ⚠️ 2026-08-22 纠错：此前只读 os.environ，而 .env 是被 pydantic Settings
+    吃掉的——两条配置通道不通，.env 里写 PAPERFORGE_REFLECTION_II_SAMPLES
+    根本不生效（静默回退默认值，违反配置显式原则）。现改为：os.environ 显式
+    设置优先（测试热切换），否则回落统一配置 settings.reflection_ii_samples。
+    """
+    env = os.getenv("PAPERFORGE_REFLECTION_II_SAMPLES")
+    if env is not None and env.strip():
+        return _env_int("PAPERFORGE_REFLECTION_II_SAMPLES", REFLECTION_II_SAMPLES_DEFAULT)
+    return max(int(get_settings().reflection_ii_samples), 1)
+
+
+def _reflection_thinking_enabled() -> bool:
+    """思考模式门控：PAPERFORGE_REFLECTION_THINKING=1 时 reflection 评审
+    per-request 开启 CoT（默认关 = 历史行为不变）。
+
+    server 端 --reasoning on 只负责把 <think> 分流到 reasoning_content；
+    是否真的让模型先思考再打分由本开关 + chat_template_kwargs.enable_thinking
+    决定。CoT 经 get_last_reasoning() 抓取进 _thinking_excerpts 审计，
+    content 保持纯 JSON，safe_json_parse 不受影响。
+    """
+    return os.environ.get("PAPERFORGE_REFLECTION_THINKING", "").strip() == "1"
 
 
 def _truncate_head_tail(
@@ -489,6 +509,8 @@ def _reflection_uncertainty_report(scores: dict) -> dict:
 PROMPT_REFLECTION = """你是一位资深学术评审人（ICLR/NeurIPS 级别），现需评审一篇学生撰写的论文感悟报告。
 请像真人评审一样：先通读、形成整体印象、逐维度分析优劣，再给出分数。
 
+【校准先验】真实学生感悟报告中仅约 20% 值得 0.8+，多数合格报告落在 0.5-0.7，明显缺陷的落在 0.2-0.4。请用满 [0,1] 区间，分数应反映相对质量排序而非绝对宽松——若所有报告都给 0.8+，说明你没有区分度。
+
 报告类型：学生对某篇论文的读后感 / 复现实验的感悟 / 批判性思考（**非完整论文**）。
 
 {paper_section}
@@ -520,12 +542,12 @@ JSON 字段说明：
 - summary: 1-2 句话总结报告核心内容
 - verdict_suggestion: well_done | needs_evidence | needs_depth | rewrite_required
 
-评分参照（0-1 全区间，不要集中在 0.8-0.95）：
-- 差 (0.2-0.4): 明显缺陷（理解错误、无分析、无证据）
-- 中 (0.5-0.7): 合格但平庸（正确但简略、有想法但未深入、有引述但零散）
-- 好 (0.8-1.0): 优秀（准确具体、深入展开、独立见解、证据扎实）
+评分参照（用满 0-1 全区间，避免集中在 0.8-0.95；先判断落在哪个档，再在档内微调）：
+- 差 (0.2-0.4): 明显缺陷——理解错误/无分析/无证据/大量编造引文。给 0.4 以上需至少有一个合格维度支撑。
+- 中 (0.5-0.7): 合格但平庸——理解正确但简略、有想法但未深入、有引述但零散。多数报告应落在此区间。
+- 好 (0.8-1.0): 优秀——准确具体、深入展开、独立见解、证据逐字扎实。仅明显突出的报告给 0.85+，几乎不给 0.95+。
 
-输出格式（先写分析，再输出 JSON）：
+输出格式（先写分析，再输出一个合法 JSON 对象。JSON 必须是单个对象，不要用 ```json 包裹，字符串内双引号需转义为 \"，输出完 JSON 后不要再加任何解释文字）：
 
 [你的详细分析评语…]
 
@@ -663,6 +685,9 @@ class ReflectionReviewer:
         self._logs: list[str] = []
         self._llm_calls = 0
         self._llm_empty = 0
+        # 思考模式审计（PAPERFORGE_REFLECTION_THINKING=1 时）：每次 LLM 调用的
+        # CoT 原文（reasoning_content），供 pipeline 透传 / 离线 A/B 查看。
+        self._thinking_excerpts: list[str] = []
         # 证据被判无效的原因分布（{"ok","from_paper","not_found"} → 条数）。
         # 只在触发证据不足重试时填充，用于事后区分「模型引错来源」和「报告真没料」。
         self._evidence_rejections: dict[str, int] = {}
@@ -683,12 +708,43 @@ class ReflectionReviewer:
         call_llm 在超时/失败时返回 None（fail-open），若不统计，
         「LLM 挂了」与「学生报告确实没证据」在结果里长得一模一样
         —— 两者都是 R1 触发、四维 0.3。
+
+        【thinking】默认 thinking=False（严格 JSON 输出；CoT 泄漏进 content
+        会使 safe_json_parse 失败）。PAPERFORGE_REFLECTION_THINKING=1 时改为
+        per-request 显式开启思考模式——server 端 --reasoning on 会把 CoT 分流到
+        reasoning_content，content 保持纯 JSON；同时经 get_last_reasoning()
+        抓取 CoT 存入 _thinking_excerpts 审计（模型可见 ⟺ 有日志）。
         """
         self._llm_calls += 1
-        raw = self._raw_llm(prompt) or ""
+        think = _reflection_thinking_enabled()
+        # If _raw_llm is the real call_llm (not a test mock), plumb thinking through
+        import inspect
+
+        sig = inspect.signature(self._raw_llm)
+        if "thinking" in sig.parameters:
+            raw = self._raw_llm(prompt, thinking=think) or ""
+        else:
+            raw = self._raw_llm(prompt) or ""
         if not raw:
             self._llm_empty += 1
+        if think:
+            self._capture_thinking()
         return raw
+
+    def _capture_thinking(self) -> None:
+        """思考模式审计：抓取最近一次调用的 CoT 原文。
+
+        抓取失败绝不影响评分链路（静默降级）；最多保留前 8 次，防内存膨胀。
+        """
+        try:
+            from .depth_eval_v4 import get_last_reasoning
+
+            cot = get_last_reasoning() or ""
+        except Exception:  # noqa: BLE001 - 审计降级不影响评分
+            return
+        if len(self._thinking_excerpts) < 8:
+            self._thinking_excerpts.append(cot)
+        self._log(f"[thinking] 第{self._llm_calls}次调用 CoT 长度={len(cot)} 字符")
 
     def _sample_ii_median(self, base_prompt: str, primary_ii: float) -> float:
         """对 II 维做多次采样取中位数，抑制 9B 模型的措辞噪声。
@@ -1748,19 +1804,24 @@ def apply_crossval_bonus(
 # ===========================================================================
 # 简易 LLM 调用封装（复用 depth_eval_v4 的 watchdog 能力）
 # ===========================================================================
-def call_llm(prompt: str, system_prompt: str = "") -> str:
+def call_llm(prompt: str, system_prompt: str = "", thinking: bool | None = None) -> str:
     """同步 LLM 调用封装，委托 depth_eval_v4.call_llm 统一使用 watchdog 超时。
 
     通过 v4 的 watchdog executor 确保 LLM 调用不会无限期阻塞。
     max_tokens 走【reflection 专用下限】`_REFLECTION_MAX_TOKENS_FLOOR`，不会低于
     3000（除非 env REFLECTION_MAX_TOKENS=0 显式压低）。
+    thinking=True 时额外 +2000 token：CoT 本身消耗生成预算，不扩预算会导致
+    JSON 尾部被截断（parse_failed 假阳性）。
     """
     from .depth_eval_v4 import call_llm as v4_call_llm
 
     cfg = get_compute_mode_config()
     cfg_max_tokens = int(cfg.get("max_tokens", 512))
-    max_tokens = max(cfg_max_tokens, _REFLECTION_MAX_TOKENS_FLOOR)
-    return v4_call_llm(prompt=prompt, system_prompt=system_prompt, max_tokens=max_tokens)
+    floor = _REFLECTION_MAX_TOKENS_FLOOR + (2000 if thinking else 0)
+    max_tokens = max(cfg_max_tokens, floor)
+    return v4_call_llm(
+        prompt=prompt, system_prompt=system_prompt, max_tokens=max_tokens, thinking=thinking
+    )
 
 
 # ===========================================================================

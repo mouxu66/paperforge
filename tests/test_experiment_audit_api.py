@@ -161,14 +161,153 @@ class TestAuditEndpoints:
         )
         assert resp.status_code == 400
 
+    def test_result_injects_evidence_image_url(self, client, db_session):
+        """读路径注入：_audit snippet（含 Windows 反斜杠）→ evidence image_url。"""
+        from mock_api.experiment_audit.schemas import assign_finding_ids, make_finding
+        from mock_api.models import ExperimentAudit
+
+        paper_id = _seed_paper(db_session, "p-evidence-url")
+        finding = make_finding(
+            "CHART_AXIS_RISK",
+            title="Figure 1 broken_axis",
+            evidence_sources=[
+                # Windows 形态（生成机器写入 DB 的真实形态）
+                {"type": "figure", "snippet": "C:\\data\\uploads\\figures\\p-evidence-url\\_audit\\fig1_broken_axis.png"},
+                # Linux 形态
+                {"type": "figure", "snippet": "/srv/uploads/figures/p-evidence-url/_audit/fig2_scale.png"},
+                # 非证据图路径：不动
+                {"type": "text", "snippet": "正文证据片段"},
+            ],
+        )
+        db_session.add(
+            ExperimentAudit(paper_id=paper_id, status="completed", findings=assign_finding_ids([finding]))
+        )
+        db_session.commit()
+
+        body = client.get(f"/api/experiment-audit/result/{paper_id}").json()
+        evs = [e for e in body["findings"][0]["evidence_sources"]]
+        assert evs[0]["image_url"] == "/api/experiment-audit/evidence-image/p-evidence-url/fig1_broken_axis.png"
+        assert evs[1]["image_url"] == "/api/experiment-audit/evidence-image/p-evidence-url/fig2_scale.png"
+        assert "image_url" not in evs[2] or evs[2]["image_url"] is None
+
+    def test_evidence_image_serve(self, client, db_session, tmp_path, monkeypatch):
+        """证据图端点：200 + PNG；非法文件名 400；不存在 404；论文不存在 404。"""
+        from mock_api.utils import paths as paths_mod
+
+        paper_id = _seed_paper(db_session, "p-evidence-img")
+        audit_dir = tmp_path / "figures" / paper_id / "_audit"
+        audit_dir.mkdir(parents=True)
+        png = audit_dir / "fig1_broken_axis.png"
+        png.write_bytes(b"\x89PNG\r\n\x1a\nfake-png-bytes")
+        monkeypatch.setattr(paths_mod, "_get_uploads_dir", lambda: tmp_path)
+
+        resp = client.get(f"/api/experiment-audit/evidence-image/{paper_id}/fig1_broken_axis.png")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("image/png")
+        assert resp.content == png.read_bytes()
+
+        assert client.get(f"/api/experiment-audit/evidence-image/{paper_id}/..%2Fsecret").status_code in (400, 404)
+        assert client.get(f"/api/experiment-audit/evidence-image/{paper_id}/missing.png").status_code == 404
+        assert client.get("/api/experiment-audit/evidence-image/no-such-paper/x.png").status_code == 404
+
     def test_finding_types_catalog(self, client):
+        from mock_api.experiment_audit.schemas import FINDING_TYPES
+
         resp = client.get("/api/experiment-audit/finding-types")
         assert resp.status_code == 200
         types = resp.json()
-        assert len(types) == 11
-        assert {t["type"] for t in types} >= {
+        # 目录应返回注册表里的全部类型（不锁死数量，避免新增类型时测试失修）
+        assert len(types) == len(FINDING_TYPES)
+        assert {t["type"] for t in types} == set(FINDING_TYPES)
+        assert {
             "NUMERIC_MISMATCH",
             "DATA_LEAKAGE_CANDIDATE",
             "FIGURE_REUSE_CANDIDATE",
             "SUSPICIOUS_DATA_PATTERN",
-        }
+        } <= {t["type"] for t in types}
+
+
+class TestRelabeledReuseEndpoint:
+    """跨论文改标图片复用端点：校验 + 图解析 + 检测接线（检测器 mock）。"""
+
+    def _seed_two_papers(self, db_session, tmp_path, monkeypatch):
+        from mock_api import models
+        import mock_api.experiment_audit.figure_reuse as figure_reuse
+
+        monkeypatch.setattr(figure_reuse, "_get_uploads_dir", lambda: tmp_path)
+        fig_a = tmp_path / "figures" / "p-a"
+        fig_b = tmp_path / "figures" / "p-b"
+        fig_a.mkdir(parents=True, exist_ok=True)
+        fig_b.mkdir(parents=True, exist_ok=True)
+        (fig_a / "fa.png").write_bytes(b"a")
+        (fig_b / "fb.png").write_bytes(b"b")
+
+        db_session.add(Paper(id="p-a", title="Paper A"))
+        db_session.add(Paper(id="p-b", title="Paper B"))
+        db_session.add(
+            models.PaperFigure(paper_id="p-a", page=1, figure_index=0, figure_path="fa.png")
+        )
+        db_session.add(
+            models.PaperFigure(paper_id="p-b", page=1, figure_index=0, figure_path="fb.png")
+        )
+        db_session.commit()
+
+    def test_missing_paper_404(self, client, db_session):
+        db_session.add(Paper(id="p-a", title="Paper A"))
+        db_session.commit()
+        resp = client.post(
+            "/api/experiment-audit/relabeled-reuse",
+            json={"paper_a_id": "p-a", "paper_b_id": "no-such"},
+        )
+        assert resp.status_code == 404
+
+    def test_same_paper_400(self, client, db_session):
+        db_session.add(Paper(id="p-a", title="Paper A"))
+        db_session.commit()
+        resp = client.post(
+            "/api/experiment-audit/relabeled-reuse",
+            json={"paper_a_id": "p-a", "paper_b_id": "p-a"},
+        )
+        assert resp.status_code == 400
+
+    def test_no_figures_400(self, client, db_session):
+        db_session.add(Paper(id="p-a", title="Paper A"))
+        db_session.add(Paper(id="p-b", title="Paper B"))
+        db_session.commit()
+        resp = client.post(
+            "/api/experiment-audit/relabeled-reuse",
+            json={"paper_a_id": "p-a", "paper_b_id": "p-b"},
+        )
+        assert resp.status_code == 400
+        assert "图不足" in resp.json()["detail"]
+
+    def test_comparison_returns_findings(self, client, db_session, tmp_path, monkeypatch):
+        import mock_api.experiment_audit.figure_reuse as figure_reuse
+        from mock_api.experiment_audit.schemas import make_finding
+
+        self._seed_two_papers(db_session, tmp_path, monkeypatch)
+        # mock 检测器（真实 NCC/VLM 太重，端点接线用固定 finding 验证）
+        monkeypatch.setattr(
+            figure_reuse,
+            "detect_relabeled_image_reuse",
+            lambda *a, **k: [
+                make_finding(
+                    "RELABELED_IMAGE_REUSE",
+                    title="fa.png 与 fb.png 条带像素复用但标签不一致",
+                    claim="NCC=0.965",
+                    method="test",
+                    needs_human_review=True,
+                )
+            ],
+        )
+        resp = client.post(
+            "/api/experiment-audit/relabeled-reuse",
+            json={"paper_a_id": "p-a", "paper_b_id": "p-b"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["findings_count"] == 1
+        assert body["paper_a_id"] == "p-a"
+        assert body["paper_b_id"] == "p-b"
+        assert body["findings"][0]["type"] == "RELABELED_IMAGE_REUSE"
+        assert body["findings"][0]["finding_id"] == "F-001"

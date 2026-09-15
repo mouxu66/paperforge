@@ -30,8 +30,9 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-# 让脚本在 scripts/ 下也能 import mock_api（项目根加入 sys.path）
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# 让脚本在 scripts/calibration/ 下也能 import mock_api（项目根加入 sys.path）
+# 注意：脚本已从 scripts/ 移入 scripts/calibration/，项目根 = 上三层
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 # ── 安全默认值（必须在 import depth_eval_v4 之前设）──
 # 禁用 bulk DEPTH 内联图触发：图只走独立小批量 pass（figure_understanding worker），
@@ -42,7 +43,8 @@ os.environ.setdefault("PAPERFORGE_LLM_TEMPERATURE", "0")
 # 注意：偏移 / 封顶 / 图证据在 run() 内按 --baseline / --with-figures 动态设置，
 # 必须在 import depth_eval_v4 之前落地，故不在此模块级写死。
 
-ROOT = Path(__file__).resolve().parent.parent
+# 脚本位于 scripts/calibration/ 下，仓库根 = 上三层
+ROOT = Path(__file__).resolve().parent.parent.parent
 CACHE = ROOT / ".peerread_cache"
 IDX = ROOT / "deliverables" / "peerread_index.json"
 SAMPLE = ROOT / "deliverables" / "peerread_sample.json"
@@ -173,7 +175,7 @@ def extract_full_text(parsed_path: str) -> tuple[str, str]:
     return full, abstract
 
 
-def run(out_path: str | None = None, with_figures: bool = False, baseline: bool = False):
+def run(out_path: str | None = None, with_figures: bool = False, baseline: bool = False, sample_path: str | None = None):
     """对 sample 逐篇跑 DEPTH v4。
 
     with_figures: 开启 DEPTH_FIGURE_EVIDENCE_ENABLED（消费已存在的 paper_figures
@@ -197,9 +199,17 @@ def run(out_path: str | None = None, with_figures: bool = False, baseline: bool 
     os.environ["PAPERFORGE_DEPTH_CAP_TAPER"] = "0.15"
     os.environ["DEPTH_FIGURE_EVIDENCE_ENABLED"] = "true" if with_figures else "false"
 
-    if not SAMPLE.exists():
-        sample()
-    sel = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    sp = Path(sample_path) if sample_path else SAMPLE
+    if not sp.exists():
+        if sp == SAMPLE:
+            sample()
+        else:
+            print(f"[run] 自定义样本不存在: {sp}")
+            sys.exit(1)
+    sel = json.loads(sp.read_text(encoding="utf-8"))
+    # 兼容两类清单：顶层列表（旧 sample）或 {sample_id, papers:[...]}（新分层清单）
+    if isinstance(sel, dict) and isinstance(sel.get("papers"), list):
+        sel = sel["papers"]
     from mock_api.depth_eval_v4 import DepthReviewer
 
     results_path = Path(out_path) if out_path else RESULTS
@@ -313,13 +323,15 @@ def main():
                     help="run: 开启 DEPTH_FIGURE_EVIDENCE_ENABLED（M0 含图口径，消费已存在图证据）")
     ap.add_argument("--baseline", action="store_true",
                     help="run: 产出 offset=0 基线（清零偏移表+封顶），供 offset_scan 重扫")
+    ap.add_argument("--sample", type=str, default=None,
+                    help="run: 自定义样本 JSON 路径（默认 deliverables/peerread_sample.json）")
     args = ap.parse_args()
     if args.cmd == "index":
         build_index()
     elif args.cmd == "sample":
         sample(args.n)
     elif args.cmd == "run":
-        run(args.out, with_figures=args.with_figures, baseline=args.baseline)
+        run(args.out, with_figures=args.with_figures, baseline=args.baseline, sample_path=args.sample)
     elif args.cmd == "calibrate":
         calibrate()
 

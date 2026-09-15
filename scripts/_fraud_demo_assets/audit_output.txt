@@ -1,0 +1,169 @@
+warning: The `fitz` API is deprecated and will be removed in future. Use `import pymupdf` instead.
+[audit] Qwen3-VL 语义审计失败: HTTPConnectionPool(host='127.0.0.1', port=8082): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=8082): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。"))
+[audit] Qwen3-VL 语义审计失败: HTTPConnectionPool(host='127.0.0.1', port=8082): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=8082): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。"))
+[audit] Qwen3-VL 语义审计失败: HTTPConnectionPool(host='127.0.0.1', port=8082): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=8082): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。"))
+[audit] 图内数值转写失败: HTTPConnectionPool(host='127.0.0.1', port=8082): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=8082): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。"))
+[audit] 图内数值转写失败: HTTPConnectionPool(host='127.0.0.1', port=8082): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=8082): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。"))
+[audit] 图内数值转写失败: HTTPConnectionPool(host='127.0.0.1', port=8082): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=8082): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。"))
+[audit] 图内数值转写失败: HTTPConnectionPool(host='127.0.0.1', port=8082): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=8082): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。"))
+[audit] 图内数值转写失败: HTTPConnectionPool(host='127.0.0.1', port=8082): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=8082): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。"))
+[audit] 图内数值转写失败: HTTPConnectionPool(host='127.0.0.1', port=8082): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=8082): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。"))
+[audit] 图内数值转写失败: HTTPConnectionPool(host='127.0.0.1', port=8082): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=8082): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。"))
+[audit] 图内数值转写失败: HTTPConnectionPool(host='127.0.0.1', port=8082): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=8082): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。"))
+[audit] 图内数值转写失败: HTTPConnectionPool(host='127.0.0.1', port=8082): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=8082): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。"))
+检测项 P0-11_figure_numbers 失败: 视觉模型转写全部失败：3 张图均未得到转写结果（视觉服务不可达或无响应），P0-11 图内数值指纹未实际运行
+Traceback (most recent call last):
+  File "C:/Users/<user>\WorkBuddy\2026-06-13-21-30-08\paperforge\mock_api\experiment_audit\service.py", line 558, in _timed_list
+    result = fn() or []
+             ^^^^
+  File "C:/Users/<user>\WorkBuddy\2026-06-13-21-30-08\paperforge\mock_api\experiment_audit\service.py", line 232, in <lambda>
+    lambda: table_numbers.check_figure_number_patterns(db, paper_id),
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:/Users/<user>\WorkBuddy\2026-06-13-21-30-08\paperforge\mock_api\experiment_audit\table_numbers.py", line 562, in check_figure_number_patterns
+    raise FigureTranscriptionUnavailable(
+mock_api.experiment_audit.table_numbers.FigureTranscriptionUnavailable: 视觉模型转写全部失败：3 张图均未得到转写结果（视觉服务不可达或无响应），P0-11 图内数值指纹未实际运行
+PDF 生成: C:/Users/<user>\WorkBuddy\2026-06-13-21-30-08\paperforge\scripts\_fraud_demo_assets\fraud_paper.pdf
+[1] PDF 已上传到 C:/Users/<user>\WorkBuddy\2026-06-13-21-30-08\paperforge\uploads\fraud_demo_001.pdf（711912 bytes，全文 1894 字符）
+[2] 抽取 figure: 3 张
+[3] 已入库 figure: 3 张
+Consider using the pymupdf_layout package for a greatly improved page layout analysis.
+[4] 审计完成 status=completed findings=29
+
+========================================================================
+FINDINGS（按类型分组）
+========================================================================
+
+[ABLATION_UNSUPPORTED] severity=medium
+  title: ablation 数据不支持通用贡献声称（Table 2）
+  computed: 全模型=84.3，移除行: w/o attention=86.1
+
+[CHART_AXIS_RISK] severity=low
+  title: Figure 1 legend_color_clash
+
+[CHART_AXIS_RISK] severity=low
+  title: Figure 2 legend_color_clash
+
+[CITATION_INTEGRITY] severity=medium
+  title: 引用编号不一致
+  computed: cited_not_listed=2, listed_not_cited=0
+
+[CITATION_INTEGRITY] severity=medium
+  title: DOI 疑似编造
+  computed: not_found=1, verified=0, unknown=0
+
+[CITATION_INTEGRITY] severity=medium
+  title: 占位符 DOI
+  computed: placeholder_dois=1
+
+[CITATION_INTEGRITY] severity=medium
+  title: arXiv 号疑似编造
+  computed: suspect_arxiv_ids=1
+
+[CLAIMS_EXTRACTION] severity=low
+  title: 抽取论断 #1: Our proposed model achieves a precision of 90.0, a
+  computed: 类型: sota; 相关指标: precision, recall, F1; 相关图表:
+
+[CLAIMS_EXTRACTION] severity=low
+  title: 抽取论断 #2: As shown in Table 1, our method achieves an accura
+  computed: 类型: sota; 相关指标: accuracy; 相关图表: Table 1
+
+[CLAIMS_EXTRACTION] severity=low
+  title: 抽取论断 #3: The gain over the baseline was confirmed (p = 0.04
+  computed: 类型: improvement; 相关指标: ; 相关图表:
+
+[CLAIMS_EXTRACTION] severity=low
+  title: 抽取论断 #4: Additional comparisons reached (p = 0.048), (p = 0
+  computed: 类型: improvement; 相关指标: ; 相关图表:
+
+[CLAIMS_EXTRACTION] severity=low
+  title: 抽取论断 #5: Table 1. Comparison with baseline methods on the t
+  computed: 类型: comparison; 相关指标: accuracy, F1; 相关图表: Table 1
+
+[CLAIMS_EXTRACTION] severity=low
+  title: 抽取论断 #6: We verify that each component contributes to the f
+  computed: 类型: ablation; 相关指标: accuracy; 相关图表: Table 2
+
+[CLAIMS_EXTRACTION] severity=low
+  title: 抽取论断 #7: Table 2. Ablation study on the test set.
+  computed: 类型: ablation; 相关指标: accuracy; 相关图表: Table 2
+
+[CLAIMS_EXTRACTION] severity=low
+  title: 抽取论断 #8: Figure 1. Performance comparison across methods.
+  computed: 类型: comparison; 相关指标: ; 相关图表: Figure 1
+
+[CLAIMS_EXTRACTION] severity=low
+  title: 抽取论断 #9: Figure 2. Performance on the held-out validation s
+  computed: 类型: comparison; 相关指标: ; 相关图表: Figure 2
+
+[CLAIMS_EXTRACTION] severity=low
+  title: 抽取论断 #10: Figure 3. Western blot of marker expression.
+  computed: 类型: efficiency; 相关指标: ; 相关图表: Figure 3
+
+[CLAIMS_EXTRACTION] severity=low
+  title: 抽取论断 #11: DeepGuard achieves strong results across all datas
+  computed: 类型: sota; 相关指标: ; 相关图表:
+
+[CLAIMS_EXTRACTION] severity=low
+  title: 抽取论断 #12: The proposed attention mechanism is simple, effect
+  computed: 类型: improvement; 相关指标: ; 相关图表:
+
+[FIGURE_REUSE_CANDIDATE] severity=low
+  title: Figure 1 与 Figure 2 局部高度匹配
+  computed: RANSAC inliers = 333（阈值 5），inlier 比例 1.00（阈值 0.7）
+
+[GRIM_INCONSISTENCY] severity=medium
+  title: 均值 4.56 无法由 n=30 的整数样本推出
+  computed: n=30 个整数观测值的均值只能是 k/30 的四舍五入，但 4.56 落在任何 k/30 的舍入区间之外（GRIM 违例）
+
+[IMAGE_TAMPERING_CANDIDATE] severity=high
+  title: Figure 3 图内疑似复制-粘贴（copy-move）
+  computed: 仿射 inliers=23（≥12），好匹配 47，平均位移 140.0px，旋转 0.0°、缩放 ×1.0
+
+[IMAGE_TAMPERING_CANDIDATE] severity=high
+  title: Figure 3 图内条带疑似克隆
+  computed: NCC=1.0（阈值 0.92），band A=(40, 60, 140, 16)，band B=(40, 200, 140, 16)
+
+[METRIC_INCONSISTENCY] severity=high
+  title: F1 数值与 Precision/Recall 不自洽
+  computed: 84.71
+
+[MISSING_REPRO_INFO] severity=medium
+  title: 缺少 7 项复现关键信息
+  computed: 清单共 7 项，缺失 7 项
+
+[NUMERIC_MISMATCH] severity=high
+  title: 正文 accuracy 数值与 Table 1 不一致
+  computed: Table 1 中最接近值 80.0
+
+[PCURVE_ANOMALY] severity=medium
+  title: p 值分布异常聚集（p-hacking 线索）
+  computed: [p值聚集] 6 个精确 p 值中 6 个恰好落在 0.04~0.05 勉强显著区间，而强显著(<0.01)仅 0 个，符合 p-hacking 选择性汇报指纹
+[p值重复] 勉强显著区间的同一 p 值反复出现：p=0.045（各 ≥3 次），独立检验精确 p 值高度重合，疑似编造
+[p曲线断崖] 6 个 p 值挤在 0.04~0.05，(0.05, 0.1] 区间为 0，p 值分布恰在显著性阈值处截断
+
+[UNCERTAINTY_MISSING] severity=medium
+  title: Table 1 只报告均值，缺少标准差/不确定度
+  computed: 全文未发现 ±/std/置信区间等均值不确定度描述
+
+[UNCERTAINTY_MISSING] severity=medium
+  title: Table 2 只报告均值，缺少标准差/不确定度
+  computed: 全文未发现 ±/std/置信区间等均值不确定度描述
+
+========================================================================
+植入指纹 → 检测结果
+========================================================================
+  [✓ 抓到] P0-1 正文 accuracy 92.1% vs 表 84.3
+  [✓ 抓到] P0-2 P=90/R=80/F1=91.5 不自洽
+  [✓ 抓到] P0-3 w/o attention 行不降反升 + each component
+  [✓ 抓到] P0-5 缺 seed/std/hardware/lr/batch/epochs
+  [✓ 抓到] P0-8 结果表无 ± 且无不确定度（p 值不豁免）
+  [✓ 抓到] P0-9 Fig1 与 Fig2 同一张柱状图
+  [✓ 抓到] P0-14 Fig3 条带克隆
+  [✓ 抓到] P1-0 占位符 DOI + 假 arXiv 号
+  [✓ 抓到] P1-2 mean 4.56 / n=30 违例
+  [✓ 抓到] P1-3 p 值聚集 0.04~0.05
+
+========================================================================
+CHECKS_RUN（跳过/失败项）
+========================================================================
+  P0-11_figure_numbers: failed — 视觉模型转写全部失败：3 张图均未得到转写结果（视觉服务不可达或无响应），P0-11 图内数值指纹未实际运行

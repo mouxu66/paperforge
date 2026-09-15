@@ -53,8 +53,8 @@ conn.close()
 print(f"\n--- 区分度 ---")
 avgs = [r['avg'] for r in results]
 print(f"  范围: {min(avgs):.3f} ~ {max(avgs):.3f} (跨度={max(avgs)-min(avgs):.3f})")
-print(f"  之前 Ornstein 跨度: 0.15（几乎全是 0.775/0.800/0.825 三个值）")
+print(f"  之前 Ornstein-V2 跨度: 0.15（几乎全是 0.775/0.800/0.825 三个值）")
 print(f"\n--- vs 人工 ---")
 for r in results:
     delta = r['avg'] - r['human']
-    print(f"  {r['sid']}: Ornstein={r['avg']:.3f} Human={r['human']:.3f} Δ={delta:+.3f}")
+    print(f"  {r['sid']}: Ornstein-V2={r['avg']:.3f} Human={r['human']:.3f} Δ={delta:+.3f}")

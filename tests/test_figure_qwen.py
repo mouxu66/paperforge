@@ -110,10 +110,11 @@ class TestFigureQwenVisionFailOpen:
             "choices": [{"message": {"content": "这是一张损失随 epoch 下降的曲线图"}}]
         }
 
-        def _spy_post(url, json=None, timeout=None):  # noqa: ANN001
+        def _spy_post(url, json=None, timeout=None, headers=None):  # noqa: ANN001
             captured["url"] = url
             captured["json"] = json
             captured["timeout"] = timeout
+            captured["headers"] = headers
             return resp
 
         monkeypatch.setattr(requests, "post", _spy_post)

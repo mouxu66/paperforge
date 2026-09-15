@@ -28,7 +28,7 @@ PaperForge 是一个本地化的学术写作桌面工具，覆盖从文献检索
 | 前端 | React 18 + TypeScript + Ant Design 5 + Zustand + Vite |
 | 后端 | FastAPI + SQLAlchemy + SQLite |
 | AI 网关 | OpenAI 兼容协议，支持多 Provider 运行时切换 |
-| 本地模型 | llama.cpp / Ollama（推荐 Qwen3.5-9B） |
+| 本地模型 | llama.cpp / Ollama（推荐 Ornstein-V2） |
 | 向量引擎 | Fastembed (ONNX Runtime) + BAAI/bge-small-en-v1.5 |
 
 ---
@@ -66,7 +66,21 @@ start_paperforge.bat
 
 该脚本会自动探测端口、启动后端、按需构建前端并打开浏览器。
 
-### 方式三：开发者模式
+### 方式三：Docker Compose（一键启动推理服务）
+
+如果你需要本地 LLM 推理服务，可以使用 Docker Compose 一键启动：
+
+```bash
+# 1. 将模型文件放入 ./models/ 目录
+# 2. 启动服务
+docker compose up -d
+# 3. 启动 PaperForge
+python -m mock_api.main
+```
+
+详见 [docker-compose.yml](docker-compose.yml)。
+
+### 方式四：开发者模式
 ```bash
 # 克隆项目
 git clone https://github.com/你的用户名/paperforge.git
@@ -121,6 +135,16 @@ PaperForge 支持以下导出格式：
 - **Word (.docx)**：python-docx 生成，保留格式
 - **LaTeX**：生成 `.tex` 文件 + `.bib` 引用文件
 - **PDF**：通过前端 `window.print()` 导出（浏览器原生，无需额外依赖）
+
+## 🖼️ 图表提取
+
+PaperForge DEPTH v4.2 支持图表提取和图文一致性分析。详见 [docs/figure_extraction.md](docs/figure_extraction.md)。
+
+| 方案 | 特点 | 推荐场景 |
+|------|------|----------|
+| 内置 Vector Extractor | 零配置，PDF 矢量图直接渲染 | 快速上手 |
+| Qwen3-VL-4B | 多模态视觉理解，OCR + 语义摘要 | 需要深层理解 |
+| PicAxe | 轻量 Python 库，开箱即用 | 批量处理 |
 
 ## 📁 项目结构
 

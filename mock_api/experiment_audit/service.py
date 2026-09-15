@@ -17,17 +17,19 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from ..models import ExperimentAudit
+from ..models import AuditFinding, ExperimentAudit
 from ..models import Paper as PaperORM
 from . import (
     ablation,
     baseline,
     figure_reuse,
     figures,
+    grim_pcurve,
     metrics,
     reproducibility,
     table_numbers,
     tables,
+    text_similarity,
 )
 from .schemas import assign_finding_ids, coerce_findings, make_finding
 
@@ -247,6 +249,65 @@ class AuditService:
                         lambda: figure_reuse.detect_figure_reuse(db, paper_id),
                     )
 
+            # ── P0-9b 跨论文图片复用候选（pHash 索引召回 + SIFT 验证，库内比对）──
+            if enabled("P0-9_cross_paper_reuse"):
+                if not figure_reuse.reuse_deps_available():
+                    checks_run.append(
+                        {
+                            "check": "P0-9_cross_paper_reuse",
+                            "status": "skipped",
+                            "reason": "cv2/imagehash/Pillow 缺失，跨论文图片复用检测跳过",
+                        }
+                    )
+                else:
+                    findings += self._timed_list(
+                        checks_run,
+                        "P0-9_cross_paper_reuse",
+                        lambda: figure_reuse.detect_cross_paper_reuse_in_corpus(db, paper_id),
+                    )
+
+            # ── P0-14 单图内 copy-move / 条带克隆（SIFT 自匹配 + NCC）──
+            if enabled("P0-14_intra_image_copy_move"):
+                if not figure_reuse.reuse_deps_available():
+                    checks_run.append(
+                        {
+                            "check": "P0-14_intra_image_copy_move",
+                            "status": "skipped",
+                            "reason": "cv2/imagehash/Pillow 缺失，单图内篡改检测跳过",
+                        }
+                    )
+                else:
+                    findings += self._timed_list(
+                        checks_run,
+                        "P0-14_intra_image_copy_move",
+                        lambda: figure_reuse.detect_intra_image_copy_move(db, paper_id),
+                    )
+
+            # ── P0-12 全文相似度（重复发表/论文工厂线索，库内两两比对）──
+            if enabled("P0-12_text_duplication"):
+                findings += self._timed_list(
+                    checks_run,
+                    "P0-12_text_duplication",
+                    lambda: text_similarity.detect_text_duplication(db, paper_id),
+                )
+
+            # ── P0-13 语义级重复（换词重写：embedding 余弦 + 表层 Jaccard 双信号）──
+            if enabled("P0-13_semantic_duplication"):
+                if not text_similarity.semantic_available():
+                    checks_run.append(
+                        {
+                            "check": "P0-13_semantic_duplication",
+                            "status": "skipped",
+                            "reason": "fastembed/向量模型不可用，语义级重复检测跳过（可后续跑全库扫描脚本）",
+                        }
+                    )
+                else:
+                    findings += self._timed_list(
+                        checks_run,
+                        "P0-13_semantic_duplication",
+                        lambda: text_similarity.detect_semantic_duplication(db, paper_id),
+                    )
+
             # ── P0-8 标准差/显著性缺失 ──
             if extracted and enabled("P0-8_significance_missing"):
                 findings += self._timed_list(
@@ -271,6 +332,22 @@ class AuditService:
                     lambda: self._check_citation_integrity(full_text),
                 )
 
+            # ── P1-2 GRIM 均值一致性（纯规则，零外部依赖）──
+            if enabled("P1-2_grim"):
+                findings += self._timed_list(
+                    checks_run,
+                    "P1-2_grim",
+                    lambda: grim_pcurve.check_grim(full_text),
+                )
+
+            # ── P1-3 p-curve / p-hacking 检测（纯规则，零外部依赖）──
+            if enabled("P1-3_pcurve"):
+                findings += self._timed_list(
+                    checks_run,
+                    "P1-3_pcurve",
+                    lambda: grim_pcurve.check_pcurve(full_text),
+                )
+
             # ── P1-1 论断抽取（LLM + 规则回退，为其他检查提供结构化输入）──
             if enabled("P1-1_claims_extraction"):
                 extracted_claims = self._timed_list(
@@ -284,6 +361,8 @@ class AuditService:
 
             # 写库前再校验一次（防御检测器构造非法结构），脏数据不落库
             audit.findings = coerce_findings(assign_finding_ids(findings))
+            # 镜像到 audit_findings 索引表（同事务，供 severity/type SQL 过滤与聚合）
+            sync_audit_findings(db, audit, audit.findings)
             audit.checks_run = checks_run
             audit.status = "completed"
             audit.completed_at = datetime.now()
@@ -412,6 +491,40 @@ class AuditService:
                 )
             )
 
+        # 占位符 DOI（本地启发式：尾段连续编号，如 10.5555/1234567.8901234）
+        if report.placeholder_dois:
+            findings.append(
+                make_finding(
+                    "CITATION_INTEGRITY",
+                    title="占位符 DOI",
+                    claim=f"检测到占位符 DOI（尾段为连续编号）: {report.placeholder_dois[:5]}",
+                    computed=f"placeholder_dois={len(report.placeholder_dois)}",
+                    method="占位符 DOI 本地启发式（尾段单调递增数字串）",
+                    evidence_sources=[
+                        {"type": "text", "snippet": doi} for doi in report.placeholder_dois[:5]
+                    ],
+                    normal_explanation="模板/文档示例常用 10.5555/1234567.8901234 这类占位符，真实论文不应出现",
+                    needs_human_review=True,
+                )
+            )
+
+        # 假 arXiv 号（本地启发式：非法月份 / 序列号全序）
+        if report.suspect_arxiv_ids:
+            findings.append(
+                make_finding(
+                    "CITATION_INTEGRITY",
+                    title="arXiv 号疑似编造",
+                    claim=f"检测到疑似编造的 arXiv 号: {report.suspect_arxiv_ids[:5]}",
+                    computed=f"suspect_arxiv_ids={len(report.suspect_arxiv_ids)}",
+                    method="假 arXiv 号本地启发式（非法月份 / 序列号单调全序）",
+                    evidence_sources=[
+                        {"type": "text", "snippet": aid} for aid in report.suspect_arxiv_ids[:5]
+                    ],
+                    normal_explanation="真实 arXiv 号序列近乎随机，连续编号（如 12345/98765）或非法月份高度可疑",
+                    needs_human_review=True,
+                )
+            )
+
         return findings
 
     @staticmethod
@@ -475,3 +588,26 @@ def get_latest_audit(db: Session, paper_id: str) -> ExperimentAudit | None:
         .order_by(ExperimentAudit.created_at.desc())
         .first()
     )
+
+
+def sync_audit_findings(db: Session, audit: ExperimentAudit, findings: list[dict]) -> None:
+    """把 findings JSON 镜像到 audit_findings 索引表（先删后插，幂等）。
+
+    JSON 列是唯一事实源；本表仅供 severity/type 过滤与跨论文聚合走 SQL
+    索引。与主写入同一事务提交（调用方 commit），镜像失败即整体回滚——
+    索引表与 JSON 列不一致比审计失败更糟（聚合口径失真）。
+    """
+    db.query(AuditFinding).filter(AuditFinding.audit_id == audit.id).delete(
+        synchronize_session=False
+    )
+    for f in findings:
+        db.add(
+            AuditFinding(
+                audit_id=audit.id,
+                paper_id=audit.paper_id,
+                finding_id=str(f.get("finding_id") or "")[:64] or "unknown",
+                type=str(f.get("type") or "UNKNOWN")[:64],
+                severity=str(f.get("severity") or "low")[:16],
+                payload=f,
+            )
+        )

@@ -5,12 +5,16 @@ CSV 补充数据」三个输入源（等差 / 重复 / 恒定偏移 / Benford）
 """
 from __future__ import annotations
 
+import pytest
+
 from mock_api.depth_eval_v4 import (
     _arith_progression_flag,
     _benford_flag,
     _constant_offset_flag,
     _repeated_value_flag,
+    _stat_penalty,
     _statistical_plausibility_check,
+    _statistical_redline,
     statistical_flags_from_curve_points,
     statistical_flags_from_series,
     statistical_flags_from_table_file,
@@ -133,3 +137,62 @@ class TestMarkdownTableRegression:
 
     def test_no_table_no_flags(self):
         assert _statistical_plausibility_check("普通正文，没有表格。") == []
+
+
+# ---------------------------------------------------------------------------
+# 硬红线：≥2 条确定性指纹（Benford/std/p值）→ 直接 reject + Benford 扣分
+# ---------------------------------------------------------------------------
+class TestStatPenalty:
+    def test_benford_included_in_deduction(self):
+        assert _stat_penalty(["[Benford偏离] 表格首位数字严重偏离"]) == pytest.approx(0.05)
+
+    def test_deterministic_fingerprints_weight_0_05_each(self):
+        flags = [
+            "[std过低] 声称 std 过低",
+            "[p值不可能] 声称所有比较 p<0.001",
+            "[Benford偏离] 首位数字偏离",
+        ]
+        assert _stat_penalty(flags) == pytest.approx(0.15)
+
+    def test_weaker_signals_weight_0_03(self):
+        assert _stat_penalty(["[表格文本矛盾] 夸大约 15pp"]) == pytest.approx(0.03)
+        assert _stat_penalty(["[消融数字过整] 3 项 delta 小数部分相同"]) == pytest.approx(0.03)
+
+    def test_penalty_capped_at_0_15(self):
+        many = ["[std过低] a", "[p值不可能] b", "[Benford偏离] c", "[Benford偏离] d", "[Benford偏离] e"]
+        assert _stat_penalty(many) == pytest.approx(0.15)
+
+    def test_empty_no_penalty(self):
+        assert _stat_penalty([]) == 0.0
+
+
+class TestStatisticalRedline:
+    def test_two_red_flags_reject(self):
+        flags = ["[std过低] x", "[Benford偏离] y"]
+        verdict, reason = _statistical_redline(flags, "accept", "原理由")
+        assert verdict == "reject"
+        assert "统计红线" in reason
+        assert "2" in reason
+
+    def test_single_red_flag_no_reject(self):
+        flags = ["[Benford偏离] y"]
+        verdict, reason = _statistical_redline(flags, "accept", "原理由")
+        assert verdict == "accept"
+        assert reason == "原理由"
+
+    def test_already_reject_unchanged(self):
+        flags = ["[std过低] x", "[Benford偏离] y"]
+        verdict, reason = _statistical_redline(flags, "reject", "原理由")
+        assert verdict == "reject"
+        assert reason == "原理由"
+
+    def test_non_redline_flags_ignored(self):
+        flags = ["[等差数字] x", "[重复数字] y", "[恒定偏移] z"]
+        verdict, reason = _statistical_redline(flags, "accept", "原理由")
+        assert verdict == "accept"
+
+    def test_mixed_two_redline_plus_others_reject(self):
+        flags = ["[p值不可能] a", "[std过低] b", "[等差数字] c"]
+        verdict, reason = _statistical_redline(flags, "minor_revision", "")
+        assert verdict == "reject"
+        assert reason.startswith("[统计红线]")

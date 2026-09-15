@@ -788,7 +788,8 @@ class TestScoringAnchors:
         from mock_api.depth_eval_reflection import PROMPT_REFLECTION
 
         assert "评分参照" in PROMPT_REFLECTION
-        assert "不要集中在 0.8-0.95" in PROMPT_REFLECTION
+        assert "避免集中在 0.8-0.95" in PROMPT_REFLECTION
+        assert "校准先验" in PROMPT_REFLECTION
         assert "差 (0.2-0.4)" in PROMPT_REFLECTION
         assert "中 (0.5-0.7)" in PROMPT_REFLECTION
         assert "好 (0.8-1.0)" in PROMPT_REFLECTION

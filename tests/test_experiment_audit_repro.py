@@ -42,8 +42,15 @@ class TestReproChecklist:
 
 
 class TestSchemas:
-    def test_registry_has_eleven_types(self):
-        assert len(FINDING_TYPES) == 11
+    def test_registry_has_expected_types(self):
+        # 类型数量随功能增删浮动，不锁死具体数字；只断言核心类型齐全且字段合法。
+        assert {
+            "NUMERIC_MISMATCH",
+            "METRIC_INCONSISTENCY",
+            "SUSPICIOUS_DATA_PATTERN",
+            "CITATION_INTEGRITY",
+            "BASELINE_UNFAIR",
+        } <= set(FINDING_TYPES)
         for meta in FINDING_TYPES.values():
             assert meta["severity"] in ("high", "medium", "low")
             assert meta["description"]

@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pytest
+
 from mock_api.experiment_audit import table_numbers
 from mock_api.models import Paper, PaperFigure
 
@@ -70,6 +72,23 @@ class TestDigitPreference:
 
     def test_too_few_values_not_flagged(self):
         assert table_numbers.detect_digit_preference([1.1, 1.1, 1.1]) is None
+
+    def test_integer_last_digit_flagged(self):
+        # 整数末位都是 1（11/21/31…），float 表示为 11.0 → 末位应为 1 而非 0
+        vals = [11.0, 21.0, 31.0, 41.0, 51.0, 61.0, 71.0, 81.0, 91.0, 101.0]
+        flag = table_numbers.detect_digit_preference(vals)
+        assert flag is not None
+        assert "末位为 1" in flag
+
+    def test_scientific_notation_last_digit_flagged(self):
+        # 极小值 str() 用科学计数法（3.1e-05），末位应读有效数字 1 而非指数位 5
+        vals = [
+            0.000031, 0.000041, 0.000051, 0.000061, 0.000071,
+            0.000081, 0.000091, 0.000101, 0.000111, 0.000121,
+        ]
+        flag = table_numbers.detect_digit_preference(vals)
+        assert flag is not None
+        assert "末位为 1" in flag
 
 
 class TestCheckFigureNumberPatterns:
@@ -159,6 +178,50 @@ class TestCheckFigureNumberPatterns:
     def test_no_figures_returns_empty(self, db_session):
         assert table_numbers.check_figure_number_patterns(db_session, "no-figs") == []
 
+    def test_all_transcription_fails_raises(self, db_session, tmp_path, monkeypatch):
+        """视觉模型转写全部失败（如 8082 停机）→ 响亮失败而非静默 ok findings=0。"""
+        self._seed(db_session, tmp_path, monkeypatch)
+        monkeypatch.setattr(
+            table_numbers,
+            "transcribe_figure_numbers",
+            lambda *a, **k: "",  # 每遍转写都失败
+        )
+        with pytest.raises(table_numbers.FigureTranscriptionUnavailable):
+            table_numbers.check_figure_number_patterns(db_session, "p-num")
+
+    def test_partial_transcription_success_no_raise(self, db_session, tmp_path, monkeypatch):
+        """部分成功（至少一张图转写出来）→ 不抛异常，只对成功图出 finding。"""
+        monkeypatch.setattr(table_numbers, "_get_uploads_dir", lambda: tmp_path)
+        fig_dir = tmp_path / "figures" / "p-part"
+        fig_dir.mkdir(parents=True, exist_ok=True)
+        (fig_dir / "f0.png").write_bytes(b"x")
+        (fig_dir / "f1.png").write_bytes(b"y")
+        db_session.add(Paper(id="p-part", title="Partial"))
+        db_session.add(
+            PaperFigure(
+                paper_id="p-part", page=3, figure_index=0,
+                figure_path="figures/p-part/f0.png", figure_number=1,
+                caption_text="ok",
+            )
+        )
+        db_session.add(
+            PaperFigure(
+                paper_id="p-part", page=4, figure_index=1,
+                figure_path="figures/p-part/f1.png", figure_number=2,
+                caption_text="fail",
+            )
+        )
+        db_session.commit()
+
+        def mock_transcribe(image_path, *a, **k):
+            return "" if "f1.png" in str(image_path) else "WT|0.763641\nH186R|0.763641"
+
+        monkeypatch.setattr(table_numbers, "transcribe_figure_numbers", mock_transcribe)
+        findings = table_numbers.check_figure_number_patterns(db_session, "p-part")
+        # f0 成功转写且跨组重复 → 1 条 finding；f1 转写失败被跳过，但不抛异常
+        assert len(findings) == 1
+        assert "跨组重复" in findings[0]["computed"]
+
     def test_cross_figure_duplicate_produces_finding(self, db_session, tmp_path, monkeypatch):
         """两张 figure 共享完全相同的数据 → 跨表复制 Finding。"""
         monkeypatch.setattr(table_numbers, "_get_uploads_dir", lambda: tmp_path)
@@ -211,6 +274,69 @@ class TestCheckFigureNumberPatterns:
         assert "Figure 1" in cf["title"]
         assert "Figure 2" in cf["title"]
         assert cf["evidence_sources"][0]["shared_count"] == 3
+
+    def test_axis_ticks_only_no_finding(self, db_session, tmp_path, monkeypatch):
+        """只转写出轴刻度（圆整数）→ 过滤后无真实数据点，不产生 Finding。"""
+        self._seed(db_session, tmp_path, monkeypatch)
+        monkeypatch.setattr(
+            table_numbers,
+            "transcribe_figure_numbers",
+            lambda *a, **k: "WT|100.0\nH186R|100.0\nWT|150.0\nH186R|200.0",
+        )
+        assert table_numbers.check_figure_number_patterns(db_session, "p-num") == []
+
+    def test_ticks_filtered_but_real_duplicate_detected(self, db_session, tmp_path, monkeypatch):
+        """轴刻度被过滤，但真实数据点的跨组重复仍应命中。"""
+        self._seed(db_session, tmp_path, monkeypatch)
+        monkeypatch.setattr(
+            table_numbers,
+            "transcribe_figure_numbers",
+            lambda *a, **k: (
+                "WT|100.0\nH186R|100.0\n"  # 轴刻度（过滤）
+                "WT|0.763641\nH186R|0.811456\n"
+                "WT|5.589312\nH186R|5.589312\n"  # 真实跨组重复（保留）
+                "WT|7.992131\nH186R|7.992131"
+            ),
+        )
+        findings = table_numbers.check_figure_number_patterns(db_session, "p-num")
+        assert len(findings) == 1
+        assert "跨组重复" in findings[0]["computed"]
+        assert "100.0" not in findings[0]["computed"]
+
+    def test_axis_tick_filter_can_be_disabled(self, db_session, tmp_path, monkeypatch):
+        """filter_axis_ticks=False 时不过滤，轴刻度 100.0 被当数据点命中跨组重复。"""
+        self._seed(db_session, tmp_path, monkeypatch)
+        monkeypatch.setattr(
+            table_numbers,
+            "transcribe_figure_numbers",
+            lambda *a, **k: "WT|100.0\nH186R|100.0",
+        )
+        # 默认（过滤开启）→ 轴刻度被剔除，无 finding
+        assert table_numbers.check_figure_number_patterns(db_session, "p-num") == []
+        # 显式关闭过滤 → 100.0 保留，跨组重复命中
+        findings = table_numbers.check_figure_number_patterns(
+            db_session, "p-num", filter_axis_ticks=False
+        )
+        assert len(findings) == 1
+        assert "跨组重复" in findings[0]["computed"]
+        assert "100.0" in findings[0]["computed"]
+
+    def test_axis_tick_filter_respects_settings_flag(self, db_session, tmp_path, monkeypatch):
+        """运行时配置 depth_axis_tick_filter_enabled=False 时，默认路径不过滤轴刻度。"""
+        self._seed(db_session, tmp_path, monkeypatch)
+        monkeypatch.setattr(
+            table_numbers,
+            "transcribe_figure_numbers",
+            lambda *a, **k: "WT|100.0\nH186R|100.0",
+        )
+
+        class _NoTickFilterSettings:
+            depth_axis_tick_filter_enabled = False
+
+        monkeypatch.setattr("mock_api.settings.get_settings", lambda: _NoTickFilterSettings())
+        findings = table_numbers.check_figure_number_patterns(db_session, "p-num")
+        assert len(findings) == 1
+        assert "100.0" in findings[0]["computed"]
 
 
 class TestTranscribeMulti:
@@ -493,3 +619,44 @@ class TestComplementaryGroups:
         ]
         flags = table_numbers.detect_complementary_groups(series)
         assert flags == []
+
+
+class TestAxisTickFilter:
+    """轴刻度/归一化基线过滤：圆整数剔除，真实测量值保留。"""
+
+    def test_round_ints_are_ticks(self):
+        for v in [0.0, 1.0, 2.0, 3.0, 5.0, 100.0, 150.0, 200.0, 250.0, 300.0]:
+            assert table_numbers._is_axis_tick_like(v) is True, v
+
+    def test_real_measurements_not_ticks(self):
+        for v in [0.13398, 77.40741, 0.763641, 5.589312, 7.992131, 1.234]:
+            assert table_numbers._is_axis_tick_like(v) is False, v
+
+    def test_negative_not_tick(self):
+        assert table_numbers._is_axis_tick_like(-5.0) is False
+
+    def test_filter_removes_ticks_keeps_data(self):
+        series = [
+            ("WT", [100.0, 0.763641, 150.0]),
+            ("H186R", [100.0, 0.811456]),
+            ("只刻度", [200.0, 250.0, 300.0]),  # 整组只剩刻度 → 丢弃
+        ]
+        filtered = table_numbers.filter_axis_ticks_and_baseline(series)
+        assert filtered == [
+            ("WT", [0.763641]),
+            ("H186R", [0.811456]),
+        ]
+
+    def test_filter_empty(self):
+        assert table_numbers.filter_axis_ticks_and_baseline([]) == []
+
+    def test_switch_explicit_override_wins(self):
+        assert table_numbers._axis_tick_filter_enabled(True) is True
+        assert table_numbers._axis_tick_filter_enabled(False) is False
+
+    def test_switch_reads_settings_when_none(self, monkeypatch):
+        class _NoTickFilterSettings:
+            depth_axis_tick_filter_enabled = False
+
+        monkeypatch.setattr("mock_api.settings.get_settings", lambda: _NoTickFilterSettings())
+        assert table_numbers._axis_tick_filter_enabled(None) is False

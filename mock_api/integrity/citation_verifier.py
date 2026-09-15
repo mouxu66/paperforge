@@ -11,14 +11,20 @@
 2. **Crossref 真值核验**：对每个 DOI 查询 Crossref；格式合法但 404 = 疑似编造。
 3. **引用一致性**：文中引用集合 vs 参考文献列表集合的差异（漏引 / 虚列）。
 
-默认离线（``PAPERFORGE_CITATION_VERIFY=0`` 或网络不可达）时仅做本地抽取与
-一致性检查，不发起外部请求，结果标记 ``unchecked``，不影响现有评分。
+默认在线核验（Crossref）；设 ``PAPERFORGE_CITATION_VERIFY=0``/``offline``
+或网络不可达时降级为仅本地抽取 + 一致性 + 占位符/假 arXiv 启发式，
+不发起外部请求，结果标记 ``unchecked``（除非本地启发式命中，则标 ``suspect``）。
 
 环境变量：
-- ``PAPERFORGE_CITATION_VERIFY``      : "1" 开启 Crossref 在线核验（默认 0/关闭）
+- ``PAPERFORGE_CITATION_VERIFY``      : 默认开启 Crossref 在线核验；设 "0"/"offline"
+                                        关闭（仅本地抽取 + 一致性 + 占位符/假 arXiv 启发式）
 - ``PAPERFORGE_CROSSREF_MAILTO``      : 传入 Crossref polite-pool 邮箱（可选，提升配额）
 - ``PAPERFORGE_CITATION_VERIFY_CAP``  : 单篇最多核验的 DOI 数（默认 30，防止 bulk 卡死）
 - ``PAPERFORGE_CITATION_VERIFY_TIMEOUT``: 单请求超时秒（默认 4.0）
+
+另含零网络本地启发式（无论在线/离线都会执行）：
+- 占位符 DOI（尾段含 ≥6 位单调递增数字串，如 10.5555/1234567.8901234）
+- 假 arXiv 号（月份非法，或 5 位序列号单调递增/递减，如 2501.98765）
 """
 
 from __future__ import annotations
@@ -32,24 +38,59 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-# ── 环境开关 ────────────────────────────────────────────────────────────────
-def _env_flag(name: str, default: bool = False) -> bool:
+# ── 环境开关（OS env 优先，其次 pydantic Settings 读 .env）─────────────────
+# 历史问题：此前只读 os.environ，导致 .env 里的 PAPERFORGE_CITATION_VERIFY 等
+# 配置不生效。这里统一收口：OS env 命中即用，否则回退 Settings（含 .env）。
+_SETTING_ATTR = {
+    "PAPERFORGE_CITATION_VERIFY": "citation_verify",
+    "PAPERFORGE_CROSSREF_MAILTO": "crossref_mailto",
+    "PAPERFORGE_CITATION_VERIFY_CAP": "citation_verify_cap",
+    "PAPERFORGE_CITATION_VERIFY_TIMEOUT": "citation_verify_timeout",
+}
+
+
+def _setting_str(name: str) -> str | None:
+    """从 pydantic Settings 读配置（覆盖 .env）；无字段/空值/异常时返回 None。"""
+    attr = _SETTING_ATTR.get(name)
+    if not attr:
+        return None
+    try:
+        from ..settings import get_settings
+
+        val = getattr(get_settings(), attr, None)
+        if val in (None, ""):
+            return None
+        return str(val)
+    except Exception:  # noqa: BLE001 - 配置读取失败回退 os.environ/默认值
+        return None
+
+
+def _env_str(name: str) -> str | None:
+    """OS env 优先，其次 .env（经 Settings）。均未设置返回 None。"""
     raw = os.environ.get(name)
     if raw is None:
+        raw = _setting_str(name)
+    return raw
+
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    raw = _env_str(name)
+    if raw is None or raw.strip() == "":
         return default
     return raw.strip().lower() in ("1", "true", "yes", "on")
 
 
 def _env_positive(name: str, default: float) -> float:
+    raw = _env_str(name)
     try:
-        v = float(os.environ.get(name, str(default)))
+        v = float(raw if raw not in (None, "") else default)
         return v if v > 0 else default
     except (TypeError, ValueError):
         return default
 
 
-ONLINE_ENABLED = lambda: _env_flag("PAPERFORGE_CITATION_VERIFY", False)
-_CROSSREF_MAILTO = os.environ.get("PAPERFORGE_CROSSREF_MAILTO") or ""
+ONLINE_ENABLED = lambda: _env_flag("PAPERFORGE_CITATION_VERIFY", True)
+_CROSSREF_MAILTO = _env_str("PAPERFORGE_CROSSREF_MAILTO") or ""
 _VERIFY_CAP = int(_env_positive("PAPERFORGE_CITATION_VERIFY_CAP", 30))
 _VERIFY_TIMEOUT = _env_positive("PAPERFORGE_CITATION_VERIFY_TIMEOUT", 4.0)
 
@@ -64,7 +105,11 @@ _REF_HEAD_RE = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 # 参考文献条目分隔：行首 [1] / 1. / [1]  Author
-_REF_ENTRY_RE = re.compile(r"^\s*(?:\[(\d+)\]|\((\d+)\)|(\d+)[.\s])", re.MULTILINE)
+# 注意：真实条目编号后一定跟作者/标题等文字（如 "31. Tang LQ, ..."），
+# 而跨行落在行首的孤立页码（如 "118." / "1128."）后面没有文字，
+# 若不排除会被误当条目编号 → listed_not_cited 假阳性。
+# 括号形式 (N) 限 1-3 位：行首 "(2007)" 是出版年份而非条目编号。
+_REF_ENTRY_RE = re.compile(r"^[ \t]*(?:\[(\d+)\]|\((\d{1,3})\)|(\d+)[.])[ \t]+\S", re.MULTILINE)
 # 仅用于切分的无捕获组版本（re.split 会插入捕获组内容，故切分必须用非捕获组）
 _REF_SPLIT_RE = re.compile(r"^\s*(?:\[\d+\]|\(?\d+\)|\d+[.\s])", re.MULTILINE)
 # 文中引用：[1], [1,2], (Author, 2004), \cite{x}
@@ -155,6 +200,64 @@ def extract_intext_citations(text: str) -> set[int]:
     return nums
 
 
+# ── 本地启发式（零网络，占位符 DOI / 假 arXiv 号）───────────────────────
+def _monotonic_digit_run(s: str, min_len: int) -> bool:
+    """检测字符串中是否存在 ≥min_len 位的连续单调数字串。
+
+    同时覆盖递增与递减，且允许 9→0 回绕（如 89012 视为递增、90123 视为递增）。
+    非数字字符会中断连续性。真实 DOI/arXiv 序列号近乎随机，几乎不会出现
+    这种「全序数字串」，是典型的占位符/编造指纹。
+    """
+    asc = desc = 1
+    for i in range(1, len(s)):
+        a, b = s[i - 1], s[i]
+        if not (a.isdigit() and b.isdigit()):
+            asc = desc = 1
+            continue
+        asc = asc + 1 if (ord(b) - ord(a)) % 10 == 1 else 1
+        desc = desc + 1 if (ord(a) - ord(b)) % 10 == 1 else 1
+        if asc >= min_len or desc >= min_len:
+            return True
+    return False
+
+
+def detect_placeholder_dois(dois: list[str]) -> list[str]:
+    """本地启发式：占位符 DOI（无需联网）。
+
+    命中特征：DOI 尾段（注册码之后）含 ≥6 位单调递增数字串
+    （如 ``10.5555/1234567.8901234`` 的 ``1234567`` / ``8901234``）。
+    """
+    out: list[str] = []
+    for doi in dois:
+        suffix = doi.split("/", 1)[1] if "/" in doi else doi
+        if _monotonic_digit_run(suffix, 6):
+            out.append(doi)
+    return out
+
+
+def detect_fake_arxiv_ids(arxiv_ids: list[str]) -> list[str]:
+    """本地启发式：假 arXiv 号（无需联网）。
+
+    命中特征：
+    1. 新式 ``YYMM.NNNNN`` 的月份非法（MM<1 或 >12，如 ``2513.xxxxx``）；
+    2. 5 位序列号呈单调递增/递减（如 ``12345`` / ``98765``）——真实序列号
+       近乎随机，不会出现全序数字串。
+    """
+    out: list[str] = []
+    for aid in arxiv_ids:
+        m = re.match(r"^(\d{2})(\d{2})\.(\d{4,5})(?:v\d+)?$", aid)
+        if not m:
+            continue
+        mm = int(m.group(2))
+        serial = m.group(3)
+        if mm < 1 or mm > 12:
+            out.append(aid)
+            continue
+        if _monotonic_digit_run(serial, 5):
+            out.append(aid)
+    return out
+
+
 # ── Crossref 核验（fail-open） ──────────────────────────────────────────────
 def _verify_single_doi(doi: str, session: Any | None = None) -> tuple[str, dict]:
     """核验单个 DOI。返回 (status, meta)。
@@ -199,6 +302,8 @@ class CitationReport:
     unknown: int = 0  # 未核验 / 核验失败
     suspect_dois: list[str] = field(default_factory=list)
     arxiv_ids: list[str] = field(default_factory=list)
+    placeholder_dois: list[str] = field(default_factory=list)  # 本地启发式：占位符 DOI
+    suspect_arxiv_ids: list[str] = field(default_factory=list)  # 本地启发式：假 arXiv 号
     consistency: dict = field(default_factory=dict)
     checked_dois: int = 0  # 实际发起核验的 DOI 数（受 CAP 限制）
     error: str | None = None
@@ -212,6 +317,8 @@ class CitationReport:
             "unknown": self.unknown,
             "suspect_dois": self.suspect_dois,
             "arxiv_ids": self.arxiv_ids,
+            "placeholder_dois": self.placeholder_dois,
+            "suspect_arxiv_ids": self.suspect_arxiv_ids,
             "consistency": self.consistency,
             "checked_dois": self.checked_dois,
             "error": self.error,
@@ -271,15 +378,23 @@ def verify_citations(
         arxiv = extract_arxiv_ids(full_text)
         consistency = _consistency_check(full_text, ref_block)
 
+        # 本地启发式（零网络，无论在线/离线都执行）
+        placeholder = detect_placeholder_dois(all_dois)
+        fake_arxiv = detect_fake_arxiv_ids(arxiv)
+        has_local_suspect = bool(placeholder or fake_arxiv)
+
         report = CitationReport(
             total_dois=len(all_dois),
             arxiv_ids=arxiv,
+            placeholder_dois=placeholder,
+            suspect_arxiv_ids=fake_arxiv,
             consistency=consistency,
         )
 
         if not online:
-            # 离线模式：只做本地抽取与一致性，DOI 一律标 unchecked
-            report.status = "unchecked"
+            # 离线模式：只做本地抽取/一致性/启发式，DOI 一律标 unchecked；
+            # 占位符 DOI / 假 arXiv 号仍会被本地启发式标记为 suspect。
+            report.status = "suspect" if has_local_suspect else "unchecked"
             report.unknown = len(all_dois)
             return report
 
@@ -296,8 +411,8 @@ def verify_citations(
             else:
                 report.unknown += 1
         report.unknown += max(0, len(all_dois) - len(checked))  # 超出 cap 的部分按 unknown
-        if report.not_found > 0:
-            report.status = "suspect"  # 存在疑似编造
+        if report.not_found > 0 or has_local_suspect:
+            report.status = "suspect"  # 存在疑似编造（Crossref 查无 / 本地启发式）
         elif report.verified > 0:
             report.status = "verified"
         else:
@@ -312,7 +427,8 @@ def assess_citation_integrity(full_text: str, **kwargs: Any) -> dict:
     """DEPTH / reflection 集成的便捷封装：返回可序列化 dict。
 
     额外给一个启发式 ``integrity_flag``：
-      - "fabricated_suspected": 存在 Crossref 查无的 DOI（疑似编造）
+      - "fabricated_suspected": 存在 Crossref 查无的 DOI，或占位符 DOI /
+        假 arXiv 号本地启发式命中（疑似编造）
       - "inconsistent": 引用编号与参考文献列表严重不一致
       - "ok": 未发现明显问题
       - "unknown": 未核验（离线/失败）

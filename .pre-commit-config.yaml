@@ -26,6 +26,23 @@ repos:
         pass_filenames: false
         always_run: true
 
+      # 自定义：AGENTS.md §2 纪律与 deepseek-harness skill 双向引用/锚点同步
+      - id: agents-docs-sync
+        name: AGENTS.md ↔ skill 纪律同步检查
+        entry: python scripts/diagnostics/check_agents_docs_sync.py
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      # 自定义：docs/adr/README.md 索引表与 ADR 文件一致性
+      # files: 仅在本次提交触碰 docs/adr/ 时触发，避免存量未提交 ADR 阻塞无关提交
+      - id: adr-index-sync
+        name: ADR 索引一致性检查
+        entry: python scripts/diagnostics/check_adr_index_sync.py
+        language: system
+        pass_filenames: false
+        files: ^docs/adr/
+
   # ruff：lint + format 一体化（替代 flake8+black+isort）
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.20

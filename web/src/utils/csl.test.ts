@@ -8,20 +8,27 @@ import {
   generateLaTeXSnippet,
 } from "./csl";
 
-// Mock citeproc-js engine
-const mockMakeBibliography = vi.fn();
-const mockUpdateItems = vi.fn();
-const mockProcessCitationCluster = vi.fn();
+// Mock citeproc-js engine（vi.hoisted：vi.mock 工厂被提升到模块顶部，
+// 工厂内引用的 mock 函数必须用 vi.hoisted 声明才能避免 TDZ 报错）
+const { mockMakeBibliography, mockUpdateItems, mockProcessCitationCluster, mockEngineCtor } =
+  vi.hoisted(() => ({
+    mockMakeBibliography: vi.fn(),
+    mockUpdateItems: vi.fn(),
+    mockProcessCitationCluster: vi.fn(),
+    mockEngineCtor: vi.fn(),
+  }));
 
 vi.mock("citeproc", () => ({
-  default: {
-    Engine: vi.fn().mockImplementation(() => ({
-      updateItems: mockUpdateItems,
-      makeBibliography: mockMakeBibliography,
-      processCitationCluster: mockProcessCitationCluster,
-    })),
-  },
+  default: { Engine: mockEngineCtor },
 }));
+
+beforeEach(() => {
+  mockEngineCtor.mockImplementation(() => ({
+    updateItems: mockUpdateItems,
+    makeBibliography: mockMakeBibliography,
+    processCitationCluster: mockProcessCitationCluster,
+  }));
+});
 
 describe("parseDefaultLocale", () => {
   it("extracts default-locale regardless of attribute order", () => {
@@ -164,5 +171,46 @@ describe("generateLaTeXSnippet", () => {
     const snippet = generateLaTeXSnippet(items, { bibFilename: "refs", style: "ieee" });
     expect(snippet).toContain("\\bibliographystyle{ieee}");
     expect(snippet).toContain("\\bibliography{refs}");
+  });
+});
+
+describe("renderBibliography XSS escaping", () => {
+  beforeEach(() => {
+    global.fetch = vi.fn().mockRejectedValue(new Error("offline"));
+  });
+
+  it("escapes untrusted metadata before handing it to citeproc", async () => {
+    let capturedSys: { retrieveItem: (id: string) => unknown } | undefined;
+    mockEngineCtor.mockImplementation((sys: unknown) => {
+      capturedSys = sys as { retrieveItem: (id: string) => unknown };
+      return {
+        updateItems: mockUpdateItems,
+        makeBibliography: mockMakeBibliography,
+        processCitationCluster: mockProcessCitationCluster,
+      };
+    });
+
+    const { renderBibliography } = await import("./csl");
+    const malicious = {
+      id: "evil-1",
+      type: "article-journal",
+      title: `<img src=x onerror="alert(1)">Attention & More`,
+      author: [{ family: `<script>alert(2)</script>`, given: "A&B" }],
+      "container-title": "x' onmouseover=alert(3)",
+      issued: { "date-parts": [[2020]] },
+    };
+    await renderBibliography(
+      [malicious as never],
+      `<style default-locale="en-US"></style>`,
+    );
+
+    expect(capturedSys).toBeDefined();
+    const got = capturedSys!.retrieveItem("evil-1");
+    expect(got).toMatchObject({
+      title: "&lt;img src=x onerror=&quot;alert(1)&quot;&gt;Attention &amp; More",
+      "container-title": "x&#39; onmouseover=alert(3)",
+    });
+    expect(JSON.stringify(got)).not.toContain("<img");
+    expect(JSON.stringify(got)).not.toContain("<script");
   });
 });

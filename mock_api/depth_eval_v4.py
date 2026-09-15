@@ -82,6 +82,8 @@ from .config import (
     get_depth_severity_minor_weight,
 )
 from .depth_calibration import (
+    VERDICT_ACCEPT_FLOOR,
+    VERDICT_MINOR_FLOOR,
     CalibrationResult,
     CalibrationSample,
     correct_final_score,
@@ -154,6 +156,25 @@ FATAL_VETO_MIN = 2
 # 不触发否决。专门保护奠基性/里程碑论文（如 Transformer）被 temp=0 贪婪解码
 # 下过度断言的伪 fatal 误杀。0.8~0.9 的边界高分包仍可被合法否决。
 FATAL_VETO_ACCEPT_FLOOR = 0.9
+
+# 统计造假硬红线：这三类零 LLM 确定性指纹（Benford 首位分布偏离 / 标准差过低 /
+# p 值不可能）是「算出来即证据」的确定性造假信号，不受 LLM 辩护/降级稀释。
+# 任两条同时出现 → 直接 reject（一票否决）。
+STAT_REDLINE_PREFIXES = ("[Benford偏离]", "[std过低]", "[p值不可能]")
+STAT_REDLINE_MIN = 2
+
+# 实验审计联动红线（ADR-012 扩展）：消费 ExperimentAudit 最新完成审计中的
+# 高危造假类 Finding——这三类由确定性算法或双证据链检出（VLM 转写 + 统计指纹 /
+# NCC 像素 + 语义标签 / SIFT+RANSAC 几何验证），与 STAT_REDLINE 同属「算出来
+# 即证据」，不受 LLM 辩护稀释。≥2 条独立 Finding 才触发（多条门槛防单条误报
+# 误杀，与 FATAL_VETO_MIN / STAT_REDLINE_MIN 同设计）；论文未跑过审计时
+# 天然不联动（用户主动触发审计 = 主动提供证据，无需额外开关）。
+AUDIT_FRAUD_REDLINE_TYPES = (
+    "SUSPICIOUS_DATA_PATTERN",
+    "RELABELED_IMAGE_REUSE",
+    "IMAGE_TAMPERING_CANDIDATE",
+)
+AUDIT_FRAUD_REDLINE_MIN = 2
 
 # v4.2 图表证据：QE 证据池并入 PaperFigure 的上限条数 / 单条截断长度
 MAX_FIGURE_EVIDENCE = 8
@@ -335,10 +356,12 @@ class DepthV4Result(BaseModel):
     critique_points: list[CritiquePoint] = Field(default_factory=list)
     defense_points: list[str] = Field(default_factory=list)
     # v4.2 QF 图文一致性（无图表时为 None 表示不适用，不参与评分）
+    has_figures: bool = False
     figure_consistency_score: float | None = None
     figure_flags: list[str] = Field(default_factory=list)
     figure_evidence_count: int = 0
     figure_coverage: str = "disabled"
+    w_fig: float = 0.0
     # claim-validation 惩罚 / 奖励（默认 0，仅当存在图表数据且开启时非零）
     claim_validation_penalty: float = 0.0
     claim_validation_bonus: float = 0.0
@@ -350,6 +373,9 @@ class DepthV4Result(BaseModel):
     llm_verdict: str = "major_revision"
     final_verdict: str = "major_revision"
     override_reason: str = ""
+    # Q5c 平衡者降级日志：记录 fatal→minor 的辩护降级，与 critique_points（已降级）
+    # 一起落库，避免「裁决用降级后的 severity，落库却仍标 fatal」的不一致。
+    balancer_log: str = ""
     evidence_pool: list[EvidenceItem] = Field(default_factory=list)
     evidence_checks: dict[str, bool] = Field(default_factory=dict)
     # B5: 各节点引用的真实证据ID字符串（如 {"Q2": "E3", "Q3": "E1", ...}），
@@ -547,12 +573,28 @@ def _call_llm_provider(
     return result
 
 
+# 最近一次 LLM 调用返回的 CoT（reasoning_content）审计槽。
+# 评审链路串行（parallel=1 + watchdog 单飞），模块级单槽即可重建最近一次调用；
+# 并发场景下只保证「最后一次」可见，审计用途足够（P5：模型可见 ⟺ 可重建）。
+_LLM_LAST_REASONING: str = ""
+
+
+def get_last_reasoning() -> str:
+    """返回最近一次 call_llm 拿到的思考内容（reasoning_content），供审计/展示。
+
+    思考模式关闭或模型未输出 CoT 时为空字符串。仅供 reflection 思考模式
+    审计与离线 A/B 使用，绝不参与评分计算。
+    """
+    return _LLM_LAST_REASONING
+
+
 def call_llm(
     prompt: str,
     system_prompt: str = "",
     max_tokens: int | None = None,
     temperature: float | None = None,
     grammar: str | None = None,
+    thinking: bool | None = None,
 ) -> str | None:
     """同步调用 LLM（参数默认从动态算力配置读取）。
 
@@ -614,13 +656,20 @@ def call_llm(
             messages.append(ChatMessage(role="system", content=system_prompt))
         messages.append(ChatMessage(role="user", content=prompt))
         # GBNF 语法约束：仅在启用且传入 grammar 时透传给 provider。
-        # llama.cpp/llama-server 通过 OpenAI 兼容接口接受顶层 `grammar` 字段
-        # （detect_provider 对本地 127.0.0.1 端点返回 "openai"，走 OpenAIProvider
-        # → build_payload 把 kwargs 直接并入 HTTP body）。真实 OpenAI/Zhipu/DeepSeek
-        # 端点不识别该字段会 400，故由 settings.depth_grammar_enabled 显式门控，
-        # 默认关闭 → 未开启时行为与之前完全一致。
+        # grammar 与 reasoning 互斥：llama-server 开 reasoning on 时 content 被
+        # reasoning_content 占用，grammar 约束会导致 content 为空 → 解析失败。
         extra_kwargs: dict[str, Any] = {}
-        if grammar and _depth_grammar_enabled():
+        if thinking:
+            # 思考模式：通过 chat_template_kwargs 启用 per-request CoT
+            extra_kwargs["chat_template_kwargs"] = {"enable_thinking": True}
+        elif thinking is not None and not thinking:
+            # 显式关闭思考模式：必须用 chat_template_kwargs.enable_thinking=false
+            # （llama-server 原生语法）。⚠️ 2026-08-22 实测纠错：此前用的
+            # {"thinking": {"type": "disabled"}} 是 OpenAI/DeepSeek 风格参数，
+            # llama-server 不认、静默忽略——推理模型（Ornith）每次调用都偷偷
+            # 生成 1-3k 字隐藏 CoT，单篇评审耗时虚增约 3 倍（85s→256s）。
+            extra_kwargs["chat_template_kwargs"] = {"enable_thinking": False}
+        elif grammar and _depth_grammar_enabled():
             extra_kwargs["grammar"] = grammar
         # ADR-014 P0：注入可复现种子（仅当 PAPERFORGE_EVAL_SEED 已设置；
         # 未设置时等同于历史行为，完全向后兼容）。with_eval_seed 已在函数顶部导入。
@@ -639,7 +688,13 @@ def call_llm(
         # 被 invoke 一次 (future 完成时)，无重入风险。
         future.add_done_callback(_silence_future_exception)
         try:
-            result = future.result(timeout=_LLM_WATCHDOG_TIMEOUT)
+            # 思考模式放宽 watchdog：CoT 生成更慢，固定 120s 会误杀健康调用。
+            watchdog_limit = _LLM_WATCHDOG_TIMEOUT + (_THINKING_EXTRA_TIMEOUT if thinking else 0.0)
+            result = future.result(timeout=watchdog_limit)
+            # 思考模式审计槽：无论调用方是否关心 CoT，都留档最近一次
+            # （getattr 防御：测试替身 / 老版 provider 可能没有 reasoning 字段）。
+            global _LLM_LAST_REASONING  # noqa: PLW0603 - 审计单槽，见 get_last_reasoning
+            _LLM_LAST_REASONING = getattr(result, "reasoning", "") or ""
             content = result.content or ""
             if content:
                 _llm_cache_set(cache_key, content)
@@ -667,6 +722,18 @@ def call_llm(
 # ---------------------------------------------------------------------------
 
 from .settings import get_settings
+
+# ── 选择性思考模式：仅指定节点开启 reasoning CoT ──
+# 从 PAPERFORGE_DEPTH_REASONING_NODES 读取（逗号分隔节点名），
+# 默认 Q5a,Q5b,Q5c（判断类节点受益于深度思考，抽取类节点不需要）。
+_REASONING_NODES: frozenset[str] = frozenset(
+    n.strip().upper()
+    for n in os.getenv("PAPERFORGE_DEPTH_REASONING_NODES", "Q5a,Q5b,Q5c").split(
+        ","
+    )
+    if n.strip()
+)
+_REASONING_BUDGET = int(os.getenv("PAPERFORGE_REASONING_BUDGET", "2048"))
 
 _LLM_CACHE_TTL = get_settings().llm_cache_ttl  # 秒，0=禁用
 _llm_cache: dict[int, tuple[float, str]] = {}  # key → (timestamp, content)
@@ -748,6 +815,11 @@ def _env_positive_float(name: str, default: float) -> float:
 _LLM_WATCHDOG_TIMEOUT = _env_positive_float(
     "PAPERFORGE_LLM_WATCHDOG_TIMEOUT", 120.0
 )  # 秒；任何 provider.chat() 超此时长视为僵尸调用
+# 思考模式额外放宽：CoT 生成使单次调用显著变长（实测 +30s/轮、偶发 >120s），
+# 固定 120s watchdog 会把「还在好好思考」的调用误杀成 llm_failed。
+_THINKING_EXTRA_TIMEOUT = _env_positive_float(
+    "PAPERFORGE_LLM_WATCHDOG_THINKING_EXTRA", 60.0
+)  # 秒；thinking=True 时叠加到 watchdog 上限
 _llm_watchdog_executor: concurrent.futures.ThreadPoolExecutor | None = None
 _llm_watchdog_lock = threading.Lock()
 
@@ -1217,7 +1289,11 @@ class DepthReviewer:
         from .config import get_compute_mode_config
 
         mode_cfg = get_compute_mode_config()
-        self._temperature = mode_cfg.get("temperature", 0.0)
+        # Ornith 等需非 0 温度的模型：用 PAPERFORGE_DEPTH_TEMPERATURE 覆盖 compute_mode。
+        # 2026-08-21 修正：depth_temperature 现用 None 哨兵（默认 None=沿用 compute_mode），
+        # 故 0.0 是合法值（强制贪心），不再被 `0.0 or preset` 静默回退。
+        _env_t = get_settings().depth_temperature
+        self._temperature = _env_t if _env_t is not None else mode_cfg.get("temperature", 0.0)
         # Respect the compute mode's max_tokens configuration (e.g. speed mode's
         # lower token budget). The previous 4096 floor effectively disabled the
         # speed mode's token savings, making deep and speed nearly identical.
@@ -2402,13 +2478,15 @@ class DepthReviewer:
             figure_consistency=figure_str,
             evidence_pool_text=evidence_text,
         )
-        self._log(f"[Q5a] 开始调用 LLM（纯文本模式, max_tokens={self._max_tokens}）...")
+        _thinking = "Q5a" in _REASONING_NODES
+        self._log(f"[Q5a] 开始调用 LLM（{'思考模式' if _thinking else '纯文本模式'}, max_tokens={self._max_tokens}）...")
         # v4.2 DI 统一：走注入的 self._llm
         raw = self._invoke_llm(
             prompt,
             node_name="Q5a",
             max_tokens=self._max_tokens,
             temperature=self._temperature,
+            thinking=_thinking or None,
         )
         if raw is None:
             self._log("[Q5a] LLM 调用失败（返回 None），返回默认结果")
@@ -2494,13 +2572,15 @@ class DepthReviewer:
             critique_points=critique_str,
             evidence_pool_text=evidence_text,
         )
-        self._log(f"[Q5b] 开始调用 LLM（纯文本模式, max_tokens={self._max_tokens}）...")
+        _thinking = "Q5b" in _REASONING_NODES
+        self._log(f"[Q5b] 开始调用 LLM（{'思考模式' if _thinking else '纯文本模式'}, max_tokens={self._max_tokens}）...")
         # v4.2 DI 统一：走注入的 self._llm
         raw = self._invoke_llm(
             prompt,
             node_name="Q5b",
             max_tokens=self._max_tokens,
             temperature=self._temperature,
+            thinking=_thinking or None,
         )
         if raw is None:
             self._log("[Q5b] LLM 调用失败（返回 None），返回默认结果")
@@ -2671,8 +2751,9 @@ class DepthReviewer:
             critique_points=critique_str,
             defense_points=defense_str,
         )
+        _thinking_q5c = "Q5c" in _REASONING_NODES
         self._log(
-            f"[Q5c] 开始调用 LLM（纯文本模式, max_tokens={self._max_tokens}, "
+            f"[Q5c] 开始调用 LLM（{'思考模式' if _thinking_q5c else '纯文本模式'}, max_tokens={self._max_tokens}, "
             f"delta∈[{delta_lo:.2f}, {delta_hi:.2f}]）..."
         )
 
@@ -2711,7 +2792,8 @@ class DepthReviewer:
             scores = {"calibrated_score": calibrated_score}
             return data, scores
 
-        grammar = q5c_grammar() if _depth_grammar_enabled() else None
+        # grammar 与 reasoning 互斥：思考模式下不传 grammar
+        grammar = q5c_grammar() if _depth_grammar_enabled() and not _thinking_q5c else None
         # v4.2 #5：score_std 按需采样 —— 只有语义脱耦分支（SEMANTIC_OVERRIDE）启用时，
         # score_std 才会被 _apply_hard_verdict 消费，此时才值得为 Q5c 多次采样；
         # 否则单次调用即可（std 置 0，语义脱耦分支因 low_conf=False 之外的逻辑不依赖它）。
@@ -2725,6 +2807,7 @@ class DepthReviewer:
                 max_tokens=self._max_tokens,
                 temperature=self._temperature,
                 grammar=grammar,
+                thinking=_thinking_q5c or None,
             )
             if _raw_single is None:
                 self._log("[Q5c] LLM 调用失败（返回 None），返回默认结果")
@@ -3333,6 +3416,12 @@ class DepthReviewer:
 
         accept_threshold = self._calibration_result.accept_threshold or VERDICT_ACCEPT_THRESHOLD
         reject_threshold = self._calibration_result.reject_threshold or VERDICT_REJECT_THRESHOLD
+        # 阈值不变式：reject < minor < accept。accept 被校准/配置压到 accept 档下界
+        # 之下时上移回 VERDICT_ACCEPT_FLOOR（0.8），否则下方
+        # `score >= VERDICT_MINOR_FLOOR` 这一档会被 accept 完全吞掉
+        # （minor_revision 档架空，0.6~0.7 的论文被误判 accept）。
+        accept_threshold = max(accept_threshold, VERDICT_ACCEPT_FLOOR)
+        reject_threshold = min(reject_threshold, VERDICT_MINOR_FLOOR - 0.05)
 
         # ── 规则 1（最高优先级）：一票否决（需 ≥FATAL_VETO_MIN 条致命缺陷）──
         # 单条致命缺陷不足以否决：避免 LLM 一次误判把 0.7~0.95 的论文直接拒稿/大修。
@@ -3399,7 +3488,7 @@ class DepthReviewer:
         # ── 规则 2：非 fatal 分支（严禁 reject）──
         if score >= accept_threshold:
             alignment_verdict = "accept"
-        elif score >= 0.7:
+        elif score >= VERDICT_MINOR_FLOOR:
             alignment_verdict = "minor_revision"
         elif score >= reject_threshold:
             alignment_verdict = "major_revision"
@@ -3534,9 +3623,11 @@ class DepthReviewer:
             q4_reasoning="fast 模式：未调用 LLM",
             critique_points=[],
             defense_points=[],
+            has_figures=False,
             figure_consistency_score=None,
             figure_flags=[],
             figure_evidence_count=0,
+            w_fig=0.0,
             claim_validation_penalty=0.0,
             claim_validation_bonus=0.0,
             qf_reasoning="fast 模式：未执行图文一致性审查",
@@ -3742,13 +3833,7 @@ class DepthReviewer:
         self._stat_flags = _statistical_plausibility_check(full_text)
         for _f in self._stat_flags:
             self._log(f"[统计合理性] {_f}")
-        stat_penalty = 0.0
-        for _f in self._stat_flags:
-            if _f.startswith("[std过低]") or _f.startswith("[p值不可能]"):
-                stat_penalty += 0.05
-            elif _f.startswith("[表格文本矛盾]") or _f.startswith("[消融数字过整]"):
-                stat_penalty += 0.03
-        stat_penalty = min(stat_penalty, 0.15)
+        stat_penalty = _stat_penalty(self._stat_flags)
 
         # ── D4：包装识别（Q0 期望 ≫ 校准分说明包装强于实质，辩护易中和致命缺陷）──
         pkg_penalty = 0.0
@@ -3804,6 +3889,7 @@ class DepthReviewer:
             node_stds=self._node_stds,
             qf=qf,
             full_text=full_text,
+            final_critique_points=balanced_cp,
         )
 
     # ------------------------------------------------------------------
@@ -4067,6 +4153,23 @@ class DepthReviewer:
                 f"calibrated {q5c_res.calibrated_score + penalty:.3f} → {q5c_res.calibrated_score:.3f}"
             )
 
+        # 7.5 统计红旗后置扣分（DAG 路径，与串行 review 的 D2 保持一致）
+        self._stat_flags = _statistical_plausibility_check(full_text)
+        for _f in self._stat_flags:
+            self._log(f"[统计合理性] {_f}")
+        stat_penalty = _stat_penalty(self._stat_flags)
+        if stat_penalty > 0:
+            q5c_res = q5c_res.model_copy(
+                update={
+                    "calibrated_score": max(0.0, q5c_res.calibrated_score - stat_penalty),
+                    "delta": q5c_res.delta - stat_penalty,
+                }
+            )
+            self._log(
+                f"[Q5c] 统计信号后置扣分 {stat_penalty:.2f} → "
+                f"calibrated {q5c_res.calibrated_score + stat_penalty:.3f} → {q5c_res.calibrated_score:.3f}"
+            )
+
         # 8. 应用硬性裁决并组装
         figure_coverage = self._figure_coverage(qf_res)
         balanced_cp = self._apply_figure_corroboration(balanced_cp, qf_res)
@@ -4092,6 +4195,7 @@ class DepthReviewer:
             node_stds=self._node_stds,
             qf=qf_res,
             full_text=full_text,
+            final_critique_points=balanced_cp,
         )
 
     # ------------------------------------------------------------------
@@ -4116,6 +4220,7 @@ class DepthReviewer:
         node_stds: dict[str, dict[str, float]] | None = None,
         qf: QFResult | None = None,
         full_text: str = "",
+        final_critique_points: list[CritiquePoint] | None = None,
     ) -> DepthV4Result:
         node_stds = node_stds or {}
         qf = qf or QFResult()
@@ -4154,6 +4259,29 @@ class DepthReviewer:
             for flag in stat_flags:
                 self._log(f"[统计合理性] {flag}")
 
+        # ── 统计造假硬红线：≥2 条确定性指纹（Benford/std/p值）→ 直接 reject ──
+        redline_verdict, redline_reason = _statistical_redline(
+            stat_flags, override_verdict, override_reason
+        )
+        if redline_verdict != override_verdict:
+            self._log(
+                f"[统计红线] 确定性造假指纹触发硬红线 → verdict 从 {override_verdict} 升级为 reject"
+            )
+        override_verdict, override_reason = redline_verdict, redline_reason
+
+        # ── 实验审计联动红线：消费 ExperimentAudit 高危造假 Finding（ADR-012 扩展）──
+        audit_verdict, audit_reason, audit_triggers = _audit_fraud_redline(
+            paper_id, override_verdict, override_reason
+        )
+        for trigger in audit_triggers:
+            self._log(f"[审计红线] {trigger}")
+        if audit_verdict != override_verdict:
+            self._log(
+                f"[审计红线] 高危造假证据 ≥ {AUDIT_FRAUD_REDLINE_MIN} 条 → "
+                f"verdict 从 {override_verdict} 升级为 reject"
+            )
+        override_verdict, override_reason = audit_verdict, audit_reason
+
         return DepthV4Result(
             paper_id=paper_id,
             title=title,
@@ -4175,14 +4303,20 @@ class DepthReviewer:
             influence_score=round(q4.influence_score, 4),
             reproducibility_score=round(q4.reproducibility_score, 4),
             q4_reasoning=q4.reasoning,
-            critique_points=q5a.critique_points,
+            critique_points=(
+                final_critique_points if final_critique_points is not None else q5a.critique_points
+            ),
             defense_points=q5b.defense_points,
+            has_figures=qf.has_figures,
             figure_consistency_score=round(qf.figure_consistency_score, 4)
             if qf.figure_consistency_score is not None
             else None,
             figure_flags=qf.inconsistency_flags,
             figure_evidence_count=figure_evidence_count,
             figure_coverage=self._figure_coverage(qf),
+            w_fig=min(max(DEPTH_FIGURE_WEIGHT, 0.0), 0.5)
+            if qf.has_figures and DEPTH_FIGURE_WEIGHT > 0
+            else 0.0,
             claim_validation_penalty=round(qf.claim_validation_penalty, 4),
             claim_validation_bonus=round(qf.claim_validation_bonus, 4),
             qf_reasoning=qf.reasoning,
@@ -4193,6 +4327,7 @@ class DepthReviewer:
             llm_verdict=q5c.llm_verdict,
             final_verdict=override_verdict,
             override_reason=override_reason,
+            balancer_log=q5c.balancer_log,
             evidence_pool=qe.evidence_pool,
             evidence_checks={
                 "Q2": q2.verified,
@@ -4706,6 +4841,90 @@ def _statistical_plausibility_check(full_text: str) -> list[str]:
     except Exception:  # noqa: BLE001
         pass
     return flags
+
+
+def _stat_penalty(stat_flags: list[str]) -> float:
+    """统计红旗反向扣分（零 LLM），上限 0.15。
+
+    Benford 偏离 / std 过低 / p 值不可能各 -0.05（确定性造假指纹）；
+    表格文本矛盾 / 消融数字过整各 -0.03（较弱信号）。
+    """
+    penalty = 0.0
+    for _f in stat_flags:
+        if _f.startswith(("[std过低]", "[p值不可能]", "[Benford偏离]")):
+            penalty += 0.05
+        elif _f.startswith(("[表格文本矛盾]", "[消融数字过整]")):
+            penalty += 0.03
+    return min(penalty, 0.15)
+
+
+def _statistical_redline(
+    stat_flags: list[str],
+    verdict: str,
+    reason: str,
+) -> tuple[str, str]:
+    """统计造假硬红线：≥2 条确定性指纹（Benford/std/p值）→ 直接 reject。
+
+    与 LLM 辩护无关：这三类指纹由零 LLM 正则确定性检出，是「算出来即证据」
+    的确定性信号，不应被 chair/辩护环节降级稀释。返回 (新裁决, 新理由)。
+    """
+    redline = [f for f in stat_flags if f.startswith(STAT_REDLINE_PREFIXES)]
+    if len(redline) < STAT_REDLINE_MIN or verdict == "reject":
+        return verdict, reason
+    tags = [f[f.index("[") + 1 : f.index("]")] for f in redline]
+    new_reason = (
+        f"[统计红线] 检出 {len(redline)} 条确定性造假指纹"
+        f"（{', '.join(tags)}）≥ {STAT_REDLINE_MIN} 条，原裁决 {verdict} → 升级为 reject。"
+        + (f" | {reason}" if reason else "")
+    )
+    return "reject", new_reason
+
+
+def _audit_fraud_redline(
+    paper_id: str,
+    verdict: str,
+    reason: str,
+) -> tuple[str, str, list[str]]:
+    """实验审计联动红线：最新完成审计含 ≥AUDIT_FRAUD_REDLINE_MIN 条高危造假
+    Finding → 直接 reject（ADR-012 扩展）。
+
+    消费 experiment-audit 子系统的确定性造假证据，弥合「audit 已标高危、
+    DEPTH 仍 accept」的裁决不一致。论文未审计 / 审计未完成 / 不足门槛时
+    原样返回。fail-open：查询或解析异常原样返回，绝不阻断审稿管线。
+    返回 (新裁决, 新理由, 触发明细)。
+    """
+    try:
+        from .database import SessionLocal
+        from .experiment_audit.schemas import coerce_findings
+        from .experiment_audit.service import get_latest_audit
+
+        db = SessionLocal()
+        try:
+            audit = get_latest_audit(db, paper_id)
+        finally:
+            db.close()
+        if audit is None or audit.status != "completed":
+            return verdict, reason, []
+        frauds = [
+            f
+            for f in coerce_findings(audit.findings)
+            if f.get("type") in AUDIT_FRAUD_REDLINE_TYPES and f.get("severity") == "high"
+        ]
+        if len(frauds) < AUDIT_FRAUD_REDLINE_MIN or verdict == "reject":
+            return verdict, reason, []
+        detail = [
+            f"{f.get('finding_id') or '?'} {f.get('type')}: {f.get('title', '')}" for f in frauds
+        ]
+        type_names = ", ".join(sorted({f.get("type", "?") for f in frauds}))
+        new_reason = (
+            f"[审计红线] 实验审计检出 {len(frauds)} 条高危造假证据"
+            f"（{type_names}）≥ {AUDIT_FRAUD_REDLINE_MIN} 条，"
+            f"原裁决 {verdict} → 升级为 reject。" + (f" | {reason}" if reason else "")
+        )
+        return "reject", new_reason, detail
+    except Exception as e:  # noqa: BLE001 - fail-open
+        logger.warning("实验审计联动红线查询失败（忽略）: %s", e)
+        return verdict, reason, []
 
 
 def statistical_flags_from_series(

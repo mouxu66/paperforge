@@ -176,6 +176,16 @@ class TestBaseline:
         ):
             assert baseline.check_baseline_fairness(_UNFAIR_SENTENCE) == []
 
-    def test_llm_unavailable_skipped(self):
+    def test_llm_unavailable_falls_back_to_rules(self):
+        # LLM 不可用时回退到规则判定（要求更强信号），强信号句子仍产出 finding
         with patch.object(baseline, "_text_qwen_chat", return_value=""):
-            assert baseline.check_baseline_fairness(_UNFAIR_SENTENCE) == []
+            findings = baseline.check_baseline_fairness(_UNFAIR_SENTENCE)
+        assert len(findings) == 1
+        assert findings[0]["type"] == "BASELINE_UNFAIR"
+        assert "规则" in findings[0]["computed"]
+
+    def test_llm_unavailable_weak_signal_no_finding(self):
+        # LLM 不可用 + 弱信号（不同 data augmentation，非强差异关键词）→ 不产出 finding
+        weak = "The baseline was trained with different data augmentation compared to ours."
+        with patch.object(baseline, "_text_qwen_chat", return_value=""):
+            assert baseline.check_baseline_fairness(weak) == []

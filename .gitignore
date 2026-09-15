@@ -49,7 +49,6 @@ logs/
 # 工作区产物 / AI Agent 记忆
 .workbuddy/
 memory/
-nul
 *.bak
 
 # 用户上传（大文件不入仓）
@@ -109,3 +108,35 @@ scripts/gate_pdfs/
 # 本地技能安装目录与锁定文件（技能本身不入仓）
 .agents/
 skills-lock.json
+
+# ==================== 隐私 / 大文件红线（2026-09-16 补） ====================
+# 规则：任何「含真实个人信息」或「>10MB 且可重建」的东西，一律不入仓。
+# 本仓库是公开仓库，推上去 = 永久公开且可被爬取。
+
+# 1) 个人信息：实验报告原文（文件名含学号+姓名）——最高红线
+#    mock_api/uploads/ 已在上面忽略；deliverables/ 下这几个子目录同样是原文/抽取文本
+deliverables/report_texts/
+deliverables/reports_all/
+deliverables/reports_truncated/
+deliverables/papers_all/
+deliverables/human_sample/
+deliverables/diag/
+#    兜底：任何名字里带 12 位学号的文件（glob 不支持正则，按前缀穷举常见年级）
+*2022[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]*
+*2023[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]*
+*2024[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]*
+
+# 2) 本地虚拟环境与缓存（可重建，901M + 138M + 990M）
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.peerread_cache/
+
+# 3) 数据库快照：无扩展名的 .bak 变体（现有两条 59MB / 53MB 漏网）
+mock_api/*.bak_pre_*
+*.db.bak_pre_*
+
+# 4) 其它本地运行残留
+*.err
+.git.broken.*/

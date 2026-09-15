@@ -3,7 +3,7 @@
 覆盖：
 - caption 匹配（上方优先 / 水平无重叠排除 / 距离阈值）
 - 结果表判定 / 表号查找 / 单元格定位
-- P0-8 显著性缺失（三重条件）
+- P0-8 不确定度/显著性缺失（两维度分别报告：UNCERTAINTY_MISSING / SIGNIFICANCE_MISSING）
 - extract_tables_from_pdf fail-open（坏字节流）
 """
 
@@ -80,27 +80,58 @@ class TestSignificanceMissing:
     def _results(self, cells):
         return _table([["Method", "Accuracy"]] + cells)
 
-    def test_missing_std_flagged(self):
+    def test_missing_both_flagged(self):
+        # 既无不确定度也无显著性 → 两个维度各出一条
         findings = tables.detect_significance_missing(
             [self._results([["Ours", "84.2"]])], "We train our model on CIFAR."
         )
-        assert len(findings) == 1
-        f = findings[0]
-        assert f["type"] == "STD_OR_SIGNIFICANCE_MISSING"
-        assert f["page"] == 6
+        assert {f["type"] for f in findings} == {
+            "UNCERTAINTY_MISSING",
+            "SIGNIFICANCE_MISSING",
+        }
+        u = next(f for f in findings if f["type"] == "UNCERTAINTY_MISSING")
+        assert u["page"] == 6
 
-    def test_with_pm_values_no_finding(self):
+    def test_both_reported_no_finding(self):
+        # 表有 ± 且全文有 p 值 → 两个维度都不缺
         findings = tables.detect_significance_missing(
-            [self._results([["Ours", "84.2±0.3"]])], "plain text without stats"
+            [self._results([["Ours", "84.2±0.3"]])],
+            "The difference is significant (p = 0.045).",
         )
         assert findings == []
 
-    def test_full_text_significance_suppresses(self):
+    def test_uncertainty_only_missing(self):
+        # 报告了 p 值但无 ± → 只缺不确定度（p 值不豁免）
+        findings = tables.detect_significance_missing(
+            [self._results([["Ours", "84.2"]])],
+            "The difference is significant (p = 0.045).",
+        )
+        assert [f["type"] for f in findings] == ["UNCERTAINTY_MISSING"]
+        assert "不确定度" in findings[0]["title"]
+
+    def test_significance_only_missing(self):
+        # 表有 ±（已报不确定度）但全文无统计检验 → 只缺显著性
+        findings = tables.detect_significance_missing(
+            [self._results([["Ours", "84.2±0.3"]])], "plain text without stats"
+        )
+        assert [f["type"] for f in findings] == ["SIGNIFICANCE_MISSING"]
+        assert findings[0]["page"] == 6
+
+    def test_uncertainty_text_suppresses_uncertainty_only(self):
+        # 全文有 standard deviation（不确定度）但无 p 值 → 只缺显著性
         findings = tables.detect_significance_missing(
             [self._results([["Ours", "84.2"]])],
             "We report the mean over five runs with standard deviation.",
         )
-        assert findings == []
+        assert [f["type"] for f in findings] == ["SIGNIFICANCE_MISSING"]
+
+    def test_ttest_suppresses_significance_only(self):
+        # t-test 报告了显著性，但无 ± → 只缺不确定度
+        findings = tables.detect_significance_missing(
+            [self._results([["Ours", "84.2"]])],
+            "We compared the two groups with a t-test.",
+        )
+        assert [f["type"] for f in findings] == ["UNCERTAINTY_MISSING"]
 
     def test_non_results_table_ignored(self):
         findings = tables.detect_significance_missing(

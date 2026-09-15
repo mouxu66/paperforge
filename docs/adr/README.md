@@ -20,6 +20,9 @@ PaperForge 框架演进过程中的关键架构决策记录，遵循 [Michael Ny
 | 012 | FATAL_VETO 学术诚信护栏 | ✅ Accepted | 2026-07-30 |
 | 013 | VRAM 调度重构：text-Qwen↔vision-Qwen 双模型仲裁 | 🔶 Proposed | 2026-07-31 |
 | 014 | DEPTH × 感悟报告 评分严谨化改造（专家评审面板 + 引用真值校验） | 🔶 Proposed | 2026-08-06 |
+| 015 | 运行时组件注册表与动态组合机制（创造模式映射） | 🔶 Proposed | 2026-08-14 |
+| 016 | 评审模型切换链 Qwen3.5-9B → GLM-4.7-Flash → Ornstein-V2 | ✅ Accepted | 2026-08-13 |
+| 017 | GLM 云端副评审退役（仅保留 rescue 兜底与影子分存档） | ✅ Accepted | 2026-08-18 |
 
 ## ADR 模板
 

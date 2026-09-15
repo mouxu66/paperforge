@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 680" width="1024" height="1024" role="img" aria-labelledby="title desc">
+  <title id="title">PaperForge app icon</title>
+  <desc id="desc">PaperForge app icon source: a deep purple circle with orbital rings, a satellite dot, a refined white P monogram and a delicate four-point star.</desc>
+
+  <!-- Space background -->
+  <circle cx="340" cy="340" r="240" fill="#3C3489"/>
+
+  <!-- Subtle outer ring -->
+  <circle cx="340" cy="340" r="206" fill="none" stroke="#FFFFFF" stroke-width="2" opacity="0.16"/>
+
+  <!-- Orbital ellipse rings -->
+  <ellipse cx="340" cy="340" rx="214" ry="80" fill="none" stroke="#FFFFFF" stroke-width="2.5" opacity="0.30" transform="rotate(-26 340 340)"/>
+  <ellipse cx="340" cy="340" rx="148" ry="56" fill="none" stroke="#FFFFFF" stroke-width="1.5" opacity="0.16" transform="rotate(32 340 340)"/>
+
+  <!-- Satellite dot riding the orbit -->
+  <circle cx="512" cy="214" r="11" fill="#FFFFFF"/>
+  <circle cx="512" cy="214" r="19" fill="none" stroke="#FFFFFF" stroke-width="1" opacity="0.35"/>
+
+  <!-- Refined P monogram -->
+  <g>
+    <rect x="288" y="232" width="56" height="216" rx="16" fill="#FFFFFF"/>
+    <path d="M 344 254 H 420 C 460 254 460 338 420 338 H 344"
+          fill="none" stroke="#FFFFFF" stroke-width="56"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M 344 280 H 418 C 438 280 438 312 418 312 H 344"
+          fill="none" stroke="#3C3489" stroke-width="24"
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Delicate four-point star -->
+  <path d="M 474 150 Q 478 168 496 172 Q 478 176 474 194 Q 470 176 452 172 Q 470 168 474 150 Z"
+        fill="#FFFFFF" opacity="0.92"/>
+  <circle cx="452" cy="196" r="3.2" fill="#FFFFFF" opacity="0.7"/>
+</svg>

@@ -25,7 +25,8 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+# 脚本位于 scripts/calibration/ 下，仓库根 = 上三层
+ROOT = Path(__file__).resolve().parent.parent.parent
 GOLD_PATH = ROOT / "deliverables" / "peerread_gold.json"
 DEPTH_PATH = ROOT / "deliverables" / "depth_scores_415.json"
 MATCH_PATH = ROOT / "deliverables" / "peerread_depth_match.json"

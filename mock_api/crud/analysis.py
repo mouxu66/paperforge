@@ -30,6 +30,7 @@ from ..schemas import (
     RankResponse,
     RankWeights,
 )
+from ..settings import get_settings
 from .embeddings import count_embeddings, get_all_embeddings, semantic_search_by_vector
 from .search import rrf_fuse
 
@@ -635,6 +636,104 @@ def _classify_citation_sentiment(
         return "background", 0.0
 
 
+def _cloud_recheck_citation_sentiment(
+    local_label: str,
+    local_confidence: float,
+    context: str,
+    target_title: str,
+    source_title: str,
+    db: Session,
+) -> tuple[str, float, dict | None]:
+    """低置信本地分类时，用云端(更强)模型复核被引情感，分歧则以云端标签覆盖本地。
+
+    返回 (label, confidence, meta)：
+    - meta 为 None → 未做/未覆盖（云端不可用、失败、测试守卫、或开关关闭），沿用本地结果；
+    - 否则 meta 含 local_label / cloud_label / cloud_confidence / adopted / rechecked_by。
+
+    全程 fail-open：任何异常都返回 (local_label, local_confidence, None)，不改变主流程。
+    复用 second_opinion.find_second_provider（pytest 守卫 + glm_vision 回退 + fail-open），
+    不重复实现云端路由。
+    """
+    none: tuple[str, float, dict | None] = (local_label, local_confidence, None)
+    try:
+        from ..second_opinion import find_second_provider
+
+        st = get_settings()
+        if not (st.second_opinion_enabled and st.sentiment_recheck_enabled):
+            return none
+        provider = find_second_provider(db)
+        if provider is None:
+            return none
+
+        system_prompt = (
+            "You are an academic citation analyst. Analyze the provided citation context "
+            "and classify the citing paper's stance toward the cited paper.\n\n"
+            "Output strictly JSON with keys:\n"
+            "- 'intent': one of 'support', 'criticize', 'background'\n"
+            "- 'confidence': float between 0 and 1\n\n"
+            "Definitions:\n"
+            "- support: the citing paper agrees with, builds upon, or praises the cited work\n"
+            "- criticize: the citing paper disagrees with, points out limitations, or challenges the cited work\n"
+            "- background: the cited work is mentioned only as related work or context, without clear stance\n\n"
+            "Be conservative: if the intent is unclear, classify as 'background' with lower confidence."
+        )
+        user_prompt = (
+            f"Cited paper title: {target_title}\n"
+            f"Citing paper title: {source_title}\n"
+            f"Citation context:\n---\n{context[:1500]}\n---\n"
+            "Classify the citation intent."
+        )
+        result = provider.chat(
+            [
+                ChatMessage(role="system", content=system_prompt),
+                ChatMessage(role="user", content=user_prompt),
+            ],
+            temperature=0.0,
+            max_tokens=128,
+        )
+        content = (result.content or "").strip()
+        if not content:
+            return none
+        if "```json" in content:
+            content = content.split("```json")[-1].split("```")[0].strip()
+        elif "```" in content:
+            content = content.split("```")[1].strip()
+        if not content.startswith("{"):
+            m = re.search(r"\{.*?\}", content, re.DOTALL)
+            if m:
+                content = m.group(0)
+            else:
+                return none
+        parsed = json.loads(content)
+        if not isinstance(parsed, dict):
+            return none
+        cloud_label = str(parsed.get("intent", "background")).lower()
+        cloud_conf = float(parsed.get("confidence", 0.0))
+        if cloud_label not in CITATION_SENTIMENT_LABELS:
+            cloud_label = "background"
+        cloud_conf = max(0.0, min(1.0, cloud_conf))
+
+        meta = {
+            "local_label": local_label,
+            "cloud_label": cloud_label,
+            "cloud_confidence": cloud_conf,
+            "adopted": cloud_label != local_label,
+            "rechecked_by": "cloud",
+        }
+        if cloud_label != local_label:
+            logger.info(
+                "被引情感云端复核覆盖: %s -> %s (cloud_conf=%.2f)",
+                local_label,
+                cloud_label,
+                cloud_conf,
+            )
+            return cloud_label, cloud_conf, meta
+        return local_label, cloud_conf, meta
+    except Exception as exc:  # noqa: BLE001 - 云端复核失败不影响主分类
+        logger.warning("云端被引情感复核失败(沿用本地): %s", exc)
+        return none
+
+
 def extract_citation_sentiments_for_target(
     db: Session,
     target_paper_id: str,
@@ -701,6 +800,21 @@ def extract_citation_sentiments_for_target(
                 label, confidence = "background", 0.0
                 failed += 1
 
+            # 云端复核：仅本地低置信分类才触发（控制成本），分歧则覆盖本地
+            recheck_meta: dict | None = None
+            try:
+                st = get_settings()
+                if (
+                    st.second_opinion_enabled
+                    and st.sentiment_recheck_enabled
+                    and confidence < st.sentiment_recheck_low_conf
+                ):
+                    label, confidence, recheck_meta = _cloud_recheck_citation_sentiment(
+                        label, confidence, snippet, target.title, source.title, db
+                    )
+            except Exception:  # noqa: BLE001 - 复核异常不影响主分类落库
+                recheck_meta = None
+
             # 查找是否已存在记录
             existing = (
                 db.query(CitationSentimentORM)
@@ -712,6 +826,8 @@ def extract_citation_sentiments_for_target(
                 existing.sentiment_label = label
                 existing.confidence = confidence
                 existing.context_snippet = snippet
+                if recheck_meta is not None:
+                    existing.cloud_recheck = json.dumps(recheck_meta, ensure_ascii=False)
             else:
                 new_record = CitationSentimentORM(
                     source_paper_id=source.id,
@@ -719,6 +835,11 @@ def extract_citation_sentiments_for_target(
                     sentiment_label=label,
                     confidence=confidence,
                     context_snippet=snippet,
+                    cloud_recheck=(
+                        json.dumps(recheck_meta, ensure_ascii=False)
+                        if recheck_meta is not None
+                        else None
+                    ),
                 )
                 db.add(new_record)
             saved += 1

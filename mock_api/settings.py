@@ -88,6 +88,16 @@ class Settings(BaseSettings):
         default=False,
         description="admin 打包端点开关（默认 False）。仅在开发态 + 显式开启时可用。",
     )
+    trusted_proxies: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("PAPERFORGE_TRUSTED_PROXIES", "TRUSTED_PROXIES"),
+        description=(
+            '可信反向代理 IP 列表（JSON 数组格式，如 ["127.0.0.1","10.0.0.5"]）。'
+            "非空且请求直连来源在此列表内时，才采信 X-Forwarded-For 头首项作为客户端"
+            "IP（open 模式按 IP 限流用）；为空（默认）一律不采信 XFF，以直连 socket "
+            "地址为准，防止客户端伪造 XFF 绕过限流。"
+        ),
+    )
 
     # ── 数据库 ────────────────────────────────────────────────────
     db_path: str | None = Field(
@@ -132,6 +142,41 @@ class Settings(BaseSettings):
             "JSON claims+evidence+4 维+评语需 3-5K tokens；低于 3000 会被截断降级）。"
         ),
         gt=0,
+    )
+    reflection_ii_samples: int = Field(
+        default=3,
+        validation_alias=AliasChoices(
+            "PAPERFORGE_REFLECTION_II_SAMPLES", "REFLECTION_II_SAMPLES",
+        ),
+        description=(
+            "II（创新洞察）维中位数采样次数：>1 时对 II 维额外采样取中位数以压"
+            "9B 措辞噪声，代价是每篇多 (n-1) 次 LLM 调用。1=关闭采样（单次调用，"
+            "2026-08-22 提速默认）。"
+        ),
+        ge=1,
+    )
+    depth_reasoning_nodes: str = Field(
+        default="Q5a,Q5b,Q5c",
+        validation_alias=AliasChoices(
+            "PAPERFORGE_DEPTH_REASONING_NODES", "DEPTH_REASONING_NODES",
+        ),
+        description=(
+            "DEPTH 开启思考模式（reasoning CoT）的节点列表（逗号分隔）。"
+            "默认 Q5a,Q5b,Q5c（判断类节点受益于深度思考，抽取类节点不需要）。"
+            "设为空字符串可禁用所有节点的思考模式。"
+        ),
+    )
+    depth_reasoning_budget: int = Field(
+        default=2048,
+        ge=0,
+        validation_alias=AliasChoices(
+            "PAPERFORGE_REASONING_BUDGET", "DEPTH_REASONING_BUDGET",
+        ),
+        description=(
+            "思考模式 CoT 长度上限（tokens）。"
+            "限制 CoT 长度可将单节点耗时从 ~125s 压至 ~45s。"
+            "设为 0 不限制（由模型自行决定 CoT 长度）。"
+        ),
     )
     depth_grammar_enabled: bool = Field(
         default=False,
@@ -282,18 +327,17 @@ class Settings(BaseSettings):
         description="verdict 语义脱耦开关。",
     )
     verdict_accept_threshold: float = Field(
-        default=0.6,
+        default=0.77,
         validation_alias=AliasChoices(
             "PAPERFORGE_VERDICT_ACCEPT_THRESHOLD", "VERDICT_ACCEPT_THRESHOLD"
         ),
         description=(
-            "verdict accept 阈值。"
-            "PeerRead 校准：9B 模型 accept 论文分数中位数 0.752，原 0.8 过严导致 FN=9；"
-            "降到 0.6 后 acc 0.438→0.875（FP=1, FN=1）。"
+            "verdict accept 阈值。全量 669 篇校准：85th percentile = 0.765，"
+            "accept ≥ 0.77 → ~15% accept 率。运行时 clamp 到 ≥ VERDICT_ACCEPT_FLOOR(0.75)。"
         ),
     )
     verdict_reject_threshold: float = Field(
-        default=0.5,
+        default=0.48,  # Ornith: 从 0.5 降到 0.48（金字塔分布）
         validation_alias=AliasChoices(
             "PAPERFORGE_VERDICT_REJECT_THRESHOLD", "VERDICT_REJECT_THRESHOLD"
         ),
@@ -313,6 +357,35 @@ class Settings(BaseSettings):
         default="default",
         validation_alias=AliasChoices("PAPERFORGE_HOTSPOTS_SOURCE", "HOTSPOTS_SOURCE"),
         description="热点词来源：default / paper / db。",
+    )
+
+    # ── 引用真值校验（ADR-014 P4）──
+    # citation_verifier 此前直接读 os.environ，导致 .env 里的 PAPERFORGE_CITATION_VERIFY
+    # 不生效；这里统一收口到 Settings（OS env 优先，.env 兜底）。
+    citation_verify: str = Field(
+        default="",
+        validation_alias=AliasChoices("PAPERFORGE_CITATION_VERIFY", "CITATION_VERIFY"),
+        description=(
+            "引用真值校验开关。空/1/true/on=在线 Crossref 核验（默认在线）；"
+            "0/false/offline=仅本地抽取 + 一致性 + 占位符/假 arXiv 启发式。"
+        ),
+    )
+    crossref_mailto: str = Field(
+        default="",
+        validation_alias=AliasChoices("PAPERFORGE_CROSSREF_MAILTO", "CROSSREF_MAILTO"),
+        description="Crossref polite-pool 邮箱（可选，提升配额）。",
+    )
+    citation_verify_cap: int = Field(
+        default=30,
+        validation_alias=AliasChoices("PAPERFORGE_CITATION_VERIFY_CAP", "CITATION_VERIFY_CAP"),
+        description="单篇最多核验的 DOI 数（防止 bulk 卡死）。",
+    )
+    citation_verify_timeout: float = Field(
+        default=4.0,
+        validation_alias=AliasChoices(
+            "PAPERFORGE_CITATION_VERIFY_TIMEOUT", "CITATION_VERIFY_TIMEOUT"
+        ),
+        description="Crossref 单请求超时秒。",
     )
 
     # ── DEPTH v4.2 算法升级开关（图表证据 / QF 节点 / 合并评分 / 自适应校准）────
@@ -352,6 +425,18 @@ class Settings(BaseSettings):
             "PAPERFORGE_DEPTH_VECTOR_RENDER_ENABLED", "DEPTH_VECTOR_RENDER_ENABLED"
         ),
         description="M0: PDF 矢量图渲染兜底（cluster_drawings + get_pixmap），false 回退纯位图抽取。",
+    )
+    depth_axis_tick_filter_enabled: bool = Field(
+        default=True,
+        validation_alias=AliasChoices(
+            "PAPERFORGE_DEPTH_AXIS_TICK_FILTER_ENABLED",
+            "DEPTH_AXIS_TICK_FILTER_ENABLED",
+        ),
+        description=(
+            "P0-11: 图内数值指纹进检测前是否过滤坐标轴刻度/归一化基线（圆整数）。"
+            "true 时剔除 100/150/200 等轴刻度与 control=100% 归一化基线，"
+            "只对真实测量值跑统计指纹；false 关闭过滤（保留全部转写值）。"
+        ),
     )
     depth_merged_scoring_enabled: bool = Field(
         default=True,
@@ -546,15 +631,32 @@ class Settings(BaseSettings):
     # 与混元排序不相关）。开启后每条评审会额外请第二个（云端/不同端点）模型
     # 独立打分，分歧大时在结果里标记 needs_human_review 建议。全程 fail-open。
     second_opinion_enabled: bool = Field(
-        default=False,
+        default=True,
         validation_alias=AliasChoices(
             "PAPERFORGE_SECOND_OPINION_ENABLED", "PAPERFORGE_SECOND_OPINION"
         ),
         description=(
-            "双模型交叉复核开关（默认 False）。开启后本地 Qwen 评审完，会从 "
-            "llm_configs 里挑一个与主 provider 不同的云端/独立端点模型做第二次评审，"
-            "分歧大时在结果里标记 needs_human_review。需在「模型管理」配置至少一个 "
-            "非本地模型才会真正生效；无第二模型时静默跳过。"
+            "双模型交叉复核开关（默认 True）。开启后本地模型评审完，会从 "
+            "llm_configs 里挑一个与主 provider 不同的云端/独立端点模型做第二次评审；"
+            "若 llm_configs 无云端配置，则回退到 glm_vision_* 云端视觉后端（同一把 GLM key "
+            "即可，文本复核也能用），实现「本地主 + 云端终审」的混合评审。\n"
+            "分歧超过 second_opinion_threshold 时，云端（更强模型）结果将【覆盖】本地结果"
+            "（由 second_opinion_override 控制），并将 original/corrected 一并存档供审计。\n"
+            "全程 fail-open：无第二模型 / 调用失败 / 处于测试环境时静默跳过，绝不改变主评审。"
+        ),
+    )
+    second_opinion_override: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "PAPERFORGE_SECOND_OPINION_OVERRIDE", "SECOND_OPINION_OVERRIDE"
+        ),
+        description=(
+            "云端纠正本地开关（默认 False，P0 安全默认）。当双模型分歧超过阈值时，若开启则以"
+            "云端（更强）模型的 score/verdict 覆盖本地结果；否则云端仅作影子分记录"
+            "（original/corrected 仍存档审计，resolved_score 保持本地）。"
+            "经验证（2026-08-17，16 篇盲评金标）：云端 GLM 覆盖会把相关性从 r=0.697 压到 0.138、"
+            "κ 由正转负（方差坍缩 + 量表未校准），故默认关闭以保护已校准的本地分。"
+            "未来若云端完成金标校准并通过验证，可显式设 True 重新开启。"
         ),
     )
     second_opinion_threshold: float = Field(
@@ -563,7 +665,44 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices(
             "PAPERFORGE_SECOND_OPINION_THRESHOLD", "SECOND_OPINION_THRESHOLD"
         ),
-        description="双模型分数分歧阈值：|Δscore| ≥ 此值或 verdict 不一致 → 建议人工复核。",
+        description="双模型分数分歧阈值：|Δscore| ≥ 此值或 verdict 不一致 → 触发云端覆盖。",
+    )
+    second_opinion_model: str = Field(
+        default="glm-4-flash",
+        validation_alias=AliasChoices("PAPERFORGE_SECOND_OPINION_MODEL", "SECOND_OPINION_MODEL"),
+        description=(
+            "云端第二评审（文本）使用的模型。默认 glm-4-flash（通用文本模型）。\n"
+            "⚠️ 不要用 glm_vision_model（glm-4v-flash 是视觉模型，纯文本长提示下"
+            "常不按 score:/verdict: 格式输出，导致解析失败、第二评审静默跳过）；\n"
+            "⚠️ 也不要用 glm-4.7-flash（部分 key/套餐对该模型返回空内容）。\n"
+            "find_second_provider 的 glm_vision_* 回退路径使用此模型做文本复核。"
+        ),
+    )
+
+    # ── 被引情感云端复核（分析功能，逐条引用分类）─────────────────────
+    # 复用 second_opinion 的云端 provider 路由（glm_vision 回退 + pytest 守卫 + fail-open）。
+    # 关键成本控制：每条引用都调云端太贵（一篇论文 50+ 引用），故仅当【本地分类置信度低】
+    # 时才触发云端复核；分歧则以云端标签覆盖本地，original/corrected 写入 cloud_recheck 审计列。
+    sentiment_recheck_enabled: bool = Field(
+        default=True,
+        validation_alias=AliasChoices(
+            "PAPERFORGE_SENTIMENT_RECHECK_ENABLED", "SENTIMENT_RECHECK_ENABLED"
+        ),
+        description=(
+            "被引情感云端复核开关（默认 True）。开启且 second_opinion_enabled 也为 True 时，"
+            "本地 LLM 对被引情感（support/criticize/background）的低置信分类会请云端（更强）模型复核，"
+            "分歧则以云端标签覆盖本地，并把 original/corrected 写入 citation_sentiments.cloud_recheck。"
+            "全程 fail-open。成本控制：仅本地置信度 < sentiment_recheck_low_conf 的引用才触发云端调用。"
+        ),
+    )
+    sentiment_recheck_low_conf: float = Field(
+        default=0.6,
+        ge=0.0,
+        le=1.0,
+        validation_alias=AliasChoices(
+            "PAPERFORGE_SENTIMENT_RECHECK_LOW_CONF", "SENTIMENT_RECHECK_LOW_CONF"
+        ),
+        description="仅当本地被引情感分类置信度低于此值（默认 0.6）才触发云端复核，控制 API 成本。",
     )
 
     # ── 绑定地址 ──────────────────────────────────────────────────
@@ -603,8 +742,80 @@ class Settings(BaseSettings):
             "OpenAI 兼容的视觉模型 HTTP 端点（如 llama-server 服务的 Qwen3-VL-4B）。"
             "设置后 figure_qwen._ask_vision_on_figure 走 HTTP 调用此端点（多模态消息），"
             "不再依赖进程内 llama_cpp（后者常因未安装导致 qwen_summary 96.7% 缺失）。"
-            "推荐端口 8082（8080=文本 Qwen）。"
+            "推荐端口 8082（8080=文本 Qwen）；云端 OpenAI 兼容端点填主机部分"
+            "（不带 /v1，调用方会自行拼接，如 https://token-plan-cn.xiaomimimo.com）。"
         ),
+    )
+    vision_model: str = Field(
+        default="qwen3-vl",
+        validation_alias=AliasChoices("PAPERFORGE_VISION_MODEL", "VISION_MODEL"),
+        description=(
+            "视觉端点使用的模型 ID。默认 qwen3-vl（兼容本地 llama-server 的"
+            "Qwen3-VL-4B）；云端 OpenAI 兼容端点可按需设为 mimo-v2.5 / gpt-4o 等。"
+        ),
+    )
+    vision_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("PAPERFORGE_VISION_API_KEY", "VISION_API_KEY"),
+        description=("视觉端点鉴权 API Key。本地 llama-server 无需；云端 OpenAI 兼容端点必填。"),
+    )
+
+    # ── 独立云端视觉后端（智谱 GLM 免费视觉，2026-08-16 新增）─────────────
+    # 与上面的本地 Qwen3-VL（vision_http_url）完全独立：本地配置原样保留，
+    # 此组用于云端免费视觉（glm-4v-flash / glm-4.1v-thinking-flash）。
+    # 设计原则：云端推理不占本地显存，因此不走 vram_guard("vision")、不参与
+    # text/vision 同卡互斥。默认关闭，需显式开启才接管审计的语义兜底。
+    glm_vision_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("PAPERFORGE_GLM_VISION_ENABLED", "GLM_VISION_ENABLED"),
+        description=(
+            "是否用云端视觉接管图表语义审计（兜底路径）。False（默认）时审计仍走本地 "
+            "Qwen3-VL（vision_http_url）或 OpenCV 确定性检测。True 时走 glm_vision_* 配置"
+            "（云端，不占本地显存）。具体上游由 glm_vision_provider 决定。"
+        ),
+    )
+    glm_vision_provider: str = Field(
+        default="glm",
+        validation_alias=AliasChoices("PAPERFORGE_GLM_VISION_PROVIDER", "GLM_VISION_PROVIDER"),
+        description=(
+            "云端视觉上游提供商。'glm'（默认）= 智谱开放平台（glm-4v-flash 等，"
+            "/v4 路径）；'agnes' = Agnes AI 官方 OpenAI 兼容视觉理解"
+            "（apihub.agnes-ai.com/v1，模型 agnes-2.5-flash，支持图片输入理解）。"
+            "两者共用 glm_vision_api_key / glm_vision_model / glm_vision_base_url，"
+            "provider=agnes 未显式设 base_url 时回落到 https://apihub.agnes-ai.com/v1，"
+            "未显式设 model 时回落到 agnes-2.5-flash。Agnes Free 计划限速 20 RPM，"
+            "故 agnes 路径内部按 ~3s/次节流。"
+        ),
+    )
+    glm_vision_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("PAPERFORGE_GLM_VISION_API_KEY", "GLM_VISION_API_KEY"),
+        description="智谱开放平台 API Key（云端视觉必填）。",
+    )
+    glm_vision_model: str = Field(
+        default="glm-4v-flash",
+        validation_alias=AliasChoices("PAPERFORGE_GLM_VISION_MODEL", "GLM_VISION_MODEL"),
+        description=(
+            "云端视觉模型 ID。免费档：glm-4v-flash（快、稳）/ glm-4.1v-thinking-flash（带思考链，"
+            "稍慢但数字读数更准）。glm-4.6v-flash 当前平台过载频繁 429，不推荐。"
+        ),
+    )
+    glm_vision_base_url: str = Field(
+        default="https://open.bigmodel.cn/api/paas/v4",
+        validation_alias=AliasChoices("PAPERFORGE_GLM_VISION_BASE_URL", "GLM_VISION_BASE_URL"),
+        description=(
+            "智谱云端视觉 OpenAI 兼容端点基址（不含 /chat/completions；调用方自行拼接）。"
+            "注意路径是 /v4 而非本地 llama-server 的 /v1。"
+        ),
+    )
+    glm_vision_max_concur: int = Field(
+        default=4,
+        validation_alias=AliasChoices("PAPERFORGE_GLM_VISION_MAX_CONCUR", "GLM_VISION_MAX_CONCUR"),
+        description=(
+            "云端视觉并发上限（信号量）。实测 glm-4v-flash 并发≤8 无 429；"
+            "glm-4.1v-thinking-flash 并发=8 偶发 429，故默认 4 留余量。"
+        ),
+        gt=0,
     )
     # 把桌面上 start-llama-dflash-wsl.bat 的启动命令固化进配置，由 PaperForge
     # 托管 llama-server 进程：默认启动即拉起；vision HTTP 使用时仅做 text/vision 令牌仲裁。
@@ -686,6 +897,53 @@ class Settings(BaseSettings):
             "取值越大，CPU 卸载越多（decode 越慢但 GPU 显存越安全）。"
         ),
         ge=0,
+    )
+    # ── Ornith-1.5-9B / 通用采样档（官方推荐，env 驱动以便 Ornstein 旧基线可复现）──
+    llama_server_reasoning: str = Field(
+        default="off",
+        validation_alias=AliasChoices(
+            "PAPERFORGE_LLAMA_SERVER_REASONING", "LLAMA_SERVER_REASONING"
+        ),
+        description=(
+            "llama-server 推理解析（--reasoning on/off）。Ornith-1.5-9B 是推理模型，"
+            "开 on 让其先 <think> 后答；CoT 进 reasoning_content，最终答案仍在 content。"
+        ),
+    )
+    llama_server_temp: float = Field(
+        default=0.1,
+        validation_alias=AliasChoices("PAPERFORGE_LLAMA_SERVER_TEMP", "LLAMA_SERVER_TEMP"),
+        description="采样温度（--temp）。Ornith 精确编码档 0.6；旧 Ornstein 默认 0.1。",
+    )
+    llama_server_top_p: float = Field(
+        default=1.0,
+        validation_alias=AliasChoices("PAPERFORGE_LLAMA_SERVER_TOP_P", "LLAMA_SERVER_TOP_P"),
+        description="核采样概率（--top-p）。Ornith 0.95；链内需含 top_p 才生效。",
+    )
+    llama_server_top_k: int = Field(
+        default=40,
+        validation_alias=AliasChoices("PAPERFORGE_LLAMA_SERVER_TOP_K", "LLAMA_SERVER_TOP_K"),
+        description="top-k 截断（--top-k）。Ornith 20；llama.cpp 默认 40。",
+    )
+    llama_server_min_p: float = Field(
+        default=0.01,
+        validation_alias=AliasChoices("PAPERFORGE_LLAMA_SERVER_MIN_P", "LLAMA_SERVER_MIN_P"),
+        description="最小概率阈值（--min-p）。Ornith 0.0；旧默认 0.01。",
+    )
+    llama_server_presence_penalty: float = Field(
+        default=0.0,
+        validation_alias=AliasChoices(
+            "PAPERFORGE_LLAMA_SERVER_PRESENCE_PENALTY", "LLAMA_SERVER_PRESENCE_PENALTY"
+        ),
+        description="存在惩罚（--presence-penalty）。Ornith 精确档 0.0 / 通用档 1.5。",
+    )
+    depth_temperature: float | None = Field(
+        default=None,
+        validation_alias=AliasChoices("PAPERFORGE_DEPTH_TEMPERATURE", "DEPTH_TEMPERATURE"),
+        description=(
+            "DEPTH 评分按请求下发的温度覆盖值。默认 None（沿用 compute_mode 历史行为，如 speed 档 0.2）。"
+            "设为 0.0 即强制贪心（之前因 `0.0 or preset` 被静默回退到 preset，已修 2026-08-21）；"
+            "Ornith 测评为 0.6，否则会被按请求覆盖盖掉 server 的 --temp。"
+        ),
     )
     llama_server_draft_n_max: int = Field(
         default=15,

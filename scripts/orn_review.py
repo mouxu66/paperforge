@@ -1,4 +1,4 @@
-"""Ornstein V2 全量 41 篇感悟报告评分（vs 人工基准），输出 ornstein_vs_human_full.csv。
+"""Ornstein-V2 全量 41 篇感悟报告评分（vs 人工基准），输出 ornstein_vs_human_full.csv。
 
 【2026-08-13 口径升级】此前版本喂原论文全文 + temperature 0.0 + 单次采样；现对齐
 depth_eval_reflection 的生产口径（标题+摘要，见 reflection_pipeline._get_paper_title_abstract）：

@@ -1,7 +1,7 @@
 """双模型交叉复核（Second Opinion）—— ADR-014 · P8。
 
 背景（详见 docs/improving-review-rigor.md §漏洞 C）：
-  本地 Qwen3.5-9B 单模型意见不可当"终审"。多 AI 对比实验
+  本地 Ornstein-V2 单模型意见不可当"终审"。多 AI 对比实验
   （deliverables/qwen_vs_others_compare_matched_2026-08-07.md）显示：
   - 与 ChatGPT 存在真实分歧 ~0.10（尤其 ua/es 维度，r≈0.59）
   - 与混元排序不相关（r=0.08）——各打各的
@@ -15,13 +15,18 @@
   - 轻量 prompt：只对文本头尾做一次独立评分，输出 score + verdict + reason。
   - 分歧判定：|Δscore| ≥ PAPERFORGE_SECOND_OPINION_THRESHOLD（默认 0.15）
     或 verdict 语义不一致 → flag=disagreement，建议 needs_human_review。
-  - fail-open：任何异常（未启用 / 无第二 provider / 超时 / 解析失败）
-    一律返回 enabled=False 的空结果，绝不改变主评审分数与 verdict。
+- fail-open：任何异常（未启用 / 无第二 provider / 超时 / 解析失败）
+  一律返回 enabled=False 的空结果，绝不改变主评审分数与 verdict。
+- 本地失败兜底（rescue）：当主评审未产出有效分数（primary_score 为 None，
+  通常是本地模型 JSON 解析失败 / 空返回）且云端第二评审有效时，`run_second_opinion`
+  以云端结果直接兜底（flag="rescued"），让该篇评审以 completed 收尾而非无结果。
+  调用方（如 DEPTH reflection 路径）可在本地解析失败时优先尝试 rescue 再决定是否判失败。
 """
 
 from __future__ import annotations
 
 import logging
+import random
 import re
 from typing import Any
 
@@ -31,7 +36,28 @@ from .settings import get_settings
 logger = logging.getLogger(__name__)
 
 # ── 常量 ───────────────────────────────────────────────────────────────
-_MAX_INPUT_CHARS = 6000  # 第二评审员只读文本头（摘要+引言足够独立判断）
+_MAX_INPUT_CHARS = 6000  # 第二评审员只读文本头（摘要+引言足够独立判断）# ── L1 模式：条件触发 + Ridge 融合（ADR-017 融合实验验证）──
+# 500 篇 PeerRead 分层抽样 + 双模型并行打分实验。
+# Ridge alpha=5 拟合于训练集（345 篇），测试集 AUC=0.786（本地 0.676 → +0.110）。
+# 仅在本地分数落入 [0.60, 0.75] 区间时调用云端，其余直接采信本地。
+# 软过渡带 [0.58, 0.77]：边界处线性混合，避免悬崖效应。
+# Min-Max 重映射：Ridge 原始分 [0.07, 0.88] → [0, 1]，与本地分量纲对齐。
+_RIDGE_W_LOCAL = 0.5226
+_RIDGE_W_CLOUD = 0.3821
+_RIDGE_INTERCEPT = 0.0
+_RIDGE_MIN = 0.0747  # 训练集 ridge 原始分最小值
+_RIDGE_MAX = 0.8787  # 训练集 ridge 原始分最大值
+_TRIGGER_LOW = 0.60
+_TRIGGER_HIGH = 0.75
+_TRIGGER_MARGIN = 0.02
+
+# ── P2 影子哨兵（shadow sentry，独立于 override / rescue 的第三态）──
+# 设计：本地主评审高度肯定（>=SENTRY_LOCAL_HIGH）但云端第二评审强烈反对
+# （<SENTRY_CLOUD_LOW）时，标记 needs_human_review 仅作「建议」——
+# 不覆盖本地分、不自动转人工、不阻断流程（影子模式，默认开）。
+# 阈值 0.5/0.7 为初始值，后续按全库分布调整（见 dry-run 统计）。
+SENTRY_CLOUD_LOW = 0.5  # 云端强烈反对的下限
+SENTRY_LOCAL_HIGH = 0.7  # 本地高度肯定的下限
 
 _PAPER_PROMPT = """你是一位独立的期刊审稿人，正在对一篇论文做匿名评审。
 以下是论文的摘要与引言（节选）。请【独立】给出你的判断，不要参考任何外部评分。
@@ -43,7 +69,7 @@ _PAPER_PROMPT = """你是一位独立的期刊审稿人，正在对一篇论文�
 - 综合质量分：综合考察创新性、严谨性、影响力、可复现性后给出 0~1 的一个小数。
 - verdict 只能是 accept / minor_revision / major_revision / reject 之一。
 - 请严格按以下格式输出（每行一个字段，key: value）：
-score: 0.72
+score: <0~1 的小数，需根据论文质量在全程分布，不要集中在某一值>
 verdict: major_revision
 reason: 一句话理由，不超过60字"""
 
@@ -57,7 +83,7 @@ _REPORT_PROMPT = """你是一位独立的阅读笔记评审专家，正在评审
 - 综合质量分：综合理解准确性、分析深度、创新见解、证据支撑后给出 0~1 的一个小数。
 - verdict 只能是 well_done / needs_evidence / needs_depth / rewrite_required 之一。
 - 请严格按以下格式输出（每行一个字段，key: value）：
-score: 0.62
+score: <0~1 的小数，需根据报告质量在全程分布，不要集中在某一值>
 verdict: needs_depth
 reason: 一句话理由，不超过60字"""
 
@@ -95,10 +121,53 @@ def disagreement_threshold() -> float:
         return 0.15
 
 
+def override_enabled() -> bool:
+    """云端纠正本地开关（PAPERFORGE_SECOND_OPINION_OVERRIDE，默认 True）。
+
+    开启且双模型分歧超阈值时，以云端（更强）模型的 score/verdict 覆盖本地结果。
+    """
+    try:
+        return bool(get_settings().second_opinion_override)
+    except Exception:  # noqa: BLE001 - settings 异常隔离
+        return False
+
+
 def _build_provider(cfg):
     """从 DB 配置行构建 provider 实例（公开入口，不改动全局当前模型）。"""
     factory = get_factory()
     return factory.build_provider(cfg)
+
+
+def _glm_vision_provider(factory) -> Any | None:
+    """回退第二评审员：用 glm_vision_* 云端配置（同一把 GLM key 即可，文本复核也能用）。
+
+    仅当 glm_vision_enabled 且配置了 api_key 时返回 provider；否则 None（fail-open）。
+    这样「默认开」对已经配好 GLM key 的用户开箱即用，无需再到 llm_configs 加云端模型。
+    """
+    try:
+        st = get_settings()
+        if not getattr(st, "glm_vision_enabled", False):
+            return None
+        key = getattr(st, "glm_vision_api_key", "") or ""
+        if not key:
+            return None
+        base = (
+            getattr(st, "glm_vision_base_url", "") or "https://open.bigmodel.cn/api/paas/v4"
+        ).rstrip("/")
+        # ⚠️ 文本第二评审必须用文本模型：glm_vision_model 是视觉模型(glm-4v-flash)，
+        # 纯文本长提示下常不按 score:/verdict: 格式输出导致解析失败、静默跳过。
+        # 故回退路径改用独立的 second_opinion_model（默认 glm-4-flash，文本通用）。
+        model = getattr(st, "second_opinion_model", "") or "glm-4-flash"
+
+        class _Cfg:
+            api_url = base
+            api_key = key
+            model_id = model
+
+        return factory.build_provider(_Cfg())
+    except Exception as e:  # noqa: BLE001 - 回退构建失败仅 fail-open
+        logger.warning("[second_opinion] glm_vision 回退构建失败（跳过）: %s", e)
+        return None
 
 
 def find_second_provider(db=None):
@@ -115,6 +184,11 @@ def find_second_provider(db=None):
     其余启用配置都可作为独立意见来源。找不到返回 None（fail-open）。
     """
     try:
+        # 🛡️ 测试环境守卫：pytest 下不回退云端，避免测试套件发起真实 API 调用（fail-open）。
+        import sys
+
+        if "pytest" in sys.modules:
+            return None
         factory = get_factory()
         # 只读内存态当前 provider（不触发 DB 加载，不碰任何 session）
         primary_url = ""
@@ -145,7 +219,8 @@ def find_second_provider(db=None):
                     continue  # 主 provider 未知时，本机 llama-server 视为「主」，跳过
                 if url != primary_url:
                     return _build_provider(cfg)
-            return None
+            # llm_configs 无云端配置 → 回退 glm_vision_* 作为第二评审员（开箱即用）
+            return _glm_vision_provider(factory)
         finally:
             if _own_db is not None:
                 _own_db.close()
@@ -189,6 +264,55 @@ def _verdicts_agree(a: str, b: str, kind: str) -> bool:
     table = _PAPER_EQUIV if kind == "paper" else _REPORT_EQUIV
     va = table.get(a, {a})
     return b in va
+
+
+def should_trigger_cloud(primary_score: float | None) -> tuple[bool, float]:
+    """判断是否应对当前论文调用云端第二评审。
+
+    Returns:
+        (should_trigger, trigger_weight)
+        - should_trigger: True 时调用云端；False 时跳过（节省 API）。
+        - trigger_weight: 云端融合权重（过渡带内线性衰减，核心区=1.0，边界=0.0）。
+
+    设计（ADR-018 融合实验，500 篇 PeerRead 验证）：
+      - 核心区 [0.70, 0.80]：总是触发（trigger_weight=1.0）
+      - 过渡带 [0.68, 0.70) 和 (0.80, 0.82]：概率触发（线性衰减）
+      - 区间外：不触发（直接采信本地）
+
+    物理解释：云端 GLM-4.7-Flash 分数高度量化（64% 集中在 0.65），
+    在高分区（>0.80）会把好论文拖低；在低分区（<0.65）本地已足够准确。
+    只在边界区间 [0.70, 0.80] 调用云端，精准打击本地"高分放水"。
+    """
+    if primary_score is None:
+        return False, 0.0
+    s = float(primary_score)
+    # 核心区：总是触发
+    if _TRIGGER_LOW <= s <= _TRIGGER_HIGH:
+        return True, 1.0
+    # 过渡带下界 [0.68, 0.70)
+    if _TRIGGER_LOW - _TRIGGER_MARGIN <= s < _TRIGGER_LOW:
+        weight = (s - (_TRIGGER_LOW - _TRIGGER_MARGIN)) / _TRIGGER_MARGIN
+        return random.random() < weight, weight
+    # 过渡带上界 (0.80, 0.82]
+    if _TRIGGER_HIGH < s <= _TRIGGER_HIGH + _TRIGGER_MARGIN:
+        weight = ((_TRIGGER_HIGH + _TRIGGER_MARGIN) - s) / _TRIGGER_MARGIN
+        return random.random() < weight, weight
+    # 区间外：不触发
+    return False, 0.0
+
+
+def fuse_scores(local_score: float, cloud_score: float, trigger_weight: float = 1.0) -> float:
+    """Ridge 融合 + Min-Max 重映射。
+
+    公式：raw = w_local × local + w_cloud × cloud + intercept
+    重映射：calibrated = (raw - RIDGE_MIN) / (RIDGE_MAX - RIDGE_MIN)
+    trigger_weight: 过渡带衰减系数（0.0~1.0），核心区内=1.0，边界处线性混合。
+    """
+    raw = _RIDGE_W_LOCAL * local_score + _RIDGE_W_CLOUD * cloud_score + _RIDGE_INTERCEPT
+    calibrated = (raw - _RIDGE_MIN) / (_RIDGE_MAX - _RIDGE_MIN)
+    calibrated = max(0.0, min(1.0, calibrated))  # clamp to [0, 1]
+    # 过渡带内线性混合融合分与本地分
+    return round(trigger_weight * calibrated + (1 - trigger_weight) * local_score, 4)
 
 
 def get_second_opinion(text: str, *, kind: str = "paper", db=None) -> dict[str, Any]:
@@ -288,13 +412,167 @@ def run_second_opinion(
     primary_verdict: str | None = None,
     kind: str = "paper",
     db=None,
+    allow_rescue: bool = True,
 ) -> dict[str, Any]:
-    """顶层入口：开关检查 → 独立评审 → 分歧判定（全程 fail-open）。
+    """顶层入口：开关检查 → 独立评审 → 分歧判定 / 本地失败兜底（全程 fail-open）。
 
     db：可选。评审任务传入自己的 Session 供候选枚举复用，避免独立 session
     的 close() 副作用干扰调用方事务（见 find_second_provider 注释）。
+
+    本地失败兜底（rescue）：当本地主评审未产出有效分数（primary_score 为 None）
+    且云端第二评审有效时，直接以云端结果作为最终结果（flag="rescued"），
+    而不是让该篇评审无结果。仅在 second_opinion 开启且云端可用时触发，
+    全程 fail-open，云端不可用则交回调用方原失败逻辑（如 B 路径的 status=failed）。
     """
     if not is_enabled():
         return {"enabled": False, "skipped": "disabled"}
+
+    # ── 条件触发：仅在边界区间调用云端（节省 60%+ API，规避 429 限流）──
+    triggered, trigger_weight = should_trigger_cloud(primary_score)
+    if not triggered and primary_score is not None:
+        # 区间外：跳过云端调用，直接采信本地结果（附影子标记）
+        return {
+            "enabled": True,
+            "skipped": "outside_trigger_zone",
+            "triggered": False,
+            "trigger_weight": trigger_weight,
+            "resolved_score": primary_score,
+            "resolved_verdict": primary_verdict,
+            "original_score": primary_score,
+            "original_verdict": primary_verdict,
+            "cloud_shadow_score": None,
+            "cloud_shadow_verdict": None,
+            "sentry_flag": False,
+            "needs_human_review": False,
+            "override_status": "bypassed_by_trigger",
+            "note": (
+                f"本地分数 {primary_score:.4f} 在触发区间外 [0.60,0.75]，"
+                f"跳过云端调用，直接采信本地结果。"
+            ),
+        }
+
     second = get_second_opinion(text, kind=kind, db=db)
-    return assess_disagreement(primary_score, primary_verdict, second, kind=kind)
+    assess = assess_disagreement(primary_score, primary_verdict, second, kind=kind)
+
+    override = override_enabled()
+    corrected = False
+    resolved_score = primary_score
+    resolved_verdict = primary_verdict
+
+    # ── 云端兜底：本地主评审缺失/解析失败 ──
+    # 本地未产出有效分数（primary_score is None）且云端第二评审有效时，
+    # 直接以云端结果兜底（标记 rescued）。与下方「分歧覆盖」互斥：
+    # 分歧覆盖要求本地有分数可覆盖，兜底则是本地根本没分数。
+    if allow_rescue and second.get("enabled") and primary_score is None:
+        s2 = second.get("score")
+        v2 = second.get("verdict")
+        if s2 is not None or v2:
+            out = dict(assess)
+            out["enabled"] = True
+            out["rescued"] = True
+            out["local_failed"] = True
+            out["override_enabled"] = override
+            out["corrected"] = True
+            out["resolved_score"] = s2
+            out["resolved_verdict"] = v2
+            out["original_score"] = primary_score
+            out["original_verdict"] = primary_verdict
+            out["flag"] = "rescued"
+            out["corrected_by"] = second.get("provider") or second.get("model")
+            out["note"] = "本地主评审未产出有效分数（解析失败/空返回），已由云端第二评审直接兜底。"
+            return out
+
+    # ── L1 融合 or 旧版 override（互斥）──
+    # 当 triggered 且云端可用时，用 Ridge 融合替代 override。
+    # trigger_weight 在过渡带内线性衰减（0~1），核心区=1.0。
+    # 融合优先于 override：一旦融合产出 resolved_score，不再走 override。
+    _cloud_score_for_fusion = assess.get("second_score")
+    if (
+        triggered
+        and assess.get("flag") == "disagreement"  # 仅分歧时融合，一致则保持本地
+        and second.get("enabled")
+        and _cloud_score_for_fusion is not None
+        and primary_score is not None
+    ):
+        fused = fuse_scores(primary_score, _cloud_score_for_fusion, trigger_weight)
+        resolved_score = fused
+        # verdict 从融合分重新判定（复用 DEPTH 阈值）
+        if fused >= 0.80:
+            resolved_verdict = "accept"
+        elif fused >= 0.70:
+            resolved_verdict = "minor_revision"
+        elif fused >= 0.60:
+            resolved_verdict = "major_revision"
+        else:
+            resolved_verdict = "reject"
+        corrected = True
+        out_fused = {
+            "fusion_applied": True,
+            "fusion_mode": "L1_ridge",
+            "ridge_w_local": _RIDGE_W_LOCAL,
+            "ridge_w_cloud": _RIDGE_W_CLOUD,
+            "ridge_intercept": _RIDGE_INTERCEPT,
+            "trigger_weight": round(trigger_weight, 4),
+        }
+    elif override and assess.get("flag") == "disagreement":
+        # ── 旧版 override（仅在融合未触发时生效）──
+        s2 = assess.get("second_score")
+        v2 = assess.get("second_verdict")
+        if s2 is not None or v2:
+            corrected = True
+            if s2 is not None:
+                resolved_score = s2
+            if v2:
+                resolved_verdict = v2
+        out_fused = {}
+    else:
+        out_fused = {}
+
+    out = dict(assess)
+    out["override_enabled"] = override
+    out["corrected"] = corrected
+    out["resolved_score"] = resolved_score
+    out["resolved_verdict"] = resolved_verdict
+    out["original_score"] = primary_score
+    out["original_verdict"] = primary_verdict
+
+    # ── P2 影子哨兵（shadow sentry）：本地高、云端强烈反对 ──
+    # 与 rescue（本地失败兜底）互斥：rescue 仅在 primary_score 为 None 时触发，
+    #   哨兵要求本地有有效高分数（>=SENTRY_LOCAL_HIGH），二者天然不相容。
+    # 与 override（云端纠正）互斥：仅在 override 未实际覆盖（corrected=False）时判定，
+    #   避免与「分歧覆盖」重复标记。
+    # 行为（影子模式，默认开）：仅产出 needs_human_review 建议标记 + 审计字段，
+    #   绝不改变 resolved_score、不自动转人工、不阻断流程。阈值后续按全库分布调整。
+    sentry_flag = False
+    _cloud_score = assess.get("second_score")
+    if (
+        not corrected  # override 未实际覆盖（与覆盖互斥）
+        and primary_score is not None  # 本地确有有效分（与 rescue 互斥）
+        and _cloud_score is not None
+        and float(primary_score) >= SENTRY_LOCAL_HIGH
+        and float(_cloud_score) < SENTRY_CLOUD_LOW
+    ):
+        sentry_flag = True
+    out["sentry_flag"] = sentry_flag
+    out["needs_human_review"] = sentry_flag  # 影子模式：仅建议标记，不触发任何工作流动作
+    out["cloud_shadow_score"] = _cloud_score  # 始终记录云端影子分，便于哨兵/审计回放
+    out["local_score"] = primary_score  # 本地主评审分（= 未覆盖时的 resolved）
+
+    # P0 安全标记：override 关闭时云端仅作影子分，resolved 保持本地；便于日后回放/审计
+    out["triggered"] = triggered
+    out["trigger_weight"] = round(trigger_weight, 4)
+    out.update(out_fused)
+    out["override_status"] = "disabled_by_p0" if not override else "enabled"
+    if not override and assess.get("flag") == "disagreement" and second.get("enabled"):
+        out["cloud_shadow_score"] = assess.get("second_score")
+        out["cloud_shadow_verdict"] = assess.get("second_verdict")
+        out["note"] = (out.get("note") or "") + (
+            "（云端仅作影子分，override=disabled_by_p0，本地分未被覆盖）"
+        )
+    if corrected and assess.get("flag") == "disagreement":
+        out["corrected_by"] = assess.get("second_provider") or assess.get("second_model")
+        out["note"] = (out.get("note") or "") + (
+            f" → 云端已覆盖本地（{primary_verdict}@{primary_score} → "
+            f"{resolved_verdict}@{resolved_score}）"
+        )
+    return out

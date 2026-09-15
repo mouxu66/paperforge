@@ -36,9 +36,27 @@ def verdict_zh(v: str | None) -> str:
     return m.get(v.replace("_revision", ""), v)
 
 
+def current_model_label(conn) -> str:
+    """从 llm_configs 表读取当前启用模型的展示名。
+
+    与 LLMFactory.get_provider() 的默认选择一致：取第一个 enabled 配置（按 id 升序）。
+    读不到（表缺失/无启用配置）时返回占位符，不让导出中断。
+    """
+    try:
+        row = conn.execute(
+            "SELECT display_name FROM llm_configs WHERE enabled = 1 ORDER BY id LIMIT 1"
+        ).fetchone()
+        if row and row[0]:
+            return row[0]
+    except sqlite3.Error:
+        pass
+    return "未知模型"
+
+
 def main():
     conn = sqlite3.connect(str(DB_PATH))
     cur = conn.cursor()
+    model_label = current_model_label(conn)
 
     # 联表查询：DepthReviewV4 + Paper（取最新一条 kind='paper' 的记录）
     cur.execute("""
@@ -160,7 +178,7 @@ tr.major {{ background: #fff3e0; }}
 <body>
 <h1>PaperForge DEPTH 审稿结果</h1>
 <div style="font-size:12px;color:#666;margin-bottom:12px;">
-  共 {len(rows)} 篇 ｜ 生成时间：{datetime.now().strftime("%Y-%m-%d %H:%M")} ｜ 模型：Qwen3.5-9B
+  共 {len(rows)} 篇 ｜ 生成时间：{datetime.now().strftime("%Y-%m-%d %H:%M")} ｜ 模型：{model_label}
 </div>
 <div class="summary">
   <div class="card accept"><div class="num">{accept}</div><div class="lbl">接受</div></div>

@@ -61,7 +61,11 @@ def test_app_creatable():
     #   GET export-batch/{task_id}/progress、GET export-batch/{task_id}/download）→ 157 → 160。
     # 2026-08-08: +6 条实验审计端点（experiment-audit：run/result/list/
     #   report/leakage/finding-types）→ 160 → 166。
-    expected = 166
+    # 2026-08-14: +2 条实验审计端点（POST /api/experiment-audit/code-audit、
+    #   POST /api/experiment-audit/relabeled-reuse）→ 166 → 168。
+    # 2026-08-16: +2 条实验审计端点（GET /api/experiment-audit/evidence-image、
+    #   GET /api/experiment-audit/findings/summary）→ 168 → 170。
+    expected = 170
     assert route_count == expected, (
         f"app 路由数量变化：{route_count} != {expected}。"
         "如果本项失败，检查是否新增/删除路由或 include_router 遗漏。"

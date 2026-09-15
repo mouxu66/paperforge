@@ -48,9 +48,10 @@ dimensions:
 
 # ── 终评 verdict 映射（偏移后 calibrated_score） ─────────────────────────────
 verdict_mapping:
-  accept: 0.80          # ≥ 0.80
-  minor_revision: 0.70  # ≥ 0.70
-  major_revision: 0.50  # ≥ 0.50
+  accept: 0.78          # ≥ 0.78 (Ornith-1.5-9B: 从 0.80 降低)
+  minor_revision: 0.65  # ≥ 0.65 (从 0.70 降低)
+  major_revision: 0.45  # ≥ 0.45 (从 0.50 降低)
+  # reject: < 0.45
   reject: 0.00          # < 0.50
 
 # ── 否决护栏（与 DEPTH FATAL_VETO 对齐，但明确列出触发条件） ─────────────────

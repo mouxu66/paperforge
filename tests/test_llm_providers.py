@@ -191,6 +191,31 @@ def test_openai_provider_build_payload_extra_kwargs():
     assert payload["stop"] == ["\n"]
 
 
+def test_local_provider_defaults_thinking_off(monkeypatch):
+    """本地 base_url 默认注入 enable_thinking=False；显式传值不被覆盖。
+
+    背景：Ornith 等推理模型模板默认开思维链，调用方不传控制时每次偷偷
+    生成 1-3k 字隐藏 CoT（2026-08-22 实测，单次调用虚增 5-10 倍耗时）。
+    """
+    messages = [ChatMessage(role="user", content="hi")]
+    local = OpenAIProvider(
+        api_key="sk-test", model="ornith", base_url="http://127.0.0.1:8080/v1"
+    )
+    remote = OpenAIProvider(api_key="sk-test", model="gpt-4o")
+
+    # 本地默认注入
+    p = local.build_payload(messages)
+    assert p["chat_template_kwargs"] == {"enable_thinking": False}
+    # 远端不注入（OpenAI 不认识该字段）
+    assert "chat_template_kwargs" not in remote.build_payload(messages)
+    # 显式传值优先，不被覆盖（depth_eval_v4 思考模式路径）
+    p2 = local.build_payload(messages, chat_template_kwargs={"enable_thinking": True})
+    assert p2["chat_template_kwargs"] == {"enable_thinking": True}
+    # env 门控可整体关掉默认
+    monkeypatch.setenv("PAPERFORGE_LOCAL_DEFAULT_THINKING", "1")
+    assert "chat_template_kwargs" not in local.build_payload(messages)
+
+
 # ---------------------------------------------------------------------------
 # DeepSeekProvider
 # ---------------------------------------------------------------------------

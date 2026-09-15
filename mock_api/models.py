@@ -158,6 +158,8 @@ class CitationSentiment(Base):
     sentiment_label: Mapped[str] = mapped_column(String, default="background", nullable=False)
     confidence: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     context_snippet: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    # 云端复核审计：本地低置信分类被云端(更强)模型覆盖时，存 original/corrected（JSON 文本）
+    cloud_recheck: Mapped[str | None] = mapped_column(Text, default=None, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(), nullable=False
     )
@@ -835,6 +837,42 @@ class ExperimentAudit(Base):
         DateTime, default=lambda: datetime.now(), nullable=False
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class AuditFinding(Base):
+    """实验审计 Finding 索引表（ExperimentAudit.findings 的可查询镜像）。
+
+    背景：findings 原本只存 JSON 列，跨论文聚合（如「列出所有含 high
+    finding 的论文」）退化为全表 Python 遍历。本表把 type/severity 落成
+    索引列，专供聚合/过滤查询；JSON 列仍是唯一事实源，读路径
+    （coerce_findings）不变，本表由写路径同步维护（service.sync_audit_findings）。
+    - paper_id 冗余存储：聚合免 join，与 audit 同生命周期（CASCADE）。
+    - payload 存完整 Finding dict（与 JSON 列中同一条目一致）。
+    - 2026-08 之前的旧审计可用 scripts/backfill_audit_findings.py 补齐。
+    """
+
+    __tablename__ = "audit_findings"
+
+    id = mapped_column(String(36), primary_key=True, default=_gen_uuid)
+    audit_id = mapped_column(
+        String(36),
+        ForeignKey("experiment_audits.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    paper_id = mapped_column(
+        String,
+        ForeignKey("papers.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    finding_id = mapped_column(String(64), nullable=False)
+    type = mapped_column(String(64), nullable=False, index=True)
+    severity = mapped_column(String(16), nullable=False, index=True)
+    payload: Mapped[Any] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(), nullable=False
+    )
 
 
 class ApiCallLog(Base):

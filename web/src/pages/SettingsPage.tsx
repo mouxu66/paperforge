@@ -10,6 +10,7 @@ import VramEventPanel from "@/components/VramEventPanel";
 import ResearchPageAccent from "@/components/ResearchPageAccent";
 import PageHeader from "@/components/PageHeader";
 import DepthSettingsPanel from "@/components/DepthSettingsPanel";
+import SecondOpinionSettingsPanel from "@/components/SecondOpinionSettingsPanel";
 import { List } from "@/components/CompatList";
 
 const { Text, Link: AntLink } = Typography;
@@ -245,6 +246,8 @@ export default function SettingsPage() {
       </Card>
 
       <DepthSettingsPanel />
+
+      <SecondOpinionSettingsPanel />
 
       <VramEventPanel />
     </div>

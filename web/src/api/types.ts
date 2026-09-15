@@ -789,6 +789,16 @@ export interface DepthSettings {
   deltaBoundsOverrides: Record<string, DepthBoundsOverride>;
 }
 
+// 全局设置：双模型交叉复核 + 被引情感云端复核相关开关（在线读写，重启后恢复默认）
+export interface AppSettings {
+  secondOpinionEnabled: boolean;
+  secondOpinionOverride: boolean;
+  secondOpinionThreshold: number;
+  secondOpinionModel: string;
+  sentimentRecheckEnabled: boolean;
+  sentimentRecheckLowConf: number;
+}
+
 // ---------------------------------------------------------------------------
 // AI 量化评估
 // ---------------------------------------------------------------------------

@@ -21,6 +21,8 @@ from pathlib import Path
 
 import requests
 
+from mock_api.settings import get_settings
+
 logger = logging.getLogger(__name__)
 
 # TTL memory cache for figure understanding results (seconds). 0 disables cache.
@@ -28,6 +30,23 @@ _QWEN_CACHE_TTL = 300
 _QWEN_CACHE_MAX_SIZE = 256
 _qwen_cache: dict[int, tuple[float, str]] = {}
 _qwen_cache_lock = threading.Lock()
+
+# 云端视觉并发信号量（懒初始化，取自 settings.glm_vision_max_concur）。
+_CLOUD_VISION_SEM: threading.Semaphore | None = None
+
+
+def _cloud_vision_sem() -> threading.Semaphore:
+    """懒初始化云端视觉并发信号量（默认 4，受 settings.glm_vision_max_concur 控制）。"""
+    global _CLOUD_VISION_SEM
+    if _CLOUD_VISION_SEM is None:
+        try:
+            from mock_api.settings import get_settings
+
+            n = max(1, int(get_settings().glm_vision_max_concur or 4))
+        except Exception:  # noqa: BLE001 - settings 异常隔离
+            n = 4
+        _CLOUD_VISION_SEM = threading.Semaphore(n)
+    return _CLOUD_VISION_SEM
 
 
 def _qwen_cache_key(ocr_text: str, figure_path: str | None) -> int:
@@ -137,9 +156,10 @@ def _ask_vision_on_figure(
         vision_url = None
 
     if vision_url:
+        _st = get_settings()
         url = f"{vision_url.rstrip('/')}/v1/chat/completions"
         payload = {
-            "model": "qwen3-vl",
+            "model": _st.vision_model or "qwen3-vl",
             "messages": [
                 {
                     "role": "user",
@@ -162,8 +182,11 @@ def _ask_vision_on_figure(
             # 关键修复（ADR-013）：vision HTTP 调用纳入 VRAM 仲裁，与 8080 在
             # 8GB 卡上抢显存时串行化；同卡 exclusive 模式下 acquire 会先让出 8080。
             # 重入安全：外层已持 vision 令牌时（vram_bracket_external）自动重入计数。
+            headers = {"Content-Type": "application/json"}
+            if _st.vision_api_key:
+                headers["Authorization"] = f"Bearer {_st.vision_api_key}"
             with vram_guard("vision"):
-                resp = requests.post(url, json=payload, timeout=timeout)
+                resp = requests.post(url, json=payload, headers=headers, timeout=timeout)
                 resp.raise_for_status()
                 text = resp.json()["choices"][0]["message"].get("content", "")
             if text.strip():
@@ -174,6 +197,94 @@ def _ask_vision_on_figure(
             logger.warning("[figure] Qwen3-VL-4B HTTP 调用失败: %s", exc)
 
     logger.warning("[figure] Qwen3-VL-4B 不可用，返回 None")
+    return None
+
+
+def _ask_cloud_vision_on_figure(
+    figure_path: str,
+    caption_text: str = "",
+    timeout: int = 120,
+) -> str | None:
+    """云端视觉（GLM/Agnes 等 OpenAI 兼容）优先做图表语义理解。
+
+    走 settings.glm_vision_*（PAPERFORGE_GLM_VISION_ENABLED=1 开启）。
+    不占本地显存、不参与 text/vision 同卡互斥（设计见 settings 注释）。
+    fail-open：未启用 / 无 key / 调用失败一律返回 None，由 ask_qwen 回落
+    本地 Qwen3-VL-4B 或文本 Qwen。
+    """
+    try:
+        from mock_api.settings import get_settings
+
+        st = get_settings()
+    except Exception:  # noqa: BLE001 - settings 异常隔离
+        return None
+    if not st.glm_vision_enabled or not st.glm_vision_api_key:
+        return None
+
+    # provider 分支回落：glm→智谱 / agnes→Agnes AI（settings 注释约定，必须按 provider 取默认）
+    _PROVIDER_DEFAULTS = {
+        "glm": ("https://open.bigmodel.cn/api/paas/v4", "glm-4v-flash"),
+        "agnes": ("https://apihub.agnes-ai.com/v1", "agnes-2.5-flash"),
+    }
+    provider = (st.glm_vision_provider or "glm").lower()
+    default_base, default_model = _PROVIDER_DEFAULTS.get(provider, _PROVIDER_DEFAULTS["glm"])
+    base_url = (st.glm_vision_base_url or default_base).rstrip("/")
+    model = st.glm_vision_model or default_model
+    url = f"{base_url}/chat/completions"
+    path = Path(figure_path)
+    if not path.exists():
+        logger.warning("[figure] 云端视觉：图文件不存在，跳过: %s", figure_path)
+        return None
+    try:
+        img_b64 = base64.b64encode(path.read_bytes()).decode("utf-8")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[figure] 云端视觉：读图失败: %s", exc)
+        return None
+
+    caption_part = f"图注：{caption_text[:400]}" if caption_text else ""
+    prompt = (
+        "这是一张论文中的实验图。请尽量全面地用中文描述这张图：\n"
+        "1. 图的类型（曲线图/柱状图/散点图/热力图/架构图/流程图等）；\n"
+        "2. 横轴与纵轴各自代表什么（含单位）；\n"
+        "3. 图例与各组对比的含义；\n"
+        "4. 数据随自变量变化的主要趋势；\n"
+        "5. 这张图支撑的结论。\n"
+        "图中若有文字/标签请一并识别。\n"
+        f"{caption_part}"
+    )
+    headers = {"Content-Type": "application/json"}
+    if st.glm_vision_api_key:
+        headers["Authorization"] = f"Bearer {st.glm_vision_api_key}"
+    payload = {
+        "model": model,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{img_b64}"},
+                    },
+                    {"type": "text", "text": prompt},
+                ],
+            }
+        ],
+        "temperature": 0.0,
+        "max_tokens": 1024,
+        "stream": False,
+    }
+    sem = _cloud_vision_sem()
+    try:
+        with sem:
+            resp = requests.post(url, json=payload, headers=headers, timeout=timeout)
+        resp.raise_for_status()
+        text = resp.json()["choices"][0]["message"].get("content", "")
+        if text.strip():
+            logger.debug("[figure] 云端视觉理解成功 (model=%s)", model)
+            return text.strip()
+        logger.warning("[figure] 云端视觉返回空内容")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[figure] 云端视觉调用失败: %s", exc)
     return None
 
 
@@ -214,12 +325,25 @@ def ask_qwen(
         return cached
 
     if figure_path:
-        vision_summary = _ask_vision_on_figure(
+        # 云端视觉优先（更准、不占本地显存）。
+        cloud_summary = _ask_cloud_vision_on_figure(
             figure_path, caption_text=caption_text, timeout=timeout
         )
-        if vision_summary:
-            _cache_set(cache_key, vision_summary)
-            return vision_summary
+        if cloud_summary:
+            _cache_set(cache_key, cloud_summary)
+            return cloud_summary
+        # 用户明确要求：GLM 视觉开启时不回退本地 Qwen3-VL-4B 视觉，直接走文本兜底。
+        try:
+            _glm_enabled = get_settings().glm_vision_enabled
+        except Exception:  # noqa: BLE001
+            _glm_enabled = False
+        if not _glm_enabled:
+            vision_summary = _ask_vision_on_figure(
+                figure_path, caption_text=caption_text, timeout=timeout
+            )
+            if vision_summary:
+                _cache_set(cache_key, vision_summary)
+                return vision_summary
         # Vision failed. If caller owns the VRAM bracket, do not switch to text Qwen.
         if vram_bracket_external:
             logger.debug("[figure] vision failed with external VRAM bracket; returning empty")
