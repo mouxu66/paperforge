@@ -295,20 +295,29 @@ PROMPT_Q5A = """[CRITICAL: Output ONLY the critique lines + evidence_id. NO thin
 论文：
 {paper}
 
-重要提示：证据池中若某项以 [FATAL] 标记（尤其来自图文一致性的 out-of-range claim），说明该证据对应的问题可能直接动摇论文结论，应优先、严肃地考虑映射为 severity=fatal 的 critique point，并引用其 evidence_id；但若该问题对全文结论影响有限，仍可判定为 minor。
+severity 判定标准（**严格按定义执行，不要凭"问题严重不严重"的感觉标注**）：
 
-示例：
-critique: 图1 报告 accuracy=1.8 超出坐标轴范围，与正文关键结论矛盾 | severity: fatal
-evidence_id: E5
+severity=fatal —— **仅限**以下四类根本性缺陷（问题一旦成立，论文结论就不成立）：
+  F1 结论自相矛盾：正文结论与自身数据/图表直接冲突；
+  F2 数据/证据不一致：同一指标在摘要、正文、表格中数值互相矛盾；
+  F3 核心方法不可复现：关键步骤缺失到无法实现（如未给核心公式、未定义关键变量）；
+  F4 学术不端：数据造假、图片复用、一稿多投、剽窃。
+  **除上述四类外，一律不得标 fatal。**
+
+severity=minor —— **所有"论证充分性"类问题都属此类**，包括但不限于：
+  消融实验缺失；缺少与某些基线/方法的对比；缺少理论证明或界；缺少敏感性分析；
+  缺少实现细节或超参；数据集单一或规模偏小；仅仿真未真实场景；创新性有限；表述或排版问题。
+  ⚠️ 这类问题在真实审稿中极为常见，属于"可修改"而非"致命"。把它们标成 fatal 会触发
+  代码层的一票否决，导致论文被**错误拒稿**——这是必须避免的误判。
+
+证据池中若某项以 [FATAL] 标记（尤其来自图文一致性的 out-of-range claim），说明该证据可能
+直接动摇结论——但**只有**能归入上述 F1~F4 时才可映射为 severity=fatal，否则仍标 minor。
 
 输出格式（每条质疑一行，severity填fatal或minor）：
-critique: 消融实验缺失 | severity: fatal
-critique: 缺乏真实场景验证 | severity: minor
-evidence_id: E3
-
-示例：
-critique: 消融实验缺失无法证明各模块贡献 | severity: fatal
-critique: 仅在仿真环境测试缺乏真实场景 | severity: minor
+critique: 图1 报告 accuracy=1.8 超出坐标轴范围，与正文"达到最优"的结论直接矛盾 | severity: fatal
+critique: 表2 与正文 4.2 节报告的样本量不一致（1200 vs 800） | severity: fatal
+critique: 消融实验缺失，无法证明各模块的实际贡献 | severity: minor
+critique: 缺乏与 Adapter、BitFit 等高效微调基线的对比 | severity: minor
 evidence_id: E3"""
 
 
@@ -317,7 +326,9 @@ evidence_id: E3"""
 # =============================================================================
 PROMPT_Q5B = """[CRITICAL: Output ONLY the defense lines + evidence_id. NO thinking. NO JSON. Start immediately.]
 
-你是论文作者。针对以下质疑逐条辩护。严格基于原文，未涉及的回答"原文暂未涉及，将在终稿补充"。
+你是论文作者。针对以下质疑逐条辩护。**严格基于上面给出的论文正文与证据池**：
+任何「已在附录/补充材料/其他章节完成」的说法都必须在论文正文里有痕迹，否则一律回答"原文暂未涉及，将在终稿补充"。
+未在给定材料中出现的内容不得断言其存在（编造附录/表格/开源地址会被代码层判定为无效辩护）。
 
 审稿质疑：
 {critique_points}
@@ -326,14 +337,13 @@ PROMPT_Q5B = """[CRITICAL: Output ONLY the defense lines + evidence_id. NO think
 论文：
 {paper}
 
-输出格式（每条辩护一行，顺序对应质疑）：
-defense: 消融实验已在附录A.3完成，正文因篇幅未展示
-defense: 原文暂未涉及，将在终稿补充
+输出格式（每条辩护一行，顺序对应质疑；不得输出其他内容）：
+defense: <逐条辩护，引用原文文字或数字；无法支撑则固定填 "原文暂未涉及，将在终稿补充">
 evidence_id: E2
 
-示例：
-defense: 我们已在附录中补充了消融实验的完整结果
-defense: 原文暂未涉及，将在终稿补充
+示例（注意：第 1 条是**失败示范**——凭空声称附录存在，会被判无效）：
+质疑：缺消融实验 → defense: 原文暂未涉及，将在终稿补充
+质疑：基线对比不足 → defense: 正文表 2 已给出与 ResNet-50 的对比（top-1 76.3 vs 74.1）
 evidence_id: E2"""
 
 

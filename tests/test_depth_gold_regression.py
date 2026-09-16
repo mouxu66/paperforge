@@ -102,7 +102,16 @@ def test_recommend_offset_from_gold_runs():
 
 
 def test_gold_offset_path_priority(monkeypatch):
-    """PAPERFORGE_DEPTH_GOLD_OFFSET_PATH 应优先于 calib_offset.json 的自动估计。"""
+    """PAPERFORGE_DEPTH_GOLD_OFFSET_PATH 应优先于 calib_offset.json 的自动估计。
+
+    注（2026-09-16）：显式 PAPERFORGE_DEPTH_SCORE_OFFSET 的优先级**高于**金标路径
+    （见 depth_calibration 模块顶部声明的优先级链）。仓库根 .env 显式写了该值为 0，
+    会经 Settings 通道生效并压过金标路径——故此处必须屏蔽显式配置通道，
+    本用例才能真正只测「金标路径 vs calib 自动估计」这一层。
+    """
+    import mock_api.depth_calibration as _dc
+
+    monkeypatch.setattr(_dc, "_explicit_offset", lambda: None)
     with tempfile.TemporaryDirectory() as td:
         gold_off = os.path.join(td, "gold_offset.json")
         with open(gold_off, "w", encoding="utf-8") as f:
@@ -116,6 +125,14 @@ def test_gold_offset_path_priority(monkeypatch):
             assert abs(get_score_offset() - (-0.07)) < 1e-6
         finally:
             reset_score_offset()
+
+    # 反向护栏：显式配置存在时必须压过金标路径（P4 显式配置最高优先）
+    monkeypatch.setattr(_dc, "_explicit_offset", lambda: 0.0)
+    reset_score_offset()
+    try:
+        assert get_score_offset() == 0.0, "显式 0 应压过金标路径 -0.07"
+    finally:
+        reset_score_offset()
 
 
 def test_bootstrap_ci_reproducible():

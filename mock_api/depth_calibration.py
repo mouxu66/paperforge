@@ -41,15 +41,46 @@ _AUTO_OFFSET_ENABLED = os.getenv("DEPTH_AUTO_OFFSET", "0").lower() in ("1", "tru
 _GOLD_OFFSET_ENV = "PAPERFORGE_DEPTH_GOLD_OFFSET_PATH"
 
 
+def _explicit_offset() -> float | None:
+    """读取**显式配置**的全局偏移量；未显式配置返回 None。
+
+    两个通道（P4 配置通道收口，2026-09-16 修复）：
+      1. ``os.environ["PAPERFORGE_DEPTH_SCORE_OFFSET"]`` —— 测试/脚本热切换，最高优先。
+      2. ``Settings.depth_score_offset`` —— **.env 通道**。
+
+    为什么必须走 Settings：.env 由 pydantic Settings 解析，**从不注入 os.environ**
+    （全仓无 load_dotenv，见 settings.py「评测开关统一收口」注释）。因此只读
+    ``os.getenv`` 会让 .env 里写的 ``PAPERFORGE_DEPTH_SCORE_OFFSET=0`` 静默失效——
+    这正是「关闭伪金标校准」配置一直不生效的原因之一。
+
+    返回 None 表示未显式配置，调用方可回退到金标/校准集/(source, year) 分档表。
+    非法 env 值 → 响亮警告后按 0.0（关闭偏移）处理，不静默跳过。
+    """
+    raw = os.environ.get("PAPERFORGE_DEPTH_SCORE_OFFSET")
+    if raw is not None and raw.strip():
+        try:
+            return float(raw)
+        except ValueError:  # noqa: BLE001 - calibration config - 非法 env 兜底
+            logger.warning(
+                "PAPERFORGE_DEPTH_SCORE_OFFSET=%r 非法（需要数字），按 0.0（关闭偏移）处理",
+                raw,
+            )
+            return 0.0
+    try:
+        from .settings import get_settings
+
+        return get_settings().depth_score_offset
+    except Exception as exc:  # noqa: BLE001 - settings 不可用时保持旧行为
+        logger.warning("读取 Settings.depth_score_offset 失败: %s，按未配置处理", exc)
+        return None
+
+
 def _resolved_offset() -> float:
     """解析生效的偏移量（默认 0.0 = 关闭，向后兼容）。"""
-    env = os.getenv("PAPERFORGE_DEPTH_SCORE_OFFSET")
-    if env not in (None, ""):
-        try:
-            return float(env)
-        except ValueError:  # noqa: BLE001 - calibration config - 非法 env 兜底
-            logger.warning("PAPERFORGE_DEPTH_SCORE_OFFSET 解析失败: %s，回退 0.0", env)
-            return 0.0
+    explicit = _explicit_offset()
+    if explicit is not None:
+        logger.info("分数偏移层启用(显式配置): offset=%.3f", explicit)
+        return explicit
     # P5：优先使用金标驱动偏移（来源诚实、可审计）。优先 adopted_offset（稳健值），
     # 其次 recommended_offset（数据最优，可能过拟合），其次 offset 兼容旧字段。
     gold_path = os.getenv(_GOLD_OFFSET_ENV)
@@ -386,6 +417,40 @@ VERDICT_MINOR_FLOOR = 0.65  # Ornith-1.5-9B: 从 0.7 降到 0.65，匹配新模�
 VERDICT_ACCEPT_FLOOR = 0.75
 
 
+def validate_verdict_thresholds(accept: float, reject: float) -> None:
+    """加载期校验裁决阈值梯子：reject < minor < accept。
+
+    P4（配置显式、失败响亮）：配错的阈值必须在**加载期**报错，
+    而不是在 `_apply_hard_verdict` 里被 max()/min() 静默夹回——
+    静默夹紧会让文档里那些「accept ≥ 0.6 最优」的标定结论永远无法复现。
+
+    Raises:
+        ValueError: 阈值不在合法区间（accept < ACCEPT_FLOOR 或 reject ≥ MINOR_FLOOR）。
+    """
+    if accept < VERDICT_ACCEPT_FLOOR:
+        raise ValueError(
+            f"裁决阈值非法：accept={accept} < accept 档下界 {VERDICT_ACCEPT_FLOOR}，"
+            "minor_revision 档会被架空。请取消该配置或改用 ≥ 下界的值。"
+        )
+    if reject >= VERDICT_MINOR_FLOOR:
+        raise ValueError(
+            f"裁决阈值非法：reject={reject} ≥ minor 档下界 {VERDICT_MINOR_FLOOR}，"
+            "minor_revision 档会被 reject 吞掉。"
+        )
+
+
+# 加载期交叉校验：settings 的字段默认值/环境配置必须满足上面的不变量。
+# 放在导入时就跑（fail-fast），而不是等第一次裁决才发现配错。
+def _check_settings_thresholds() -> None:
+    from .settings import get_settings
+
+    s = get_settings()
+    validate_verdict_thresholds(s.verdict_accept_threshold, s.verdict_reject_threshold)
+
+
+_check_settings_thresholds()
+
+
 def calibrate_verdict_thresholds(
     samples: list[CalibrationSample],
     score_fn: Callable[..., Any],
@@ -508,12 +573,34 @@ def correct_final_score(
     这是实际审稿管线应调用的唯一校正函数：默认开启顶刊封顶，
     消除裸全局偏移对高分端的过度下压（高端误杀）。offset=0 时恒等返回。
 
-    新增 paper 参数（分档偏移，向后兼容）：传入含 source/year 的对象/字典时，
-    优先使用分档偏移表（PAPERFORGE_DEPTH_OFFSET_TABLE）解析的偏移；未命中则回退
-    全局 SCORE_OFFSET。paper=None 时行为与旧版完全一致——因此运行中已加载本模块的
-    进程不受此改动影响。
+    偏移优先级（高 → 低，2026-09-16 修正）：
+      1. **显式配置** ``PAPERFORGE_DEPTH_SCORE_OFFSET``（env 或 .env）——最高优先，
+         (source, year) 分档偏移表**不得覆盖**它。
+      2. 调用方显式传入的 ``offset`` 参数。
+      3. ``paper`` 提供的 (source, year) 分档偏移表查询结果。
+      4. ``get_score_offset()`` 兜底（金标驱动 / 校准集自动 / 0.0）。
+
+    ⚠️ 修复记录（2026-09-16）：旧实现在 ``paper is not None`` 时**无条件**用分档表
+    覆盖 offset，而生产管线（depth_tasks.py）恒传 paper_meta、且默认表恒含
+    ``"default": -0.09`` 键 → 分档表查询永不返回 None → 运维在 .env 里写的
+    ``PAPERFORGE_DEPTH_SCORE_OFFSET=0``（注释「禁用伪金标校准」）被静默忽略，
+    490/695 条评审（70.5%）仍被扣 -0.09。违反 P4（配置显式、失败响亮）。
     """
-    if paper is not None:
+    explicit = _explicit_offset()
+    if explicit is not None:
+        if paper is not None and offset is None:
+            src, yr = _extract_source_year(paper)
+            tbl = resolve_context_offset(src, yr)
+            if tbl is not None and abs(tbl - explicit) > 1e-9:
+                logger.info(
+                    "显式 offset=%.3f 生效，已忽略分档偏移表值 %.3f（source=%r year=%r）",
+                    explicit,
+                    tbl,
+                    src,
+                    yr,
+                )
+        offset = explicit
+    elif paper is not None:
         src, yr = _extract_source_year(paper)
         so = resolve_context_offset(src, yr)
         if so is not None:
@@ -532,6 +619,8 @@ def offset_corrected_verdict(
     """施加偏移后按原阈值推导 verdict（分数层口径，不含否决层）。"""
     s = apply_score_offset(score, offset)
     # 三档阈值：accept(0.78) > minor(0.65) > major(0.45) > reject
+    # 加载期已由 validate_verdict_thresholds 校验过；此处仍夹紧一次以防
+    # 运行时传入非法入参（但不再作为「静默吞掉错误配置」的通道）。
     accept = max(accept, VERDICT_ACCEPT_FLOOR)
     minor = VERDICT_MINOR_FLOOR
     reject = min(reject, minor - 0.05)

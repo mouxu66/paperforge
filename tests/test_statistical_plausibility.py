@@ -10,6 +10,7 @@ import pytest
 from mock_api.depth_eval_v4 import (
     _arith_progression_flag,
     _benford_flag,
+    _leading_digit,
     _constant_offset_flag,
     _repeated_value_flag,
     _stat_penalty,
@@ -52,13 +53,54 @@ class TestCoreSignalHelpers:
         assert _constant_offset_flag([1, 2, 3, 4], [1.1, 2.2, 3.1, 4.2], "A vs B") is None
 
     def test_benford_deviation_detected(self):
-        # 100 个首位数字全是 9 的数值 → 严重偏离 Benford
-        vals = [90 + (i % 10) for i in range(100)]
+        # 50 个首位数字全是 9 且跨 4 个数量级的数值 → 严重偏离 Benford（适用性成立）
+        vals = [9.0 * 10**k + j * 0.1 for k in range(5) for j in range(10)]
+        assert _leading_digit(vals[0]) == 9
+        assert max(vals) / min(vals) >= 100  # 前置：跨两个数量级以上
         f = _benford_flag(vals, "表格")
         assert f is not None and f.startswith("[Benford偏离]")
 
     def test_benford_small_sample_ignored(self):
         assert _benford_flag([1, 2, 3], "表格") is None
+
+    # ── 2026-09-16 假阳性修复回归 ────────────────────────────────────────
+    def test_leading_digit_uses_first_significant_digit(self):
+        """首位数字必须取首位**有效**数字，而不是字符串第一个字符。
+
+        旧实现 int(str(0.85)[0]) == 0，而 0 不在 1–9 期望集合内，
+        使得 ≥31 个 0.x 比率的表格 χ² 恰等于样本量 → 必然误报。
+        """
+        assert _leading_digit(0.85) == 8
+        assert _leading_digit(0.0132) == 1
+        assert _leading_digit(12.3) == 1
+        assert _leading_digit(-3.4) == 3
+        assert _leading_digit(9.9999999) == 9
+        assert _leading_digit(0) is None
+        assert _leading_digit(float("nan")) is None
+
+    def test_benford_ignores_bounded_ratios(self):
+        """有界比率（0.x accuracy/F1/AUC）不适用 Benford，必须不报旗。
+
+        真实回归场景：论文表格里 60 个 0.10~0.99 的准确率。
+        旧实现必报 [Benford偏离]，进而叠一条 [std过低] 就能触发 reject 红线。
+        """
+        ratios = [round(0.10 + 0.013 * i, 3) for i in range(60)]
+        assert all(0.09 < v < 1.0 for v in ratios)
+        assert _benford_flag(ratios, "表格") is None
+        assert _benford_flag([float(v) for v in range(90, 100)] * 12, "表格") is None
+
+    def test_benford_requires_wide_magnitude_span(self):
+        """跨两个数量级以下的数据放弃检验（不报旗，也不误扣分）。"""
+        narrow = [90 + (i % 10) for i in range(100)]  # min 90 / max 99
+        assert _benford_flag(narrow, "表格") is None
+        wide = [9 * 10**k for k in range(3) for _ in range(20)]  # 9 / 90 / 900
+        assert _benford_flag(wide, "表格") is not None
+
+    def test_benford_min_samples_is_configurable(self):
+        """最小样本量可调（≥20），过小样本不检验。"""
+        vals = [9.0 * 10**k + j * 0.1 for k in range(5) for j in range(10)]  # n=50
+        assert _benford_flag(vals, "表格", min_samples=50) is not None
+        assert _benford_flag(vals[:22], "表格", min_samples=50) is None
 
 
 # ---------------------------------------------------------------------------

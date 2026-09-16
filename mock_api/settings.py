@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import functools
 import json
+import logging
 import os
 from pathlib import Path
 
@@ -333,7 +334,9 @@ class Settings(BaseSettings):
         ),
         description=(
             "verdict accept 阈值。全量 669 篇校准：85th percentile = 0.765，"
-            "accept ≥ 0.77 → ~15% accept 率。运行时 clamp 到 ≥ VERDICT_ACCEPT_FLOOR(0.75)。"
+            "accept ≥ 0.77 → ~15% accept 率。"
+            "加载期必须 ≥ VERDICT_ACCEPT_FLOOR(0.75)：配低了直接报错，"
+            "不再运行时静默 clamp（2026-09-16 由「静默夹紧」改为「失败响亮」）。"
         ),
     )
     verdict_reject_threshold: float = Field(
@@ -366,8 +369,11 @@ class Settings(BaseSettings):
         default="",
         validation_alias=AliasChoices("PAPERFORGE_CITATION_VERIFY", "CITATION_VERIFY"),
         description=(
-            "引用真值校验开关。空/1/true/on=在线 Crossref 核验（默认在线）；"
-            "0/false/offline=仅本地抽取 + 一致性 + 占位符/假 arXiv 启发式。"
+            "引用真值校验开关（三态，由 resolve_citation_verify_mode 统一解析）："
+            "1/true/yes/on=在线 Crossref 核验真伪；offline（或其他非空串）=仅本地抽取 + 引用"
+            "一致性 + 占位符/假 arXiv 启发式，不触网；0/false/off=完全不跑。"
+            "**空/未配置 = 沿用调用方显式声明的默认档**（感悟报告=offline，深度审稿=skip）——"
+            "旧描述写「空=在线」与三个调用方的实际行为都不一致，已于 2026-09-16 修正。"
         ),
     )
     crossref_mailto: str = Field(
@@ -976,6 +982,215 @@ class Settings(BaseSettings):
         ),
     )
 
+    # ── 评测开关统一收口（2026-09-16 修复配置通道分裂）─────────────
+    # 背景：这些开关过去只被 os.environ 读取，而 .env 只由 pydantic Settings 解析、
+    # 从不注入进程环境（全仓无 load_dotenv）。结果 .env 里写 `PAPERFORGE_EVAL_SEED=42`
+    # 之类**静默不生效**，违反 P4（配置显式、失败响亮）。现统一收口到 Settings，
+    # 再由 `env_first_*` 让显式 os.environ 覆盖（测试/脚本热切换仍需 env 优先）。
+    eval_seed: int | None = Field(
+        default=None,
+        validation_alias=AliasChoices("PAPERFORGE_EVAL_SEED", "EVAL_SEED"),
+        description="评测固定随机种子；None=不注入（沿用模型默认随机行为）。",
+    )
+    uncertainty_gate: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("PAPERFORGE_UNCERTAINTY_GATE", "UNCERTAINTY_GATE"),
+        description="分数不确定门控（bootstrap 95% CI）总开关，默认关（零开销）。",
+    )
+    uncertainty_width: float = Field(
+        default=0.15,
+        validation_alias=AliasChoices("PAPERFORGE_UNCERTAINTY_WIDTH", "UNCERTAINTY_WIDTH"),
+        description="不确定门控 CI 宽度阈值（超过则建议人工复核）。",
+        gt=0.0,
+    )
+    reflection_thinking: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("PAPERFORGE_REFLECTION_THINKING", "REFLECTION_THINKING"),
+        description="感悟报告评审 per-request 开启 CoT（默认关，行为与历史一致）。",
+    )
+    reflection_skip_crossval: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "PAPERFORGE_REFLECTION_SKIP_CROSSVAL", "REFLECTION_SKIP_CROSSVAL"
+        ),
+        description="跳过 arXiv 出处在线核验（离线环境置 true 省 30s 超时）。",
+    )
+    reflection_evidence_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "PAPERFORGE_REFLECTION_EVIDENCE", "REFLECTION_EVIDENCE"
+        ),
+        description="报告条件化证据检索（注入【原论文参考内容】）总开关，默认关。",
+    )
+    reflection_evidence_chars: int = Field(
+        default=2400,
+        validation_alias=AliasChoices(
+            "PAPERFORGE_REFLECTION_EVIDENCE_CHARS", "REFLECTION_EVIDENCE_CHARS"
+        ),
+        description="证据包字符预算。",
+        gt=0,
+    )
+    reflection_evidence_max_blocks: int = Field(
+        default=12,
+        validation_alias=AliasChoices(
+            "PAPERFORGE_REFLECTION_EVIDENCE_MAX_BLOCKS",
+            "REFLECTION_EVIDENCE_MAX_BLOCKS",
+        ),
+        description="证据包块数上限。",
+        gt=0,
+    )
+    reflection_penalize_paper_flags: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "PAPERFORGE_REFLECTION_PENALIZE_PAPER_FLAGS",
+            "REFLECTION_PENALIZE_PAPER_FLAGS",
+        ),
+        description=(
+            "是否让「原论文自身」的统计/图表红旗扣学生感悟报告的分。"
+            "默认 false：论文的问题只作 advisory 展示，不改变学生分数（学生不该"
+            "为所读论文的数据负责）；true 恢复旧行为。"
+        ),
+    )
+    reflection_crossval_bonus_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "PAPERFORGE_REFLECTION_CROSSVAL_BONUS", "REFLECTION_CROSSVAL_BONUS"
+        ),
+        description=(
+            "是否把「报告写出正确的 arXiv 出处」折算成 understanding_accuracy 加分。"
+            "默认 false：出处核验只作 advisory（元数据抄写正确 ≠ 理解准确），"
+            "不再影响分数；true 恢复旧的 +≤0.05 加分。"
+        ),
+    )
+    qwen_calibration: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("PAPERFORGE_QWEN_CALIBRATION", "QWEN_CALIBRATION"),
+        description="感悟报告千问校准层（R5/R6/R7 结构下限），默认关。",
+    )
+    local_ml_embedder: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("PAPERFORGE_LOCAL_ML", "LOCAL_ML"),
+        description="优先加载本地多语言 ONNX 嵌入模型（关闭则走 fastembed 在线）。",
+    )
+    bench_no_llm: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("PAPERFORGE_BENCH_NO_LLM", "BENCH_NO_LLM"),
+        description="批量基准模式：跳过 LLM，用结构启发式（仅供离线跑分）。",
+    )
+    llm_watchdog_timeout: float = Field(
+        default=120.0,
+        validation_alias=AliasChoices(
+            "PAPERFORGE_LLM_WATCHDOG_TIMEOUT", "LLM_WATCHDOG_TIMEOUT"
+        ),
+        description="单次 LLM 调用的看门狗硬超时（秒）。",
+        gt=0.0,
+    )
+    llm_watchdog_thinking_extra: float = Field(
+        default=60.0,
+        validation_alias=AliasChoices(
+            "PAPERFORGE_LLM_WATCHDOG_THINKING_EXTRA", "LLM_WATCHDOG_THINKING_EXTRA"
+        ),
+        description="思考模式在看门狗超时上的额外放宽（秒）。",
+        gt=0.0,
+    )
+
+    # ── 审稿算法可调项（P4：可调项必须是校验过的配置字段，不是硬编码常量）──
+    depth_node_view_chars: int = Field(
+        default=4000,
+        validation_alias=AliasChoices("PAPERFORGE_DEPTH_NODE_VIEW_CHARS", "DEPTH_NODE_VIEW_CHARS"),
+        description="评分/辩论节点可见的论文正文头部字符数。",
+        gt=0,
+    )
+    depth_node_view_tail_chars: int = Field(
+        default=2000,
+        validation_alias=AliasChoices(
+            "PAPERFORGE_DEPTH_NODE_VIEW_TAIL_CHARS", "DEPTH_NODE_VIEW_TAIL_CHARS"
+        ),
+        description=(
+            "评分/辩论节点额外可见的论文尾部字符数。"
+            "此前评分节点只看正文前 4000 字（= 摘要+引言），看不到结论与实验；"
+            "现在按「头 + 尾」双端取样，让结论至少进入视野。0 = 关闭尾部（回旧行为）。"
+        ),
+        ge=0,
+    )
+    depth_fatal_veto_min: int = Field(
+        default=3,
+        validation_alias=AliasChoices("PAPERFORGE_DEPTH_FATAL_VETO_MIN", "DEPTH_FATAL_VETO_MIN"),
+        description=(
+            "触发一票否决所需的最少致命缺陷条数（≥1）。"
+            "2026-09-16 从 2 提到 3：Q5a 提示词的 few-shot 示例曾把「消融缺失」这类"
+            "常见局限锚定为 fatal，导致 36.4% 论文触发否决（详见 "
+            "deliverables/diag/评分偏低根因诊断_20260916.md）。示例已同步修正，"
+            "门槛再提高一档作为冗余保护。"
+        ),
+        ge=1,
+    )
+    depth_fatal_veto_downgrade_floor: float = Field(
+        default=0.75,
+        validation_alias=AliasChoices(
+            "PAPERFORGE_DEPTH_FATAL_VETO_DOWNGRADE_FLOOR",
+            "DEPTH_FATAL_VETO_DOWNGRADE_FLOOR",
+        ),
+        description=(
+            "一票否决的降级门槛：校准分 ≥ 该值时只降级为 major_revision，不直接 reject。"
+            "默认 0.75 对齐 accept 档下界（原实现硬编码 0.8，形成 0.79→reject / "
+            "0.81→major_revision 的任意断崖）。"
+        ),
+        ge=0.0,
+        le=1.0,
+    )
+    depth_score_offset: float | None = Field(
+        default=None,
+        validation_alias=AliasChoices("PAPERFORGE_DEPTH_SCORE_OFFSET", "DEPTH_SCORE_OFFSET"),
+        description=(
+            "DEPTH 最终分全局偏移（显式配置，最高优先级）。"
+            "None=未配置，允许 (source, year) 分档偏移表接管；"
+            "0.0=显式关闭偏移（分档表也不得覆盖）。"
+            "此前该开关只被 os.getenv 读取，而 .env 不注入进程环境（全仓无 load_dotenv），"
+            "且 correct_final_score 会被硬编码分档表覆盖 → .env 里写 0 静默失效（P4 违规）。"
+        ),
+    )
+    depth_stat_redline_min: int = Field(
+        default=2,
+        validation_alias=AliasChoices("PAPERFORGE_DEPTH_STAT_REDLINE_MIN", "DEPTH_STAT_REDLINE_MIN"),
+        description="统计造假硬红线所需最少确定性指纹条数（≥1）。",
+        ge=1,
+    )
+    depth_stat_benford_min_samples: int = Field(
+        default=50,
+        validation_alias=AliasChoices(
+            "PAPERFORGE_DEPTH_STAT_BENFORD_MIN_SAMPLES", "DEPTH_STAT_BENFORD_MIN_SAMPLES"
+        ),
+        description=(
+            "Benford 首位分布检验的最小样本量（≥20）。"
+            "旧实现固定 20 且首位取 int(str(v)[0])（0.85 → 数字 0），"
+            "导致 ≥31 个 0.x 比率必然误报；提高到 50 并修正首位提取后误报率大幅下降。"
+        ),
+        ge=20,
+    )
+    depth_evidence_verbatim_gate: bool = Field(
+        default=True,
+        validation_alias=AliasChoices(
+            "PAPERFORGE_DEPTH_EVIDENCE_VERBATIM_GATE", "DEPTH_EVIDENCE_VERBATIM_GATE"
+        ),
+        description=(
+            "QE 证据池是否要求「能在论文原文中定位」（字符 n-gram 包含率闸门）。"
+            "开启后 LLM 自写/改写的证据会被标记为未定位并不再作为评分依据；"
+            "图表证据（OCR/图注）走独立来源豁免。关闭＝回到旧行为（仅校验 ID 存在）。"
+        ),
+    )
+    depth_evidence_verbatim_min_keep: int = Field(
+        default=3,
+        validation_alias=AliasChoices(
+            "PAPERFORGE_DEPTH_EVIDENCE_VERBATIM_MIN_KEEP", "DEPTH_EVIDENCE_VERBATIM_MIN_KEEP"
+        ),
+        description=(
+            "原文定位闸门开启时，至少保留多少条证据；"
+            "定位成功数低于此值时保留全部（标注未定位）并记日志，避免把证据池清空导致评审中止。"
+        ),
+        ge=1,
+    )
+
     # ── 校验器 ────────────────────────────────────────────────────
     @field_validator("compute_mode")
     @classmethod
@@ -1028,6 +1243,36 @@ class Settings(BaseSettings):
                 return {}
         return {}
 
+    @field_validator("eval_seed", mode="before")
+    @classmethod
+    def _validate_eval_seed(cls, v):
+        """空字符串 → None（.env 里 `PAPERFORGE_EVAL_SEED=` 不应导致加载崩溃）。"""
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return None
+        if isinstance(v, str):
+            try:
+                return int(float(v))
+            except ValueError as e:
+                raise ValueError(f"eval_seed 必须为整数，实际 {v!r}") from e
+        return v
+
+    @field_validator("verdict_accept_threshold")
+    @classmethod
+    def _validate_accept_threshold(cls, v: float) -> float:
+        """加载期校验 accept 阈值下界（P4：配置错误必须响亮，不得运行时静默夹紧）。
+
+        算法不变量：accept 档下界 VERDICT_ACCEPT_FLOOR=0.75（见 depth_calibration.py）。
+        此前 `_apply_hard_verdict` 把低于下界的阈值静默 max() 回去，导致文档里那些
+        「accept≥0.6 最优」的标定结论在代码里永远无法复现。现在配错即报错。
+        """
+        if v < _VERDICT_ACCEPT_FLOOR:
+            raise ValueError(
+                f"verdict_accept_threshold={v} 低于 accept 档下界 "
+                f"{_VERDICT_ACCEPT_FLOOR}（算法不变量，见 depth_calibration.VERDICT_ACCEPT_FLOOR）；"
+                "否则 minor_revision 档会被架空。请改用 ≥ 下界的值。"
+            )
+        return v
+
     # ── 派生属性 ──────────────────────────────────────────────────
     @property
     def resource_detect_enabled(self) -> bool:
@@ -1071,3 +1316,137 @@ def get_settings() -> Settings:
 def reset_settings() -> None:
     """清除缓存的 Settings 实例（测试用，强制下次 get_settings() 重新加载）。"""
     get_settings.cache_clear()
+
+
+# ---------------------------------------------------------------------------
+# env-first 解析助手（修复「.env 只被 Settings 读取，os.environ 看不到」的配置分裂）
+# ---------------------------------------------------------------------------
+# 语义：**显式设置的环境变量优先**（测试 monkeypatch / 运维临时覆盖 / 脚本热切换），
+# 未设置时回落到 Settings（它同时读真实 env 与 .env）。这样 .env 里的开关终于生效，
+# 同时保留运行期 env 覆盖能力。
+# ---------------------------------------------------------------------------
+
+# 算法不变量（与 depth_calibration.py 的同名常量必须一致，双方在加载期交叉校验）
+_VERDICT_ACCEPT_FLOOR = 0.75
+_VERDICT_MINOR_FLOOR = 0.65
+
+
+def env_first_str(name: str, fallback: str | None = None) -> str | None:
+    """显式 env > Settings 值。"""
+    raw = os.environ.get(name)
+    return raw if raw is not None else fallback
+
+
+def env_first_int(name: str, fallback: int) -> int:
+    """显式 env > Settings 值；非法 env 记警告并回退 fallback（不静默用错值）。"""
+    import logging
+
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return fallback
+    try:
+        return int(float(raw))
+    except ValueError:
+        logging.getLogger(__name__).warning(
+            "环境变量 %s=%r 非法（需要整数），已回退 Settings 值 %s", name, raw, fallback
+        )
+        return fallback
+
+
+def env_first_float(name: str, fallback: float, *, minimum: float | None = None) -> float:
+    """显式 env > Settings 值；非法/越界 env 记警告并回退 fallback。"""
+    import logging
+
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return fallback
+    try:
+        value = float(raw)
+    except ValueError:
+        logging.getLogger(__name__).warning(
+            "环境变量 %s=%r 非法（需要数字），已回退 Settings 值 %s", name, raw, fallback
+        )
+        return fallback
+    if minimum is not None and value < minimum:
+        logging.getLogger(__name__).warning(
+            "环境变量 %s=%s 低于下限 %s，已回退 Settings 值 %s", name, value, minimum, fallback
+        )
+        return fallback
+    return value
+
+
+def env_first_bool(name: str, fallback: bool) -> bool:
+    """显式 env > Settings 值（1/true/yes/on 为真；0/false/no/off 为假）。"""
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return fallback
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
+def env_first_optional_int(name: str, fallback: int | None) -> int | None:
+    """显式 env > Settings 值；空串显式表示 None（用于「关掉种子」的热切换）。"""
+    raw = os.environ.get(name)
+    if raw is None:
+        return fallback
+    if not raw.strip():
+        return None
+    try:
+        return int(float(raw))
+    except ValueError:
+        return fallback
+
+
+# ---------------------------------------------------------------------------
+# 引用真值校验：三态解析（消除「同一变量两套默认」的隐藏分叉）
+# ---------------------------------------------------------------------------
+# 历史问题：同一个 PAPERFORGE_CITATION_VERIFY 在三处被各自解释，默认值互相矛盾：
+#   • citation_verifier.ONLINE_ENABLED  —— 未配置 = 在线（真）
+#   • reflection_pipeline               —— 未配置 = 跑本地一致性、不触网
+#   • depth_eval_v4._citation_integrity_report —— 未配置 = 完全不计算
+# 这些都是「藏在实现里的默认值」：运维无法从配置面板看出实际行为。现统一解析为
+# 显式三态，各调用方只允许**显式传入自己的默认档**并写清理由（其余语义完全一致）。
+_CV_SKIP_VALUES = frozenset({"0", "false", "off", "no", "none", "disabled", "skip"})
+_CV_ONLINE_VALUES = frozenset({"1", "true", "yes", "on", "online", "crossref"})
+_CV_VALID_MODES = ("skip", "offline", "online")
+
+
+def resolve_citation_verify_mode(default: str = "offline") -> str:
+    """把引用真值校验开关解析为 ``'skip' | 'offline' | 'online'``。
+
+    通道：显式 os.environ > Settings（Settings 同时读真实 env 与 .env）。
+    取值映射（解析结果与 settings.citation_verify 的描述完全一致）：
+      - 未配置 / 空串        → ``default``（调用方显式声明的历史默认档）
+      - 0/false/off/no/...   → 'skip'    （完全不跑校验）
+      - 1/true/yes/on/...    → 'online'  （额外接 Crossref 在线核验真伪）
+      - offline 或其他非空串 → 'offline'（仅本地抽取 + 引用一致性，不触网）
+
+    ``default`` 必须显式给出并写进调用方 docstring——不允许再各自发明默认值：
+      * 感悟报告链路（单篇，成本低）：default='offline'
+      * 深度审稿链路（批量，LLM 已是大头）：default='skip'
+    """
+    if default not in _CV_VALID_MODES:
+        raise ValueError(
+            f"resolve_citation_verify_mode(default={default!r}) 非法；"
+            f"只接受 {_CV_VALID_MODES}"
+        )
+    raw = env_first_str("PAPERFORGE_CITATION_VERIFY")
+    source = "env"
+    if raw is None or not raw.strip():
+        try:
+            raw = get_settings().citation_verify
+            source = ".env/settings"
+        except Exception:  # noqa: BLE001 - 配置读取失败不得影响评测链路
+            return default
+    if raw is None or not raw.strip():
+        return default
+    mode = raw.strip().lower()
+    if mode in _CV_SKIP_VALUES:
+        resolved = "skip"
+    elif mode in _CV_ONLINE_VALUES:
+        resolved = "online"
+    else:
+        resolved = "offline"
+    logging.getLogger(__name__).debug(
+        "引用真值校验模式: %s（来源 %s，原始值 %r）", resolved, source, raw
+    )
+    return resolved

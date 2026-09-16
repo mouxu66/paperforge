@@ -42,6 +42,46 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["depth"])
 
 
+# ---------------------------------------------------------------------------
+# 论文链路 vs 报告链路的显式边界
+# ---------------------------------------------------------------------------
+# DEPTH v4.2 九节点 DAG 是**论文**评审链路：Q2 量创新性、Q3 量严谨性并要求
+# 「实验验证数据 / 消融实验 / 基线对比」、Q5a 把这些缺失当作致命缺陷，
+# 凑够 FATAL_VETO_MIN 条即一票否决 → final_verdict='reject'。
+#
+# 感悟/读后报告（papers.category='report'）天然没有实验、消融、基线，混进论文链路
+# 必被判 reject——这不是学生的报告有问题，是走错了链路。报告必须走 reflection 链路
+# （kind='report'，判决词是 写得好/需补证据/需深化/需重写，**不含 reject**）。
+#
+# 历史事故（2026-09-16 修复）：/api/depth/v4/review-batch 未排除报告，自动把
+# 41/46 份感悟报告抓进论文链路，产出 92 条 kind='paper' 记录（31 条 reject），
+# 于是同一份文档在列表里出现两行、判决互相矛盾（「写得好」与「拒稿」并存）。
+REPORT_CATEGORY = "report"
+
+# 报告应改用的入口（写进错误信息，避免用户只看到 400 不知下一步该点哪）
+REFLECTION_RUN_ENDPOINT = "/api/depth/reflection/run/{paper_id}"
+REPORT_SKIP_REASON = f"感悟/读后报告需走 reflection 链路（POST {REFLECTION_RUN_ENDPOINT}）"
+
+
+def _is_report_paper(paper: PaperORM | None) -> bool:
+    """该 Paper 是否属于感悟/读后报告（应走 reflection 链路）。"""
+    return (getattr(paper, "category", None) or "").strip().lower() == REPORT_CATEGORY
+
+
+def _ensure_paper_pipeline_target(paper: PaperORM, paper_id: str) -> None:
+    """论文链路的守卫：报告一律不放行（失败响亮，绝不静默跑错链路）。"""
+    if _is_report_paper(paper):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"{paper_id} 是感悟/读后报告（category='report'），不能提交 DEPTH v4.2 "
+                "论文审稿：论文链路按创新性/严谨性/实验验证评分，会用「无消融、无基线、"
+                "无实证」判为致命缺陷并一票否决，对报告不适用。"
+                f"请改用 reflection 链路：POST {REFLECTION_RUN_ENDPOINT}"
+            ),
+        )
+
+
 @router.post("/api/depth/score")
 async def depth_score_single(
     payload: DepthScoreRequest,
@@ -232,6 +272,9 @@ async def depth_v4_start_review(paper_id: str, db: Session = Depends(get_db)) ->
     paper = db.query(PaperORM).filter(PaperORM.id == paper_id).first()
     if not paper:
         raise HTTPException(status_code=404, detail=f"论文 {paper_id} 不存在")
+
+    # 链路边界：报告不得进入论文链路（否则会被论文标准一票否决 → reject）
+    _ensure_paper_pipeline_target(paper, paper_id)
 
     task_id, skip_reason = _submit_single_v4_review(paper_id, db)
     if skip_reason:
@@ -480,8 +523,14 @@ async def depth_v4_scores_by_paper_ids(
 ) -> dict:
     """按论文ID批量查询深度评审分数。
 
-    返回 {paper_id: {verdict, novelty_score}} 映射，未评审的论文不在返回中。
-    每篇论文只取最新一次已完成的评审记录。
+    返回 {paper_id: {verdict, calibrated_score, novelty_score, fatal_count}} 映射，
+    未评审的论文不在返回中。每篇论文只取最新一次已完成的评审记录。
+
+    ⚠️ **口径说明（勿混用）**：列表卡片上必须显示 ``calibrated_score``（综合分），
+    因为判决就是由它 + ``fatal_count`` 决定的；``novelty_score`` 只是 Q2 单维度分
+    （创新分），与判决不同源。曾因为卡片显示 novelty，用户看到「创新分 50 却大修、
+    65 却拒稿」而认定系统算错。``fatal_count`` 一并返回，用于解释「分数不低却被
+    拒稿」——那是有 ≥FATAL_VETO_MIN 条致命缺陷触发了一票否决。
     """
     ids = [pid.strip() for pid in paper_ids.split(",") if pid.strip()]
     if not ids:
@@ -508,9 +557,20 @@ async def depth_v4_scores_by_paper_ids(
         seen.add(r.paper_id)
         q2 = r.q2_result or {}
         fv = r.final_verdict or {}
+        # fatal_count 没存进 final_verdict（只在 override_reason 文本里），
+        # 从 Q5a 的 critique_points 现算，供前端解释一票否决。
+        q5a = r.q5a_result or {}
+        points = q5a.get("critique_points") if isinstance(q5a, dict) else None
+        fatal_count = sum(
+            1
+            for cp in (points or [])
+            if isinstance(cp, dict) and cp.get("severity") == "fatal"
+        )
         scores[r.paper_id] = {
             "verdict": fv.get("final_verdict") if isinstance(fv, dict) else None,
+            "calibrated_score": fv.get("calibrated_score") if isinstance(fv, dict) else None,
             "novelty_score": q2.get("novelty_score"),
+            "fatal_count": fatal_count,
         }
 
     return {"scores": scores}
@@ -754,6 +814,12 @@ async def depth_v4_review_selected(
                 skipped.append({"paper_id": pid, "reason": "论文尚无全文，无法审稿"})
                 continue
 
+            # 链路边界：报告不得进入论文链路。逐个 skip 而非整批 400——
+            # 用户跨页勾选时混入报告不应连坐其余论文。
+            if _is_report_paper(paper):
+                skipped.append({"paper_id": pid, "reason": REPORT_SKIP_REASON})
+                continue
+
             # 去重检查（使用批量查询结果）
             existing = active_review_map.get(pid)
             if existing:
@@ -807,6 +873,8 @@ async def depth_v4_review_all_unreviewed(db: Session = Depends(get_db)) -> dict:
 
     筛选条件：
     - papers.full_text 非空（有全文才能审稿）
+    - papers.category != 'report'（感悟/读后报告属 reflection 链路，见
+      REPORT_CATEGORY 注释；报告混入论文链路会被一票否决误判 reject）
     - 没有 status IN ('pending','running','completed') 的 depth_reviews_v4 记录
 
     使用 TaskManager.submit() 提交后台任务，返回 task_id。
@@ -829,6 +897,10 @@ async def depth_v4_review_all_unreviewed(db: Session = Depends(get_db)) -> dict:
         .filter(
             PaperORM.full_text.isnot(None),
             PaperORM.full_text != "",
+            # 报告一律留给 reflection 链路。coalesce 而非直接 !=：
+            # SQL 里 `NULL != 'report'` 是 NULL（假），会把 category 未填的
+            # 论文静默踢出批量审稿，属「静默跳过缺失项」。
+            func.coalesce(PaperORM.category, "") != REPORT_CATEGORY,
             PaperORM.id.notin_(reviewed_subq),
         )
         .all()

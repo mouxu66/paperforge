@@ -40,6 +40,21 @@ def _is_figure_trigger_disabled() -> bool:
     return os.environ.get("PAPERFORGE_DISABLE_FIGURE_TRIGGER") == "1"
 
 
+# ---------------------------------------------------------------------------
+# 报告 / 论文链路边界
+# ---------------------------------------------------------------------------
+# DEPTH v4.2 九节点 DAG 是**论文**评审链路（Q2 创新性 / Q3 严谨性+实验验证 /
+# Q5a 致命缺陷一票否决），感悟/读后报告天然没有实验、消融、基线，进去必被
+# 判 reject。报告必须走 reflection 链路（run_depth_reflection_sync）。
+# 本模块是最底层咽喉：单篇、选中、批量、历史脚本都收敛到这两个 sync 函数。
+REPORT_CATEGORY = "report"
+
+
+def _is_report_category(category: str | None) -> bool:
+    """category 是否表示感悟/读后报告（大小写与空白容错）。"""
+    return (category or "").strip().lower() == REPORT_CATEGORY
+
+
 class DepthReviewInvalidError(Exception):
     """深度审阅产出无效结果（证据池空 + 评分全默认），应走 failed 终态而非 completed。
 
@@ -130,6 +145,16 @@ def run_depth_review_sync(
             raise ValueError(f"论文 {paper_id} 不存在")
         if not paper.full_text:
             raise ValueError(f"论文 {paper_id} 尚无全文（full_text 为空），无法执行深度审稿")
+        # 链路边界（2026-09-16）：DEPTH v4.2 是**论文**链路，感悟/读后报告必须走
+        # reflection 链路。这是最底层咽喉——单篇/选中/批量/历史脚本谁来调都拦住。
+        # 报告天然没有实验、消融、基线，进论文链路会被 Q5a 记致命缺陷并一票否决
+        # → final_verdict='reject'。用论文标准判报告是走错链路，不是报告有问题。
+        if _is_report_category(getattr(paper, "category", None)):
+            raise ValueError(
+                f"{paper_id} 是感悟/读后报告（category='report'），"
+                "不能走 DEPTH v4.2 论文审稿链路。请改用 "
+                "run_depth_reflection_sync() 或 POST /api/depth/reflection/run/{paper_id}"
+            )
 
         # 1.5 构造分档偏移上下文（source/year），供 correct_final_score 按语料自适应
         paper_meta = {
@@ -697,6 +722,23 @@ def run_depth_reflection_sync(paper_id: str) -> str:
                                 rr["average"] = _so["resolved_score"]
             except Exception as _so_err:  # noqa: BLE001 - 第二评审异常不影响主评审
                 logger.warning("reflection 双模型复核失败（非致命）: %s", _so_err)
+            # ── 理由文本按最终值重建（2026-09-16）──
+            # verdict/分数在下面三处都被改过，而 verdict_reason 还是 4 维硬校验阶段
+            # 拼的字符串：① 6 维融合覆盖 scores+verdict ② fidelity 过低改判
+            # rewrite_required ③ 云端第二评审覆盖 verdict/average。
+            # 不重建就会出现「标签=写得好，理由却写着『需进一步精读并展开分析』
+            # （needs_depth 的结论）」这种自相矛盾——观感上等同于被拒稿。
+            # 统一放在所有改写之后重算，保证标签与理由同源。
+            try:
+                from .depth_eval_reflection import rebuild_verdict_reason
+
+                rr["verdict_reason"] = rebuild_verdict_reason(rr)
+            except Exception as _vr_err:  # noqa: BLE001 - 理由文本失败不阻塞评审结论
+                logger.warning(
+                    "reflection verdict_reason 重建失败（非致命）: paper=%s, err=%s",
+                    paper_id,
+                    _vr_err,
+                )
             if rr is not record.reflection_result:
                 record.reflection_result = rr
             record.status = "completed"

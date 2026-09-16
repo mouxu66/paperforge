@@ -31,6 +31,16 @@ def _reset_offset_env(monkeypatch):
     dc.reset_score_offset()
 
 
+# 模拟「未显式配置 offset」。
+# 仓库根 .env 里写着 PAPERFORGE_DEPTH_SCORE_OFFSET=0（注释「禁用伪金标校准」），
+# 2026-09-16 起该值会经 Settings 通道生效并**最高优先**（这是修复目标）。
+# 因此凡是要验证「分档表 / offset 参数」通道的用例，必须显式屏蔽显式配置，
+# 否则测的其实是显式配置分支。
+@pytest.fixture
+def no_explicit_offset(monkeypatch):
+    monkeypatch.setattr(dc, "_explicit_offset", lambda: None)
+
+
 # ===========================================================================
 # 1. apply_score_offset —— clamp[0,1] + 全局偏移
 # ===========================================================================
@@ -152,27 +162,29 @@ class TestResolveContextOffset:
 # ===========================================================================
 @pytest.mark.critical
 class TestCorrectFinalScore:
-    def test_paper_none_behaves_like_cap(self):
+    """offset 参数 / 分档表通道（显式配置已由 no_explicit_offset 屏蔽）。"""
+
+    def test_paper_none_behaves_like_cap(self, no_explicit_offset):
         """paper=None → 等同 apply_top_tier_cap(score, offset)。"""
         assert dc.correct_final_score(0.5, offset=-0.09, paper=None) == pytest.approx(0.41)
 
-    def test_paper_peerread_uses_tiered_offset(self):
+    def test_paper_peerread_uses_tiered_offset(self, no_explicit_offset):
         """paper=peerread/2010 → 解析偏移 0.0（2026-08-09 重扫结论，原样返回）。"""
         paper = {"source": "peerread", "year": 2010}
         assert dc.correct_final_score(0.5, paper=paper) == pytest.approx(0.5)
 
-    def test_paper_modern_uses_default_offset(self):
+    def test_paper_modern_uses_default_offset(self, no_explicit_offset):
         """paper=arxiv/2024 → 解析偏移 -0.09（中段封顶生效）。"""
         paper = {"source": "arxiv", "year": 2024}
         # 中段 score=0.5 < thr → 完整 -0.09
         assert dc.correct_final_score(0.5, paper=paper) == pytest.approx(0.41)
 
-    def test_use_cap_false_uses_plain_offset(self):
+    def test_use_cap_false_uses_plain_offset(self, no_explicit_offset):
         """use_cap=False → 走 apply_score_offset（无 taper）。"""
         # 高分 0.9 用 apply_score_offset 仍被压 -0.09 → 0.81（与 cap 路径不同）
         assert dc.correct_final_score(0.9, offset=-0.09, use_cap=False) == pytest.approx(0.81)
 
-    def test_paper_object_attribute_access(self):
+    def test_paper_object_attribute_access(self, no_explicit_offset):
         """paper 为对象（属性访问）也能抽取 source/year。"""
 
         class P:
@@ -180,6 +192,58 @@ class TestCorrectFinalScore:
             year = 2010
 
         assert dc.correct_final_score(0.5, paper=P()) == pytest.approx(0.5)
+
+
+# ===========================================================================
+# 4b. 显式 offset 优先级（2026-09-16 修复：分档表不得覆盖显式配置）
+# ===========================================================================
+@pytest.mark.critical
+class TestExplicitOffsetPriority:
+    """回归护栏：P4「配置显式、失败响亮」——显式配置必须最高优先。
+
+    病根：旧实现 `correct_final_score` 在 paper 非空时**无条件**用 (source, year)
+    分档表覆盖 offset；而默认表恒含 "default": -0.09 键 → 查询永不返回 None →
+    运维在 .env 写的 PAPERFORGE_DEPTH_SCORE_OFFSET=0 被静默忽略，
+    490/695 条评审（70.5%）仍被扣 -0.09。
+    """
+
+    def test_explicit_zero_disables_tiered_default(self, monkeypatch):
+        """显式 0.0 + 现代论文 → 不得再被 default 档扣 -0.09。"""
+        monkeypatch.setenv("PAPERFORGE_DEPTH_SCORE_OFFSET", "0")
+        paper = {"source": "arxiv", "year": 2024}
+        assert dc.correct_final_score(0.70, paper=paper) == pytest.approx(0.70)
+
+    def test_explicit_zero_disables_tiered_for_null_source(self, monkeypatch):
+        """source/year 为 None（分档表仍会命中 default）也不得覆盖显式 0.0。"""
+        monkeypatch.setenv("PAPERFORGE_DEPTH_SCORE_OFFSET", "0")
+        assert dc.correct_final_score(0.70, paper={"source": None, "year": None}) == pytest.approx(0.70)
+        assert dc.correct_final_score(0.70, paper={}) == pytest.approx(0.70)
+
+    def test_explicit_env_overrides_tiered_peerread(self, monkeypatch):
+        """显式配置覆盖 peerread 档（0.0）—— 显式优先于分档表。"""
+        monkeypatch.setenv("PAPERFORGE_DEPTH_SCORE_OFFSET", "-0.09")
+        paper = {"source": "peerread", "year": 2010}
+        assert dc.correct_final_score(0.70, paper=paper) == pytest.approx(0.61)
+
+    def test_settings_env_file_channel_is_read(self):
+        """Settings(.env) 通道：.env 不注入 os.environ，必须经 Settings 读到。
+
+        仓库根 .env 显式写了 PAPERFORGE_DEPTH_SCORE_OFFSET=0，故未设 os.environ 时
+        `_explicit_offset()` 应返回 0.0（而非 None）——这正是修复前失效的那条通道。
+        """
+        assert dc._explicit_offset() == pytest.approx(0.0)
+
+    def test_env_takes_priority_over_settings(self, monkeypatch):
+        """os.environ 显式值优先于 Settings(.env)。"""
+        monkeypatch.setenv("PAPERFORGE_DEPTH_SCORE_OFFSET", "-0.12")
+        assert dc._explicit_offset() == pytest.approx(-0.12)
+
+    def test_invalid_explicit_env_falls_back_to_zero(self, monkeypatch, caplog):
+        """非法显式 env → 响亮警告 + 按 0.0（关闭偏移）处理，不静默用错值。"""
+        monkeypatch.setenv("PAPERFORGE_DEPTH_SCORE_OFFSET", "abc")
+        with caplog.at_level("WARNING"):
+            assert dc._explicit_offset() == pytest.approx(0.0)
+        assert any("非法" in r.message for r in caplog.records)
 
 
 # ===========================================================================

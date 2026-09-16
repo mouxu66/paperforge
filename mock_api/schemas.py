@@ -1133,7 +1133,16 @@ class ReflectionScores(BaseModel):
     )
     fidelity: float | None = Field(default=None, ge=0.0, le=1.0, description="报告→论文有据性")
     coverage: float | None = Field(default=None, ge=0.0, le=1.0, description="论文→报告覆盖度")
-    average: float = Field(default=0.0, ge=0.0, le=1.0, description="4 维平均分（硬编码层添加）")
+    average: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "综合分。口径随阶段变化：硬校验层为 4 维简单均值；"
+            "经 reflection_pipeline 6 维融合后为按显式权重 W 归一的加权平均"
+            "（fidelity/coverage 加入，coverage 权重 0.35）。UI「综合得分」用的是后者。"
+        ),
+    )
 
 
 class ReflectionClaim(BaseModel):

@@ -42,6 +42,7 @@ import requests  # noqa: E402
 
 from mock_api.database import SessionLocal, init_db  # noqa: E402
 from mock_api.models import Paper  # noqa: E402
+from mock_api.pdf_parser import split_into_chunks  # noqa: E402
 from mock_api.services.pdf_proxy_service import (  # noqa: E402
     validate_pdf_url,
 )
@@ -160,6 +161,12 @@ def main() -> None:
             paper.full_text = text
             paper.ocr_status = "textlayer"  # 文本层抽取成功（非 OCR）
             paper.is_scanned = False
+            # 顺手算分块元数据：否则卡片会显示「0 个文本块 / 0 B」，
+            # 看起来像文件损坏，实际只是这两列没人写（2026-09-16 修）。
+            # 与 pdf_parser / routers/reflection.py 用同一个分块函数，保证口径一致。
+            chunks = split_into_chunks(text)
+            paper.chunk_count = len(chunks)
+            paper.index_size = sum(len(c.encode("utf-8")) for c in chunks)
             ok_text += 1
         else:
             paper.is_scanned = True

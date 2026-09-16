@@ -347,12 +347,61 @@ class MockLLM:
 # ===========================================================================
 class TestPrompts:
     def test_prompt_q5a_explicitly_hints_fatal_evidence_mapping(self):
-        """Q5a prompt 应显式提示模型将 [FATAL] 证据映射为 fatal critique point。"""
+        """Q5a prompt 仍应提示模型把 [FATAL] 证据纳入 fatal 候选，但须受 F1~F4 约束。"""
         from mock_api.depth_prompts_v4 import PROMPT_Q5A
 
         assert "[FATAL]" in PROMPT_Q5A
-        assert "应优先、严肃地考虑映射为 severity=fatal 的 critique point" in PROMPT_Q5A
-        assert "evidence_id: E5" in PROMPT_Q5A
+        assert "evidence_id: E3" in PROMPT_Q5A
+        # 约束条件：只有能归入 F1~F4 才可标 fatal
+        assert "F1~F4" in PROMPT_Q5A
+
+    def test_prompt_q5a_defines_fatal_positively(self):
+        """Q5a 必须正面定义 fatal（此前只有示例、无定义 → 模型照抄示例）。
+
+        回归护栏（2026-09-16）：旧提示词的两个 fatal 示例全是「消融实验缺失」，
+        导致模型把常见局限锚定为致命缺陷——778 条 fatal 中 82.8% 属此类，
+        36.4% 论文被一票否决。
+        """
+        from mock_api.depth_prompts_v4 import PROMPT_Q5A
+
+        # 四类根本性缺陷必须逐条列出
+        for code in ("F1", "F2", "F3", "F4"):
+            assert code in PROMPT_Q5A, f"缺少 fatal 定义 {code}"
+        assert "一律不得标 fatal" in PROMPT_Q5A
+
+    def test_prompt_q5a_maps_common_limitations_to_minor(self):
+        """「论证充分性」类问题必须被明确指向 minor，且示例不得再标 fatal。"""
+        from mock_api.depth_prompts_v4 import PROMPT_Q5A
+
+        # 明确列举常见局限 → minor
+        assert "消融实验缺失" in PROMPT_Q5A
+        assert "都属此类" in PROMPT_Q5A
+        # 关键：示例里不得再把「消融缺失」标成 fatal
+        assert "critique: 消融实验缺失 | severity: fatal" not in PROMPT_Q5A
+        assert "critique: 消融实验缺失无法证明各模块贡献 | severity: fatal" not in PROMPT_Q5A
+        # 示例中「消融缺失」必须以 minor 出现
+        import re
+
+        m = re.search(
+            r"critique:\s*消融实验缺失[^|]*\|\s*severity:\s*(\w+)", PROMPT_Q5A
+        )
+        assert m is not None, "示例中应保留一条「消融实验缺失」作为 minor 示范"
+        assert m.group(1) == "minor"
+
+    def test_prompt_q5a_fatal_examples_are_genuinely_fatal(self):
+        """示例中标注为 fatal 的条目必须是「结论矛盾 / 数据不一致」类。"""
+        import re
+
+        from mock_api.depth_prompts_v4 import PROMPT_Q5A
+
+        fatals = re.findall(
+            r"critique:\s*(.+?)\s*\|\s*severity:\s*fatal", PROMPT_Q5A
+        )
+        assert fatals, "应保留 fatal 示例以示范格式"
+        for f in fatals:
+            assert ("矛盾" in f or "不一致" in f), (
+                f"fatal 示例必须是结论矛盾/数据不一致类，实际: {f}"
+            )
 
 
 class TestTextSegmentation:
@@ -825,25 +874,73 @@ class TestHardVerdict:
         self.reviewer = DepthReviewer()
 
     def test_fatal_high_score(self):
-        """存在 ≥2 条 fatal，calibrated >= 0.8 → major_revision。"""
+        """存在 ≥FATAL_VETO_MIN 条 fatal，calibrated ≥ 降级门槛 → major_revision。"""
+        from mock_api.depth_eval_v4 import FATAL_VETO_MIN
+
         q5c = self.make_q5c(0.85, "accept")
         cp = [
-            CritiquePoint(point="致命缺陷 A", severity="fatal"),
-            CritiquePoint(point="致命缺陷 B", severity="fatal"),
+            CritiquePoint(point=f"致命缺陷 {i}", severity="fatal")
+            for i in range(FATAL_VETO_MIN)
         ]
         final = self.reviewer._apply_hard_verdict(q5c, cp)
         assert final.final_verdict == "major_revision"
         assert final.has_fatal is True
 
     def test_fatal_low_score(self):
-        """存在 ≥2 条 fatal，calibrated < 0.8 → reject。"""
+        """存在 ≥FATAL_VETO_MIN 条 fatal，calibrated < 降级门槛 → reject。"""
+        from mock_api.depth_eval_v4 import FATAL_VETO_MIN
+
         q5c = self.make_q5c(0.65, "minor_revision")
         cp = [
-            CritiquePoint(point="致命缺陷 A", severity="fatal"),
-            CritiquePoint(point="致命缺陷 B", severity="fatal"),
+            CritiquePoint(point=f"致命缺陷 {i}", severity="fatal")
+            for i in range(FATAL_VETO_MIN)
         ]
         final = self.reviewer._apply_hard_verdict(q5c, cp)
         assert final.final_verdict == "reject"
+
+    def test_below_fatal_veto_min_does_not_veto(self):
+        """少于 FATAL_VETO_MIN 条 fatal 不得触发一票否决（2026-09-16 门槛 2→3）。
+
+        背景：Q5a 提示词曾把「消融缺失」这类常见局限锚定为 fatal，门槛 2 时
+        36.4% 论文被否决。门槛提到 3 + 提示词修正后，单条/两条 fatal 应回落到
+        分数对齐分支。
+        """
+        from mock_api.depth_eval_v4 import FATAL_VETO_MIN
+
+        assert FATAL_VETO_MIN >= 3, "门槛应已提高到 ≥3"
+        q5c = self.make_q5c(0.65, "minor_revision")
+        cp = [
+            CritiquePoint(point=f"致命缺陷 {i}", severity="fatal")
+            for i in range(FATAL_VETO_MIN - 1)
+        ]
+        final = self.reviewer._apply_hard_verdict(q5c, cp)
+        assert final.final_verdict != "reject", "未达门槛不应被否决为 reject"
+
+    def test_veto_downgrade_floor_is_configurable(self):
+        """降级门槛默认 0.75（对齐 accept 档下界），不再是硬编码 0.8。
+
+        旧行为形成「0.79 → reject / 0.81 → major_revision」的任意断崖：
+        同为 2 条 fatal，分数只差 0.02 却判决天壤之别。
+        """
+        from mock_api.depth_eval_v4 import (
+            FATAL_VETO_DOWNGRADE_FLOOR,
+            FATAL_VETO_MIN,
+            VERDICT_ACCEPT_FLOOR,
+        )
+
+        assert FATAL_VETO_DOWNGRADE_FLOOR == pytest.approx(VERDICT_ACCEPT_FLOOR), (
+            "降级门槛应对齐 accept 档下界"
+        )
+        cp = [
+            CritiquePoint(point=f"致命缺陷 {i}", severity="fatal")
+            for i in range(FATAL_VETO_MIN)
+        ]
+        # 0.78 在旧实现下会被直接 reject（<0.8）；新实现应降级为 major_revision
+        final = self.reviewer._apply_hard_verdict(self.make_q5c(0.78, "major_revision"), cp)
+        assert final.final_verdict == "major_revision"
+        # 低于门槛仍应 reject
+        final2 = self.reviewer._apply_hard_verdict(self.make_q5c(0.70, "major_revision"), cp)
+        assert final2.final_verdict == "reject"
 
     def test_single_fatal_high_score_does_not_veto(self):
         """仅 1 条 fatal 不足于一票否决，高分时仍按分数对齐为 accept。"""
@@ -2231,6 +2328,43 @@ class TestDeltaBoundsConfig:
         assert lo < -0.05
         assert hi == 0.07
 
+    def test_adaptive_delta_bounds_symmetric_when_no_fatal(self):
+        """对称性护栏（2026-09-16）：有 minor 但无 fatal 时，上界也应被放宽。
+
+        病根：旧实现只在「零质疑」时放宽上界，而**任何**有质疑的论文下界都会被
+        放大 → 除完全干净的论文外全是「下界放大、上界不动」的单向偏置，
+        叠加实测 delta 均值 -0.0584（64% 为负）构成结构性负偏。
+        """
+        from mock_api.depth_eval_v4 import (
+            DELTA_POSITIVE_WIDEN_MINOR,
+            CritiquePoint,
+            DepthReviewer,
+        )
+
+        reviewer = DepthReviewer(llm_func=lambda *a, **kw: "")
+        cp = [CritiquePoint(point="消融实验缺失", severity="minor")]
+        lo, hi = reviewer._adaptive_delta_bounds(cp, default_min=-0.05, default_max=0.07)
+        # 有 1 条 minor：lo 不放大（minor_n-1=0），hi 放宽半档
+        assert lo == -0.05
+        assert round(hi, 4) == round(0.07 + DELTA_POSITIVE_WIDEN_MINOR, 4)
+        # 关键断言：上界确实被抬高了（旧实现会返回 0.07）
+        assert hi > 0.07
+
+        # 多条 minor：下界放大、上界仍保留正向空间
+        cp2 = [
+            CritiquePoint(point="缺少基线对比", severity="minor"),
+            CritiquePoint(point="缺少敏感性分析", severity="minor"),
+            CritiquePoint(point="仅仿真环境", severity="minor"),
+        ]
+        lo2, hi2 = reviewer._adaptive_delta_bounds(cp2, default_min=-0.05, default_max=0.07)
+        assert lo2 < -0.05, "多条 minor 应放大下界"
+        assert hi2 > 0.07, "无 fatal 时上界仍应保留正向空间（对称性）"
+
+        # 一旦出现 fatal，上界收回默认值（不鼓励给致命缺陷论文加分）
+        cp3 = cp2 + [CritiquePoint(point="结论自相矛盾", severity="fatal")]
+        _, hi3 = reviewer._adaptive_delta_bounds(cp3, default_min=-0.05, default_max=0.07)
+        assert hi3 == 0.07
+
 
 # ===========================================================================
 # D2 / D4 统计造假检测与包装识别（2026-08-12 补）
@@ -2285,3 +2419,92 @@ def test_d4_packaging_penalty_fires_when_expectation_gap_large(monkeypatch):
     assert any("包装识别" in log and "gap" in log for log in result.node_logs), (
         "D4 包装识别未触发"
     )
+
+
+class TestRebuttalGate:
+    """Q5b 辩护有效性闸门（`_is_successful_rebuttal`）。
+
+    背景：辩护成功会把 fatal 质疑降级为 minor，而一票否决门槛是「≥2 条 fatal」。
+    旧实现只要求「非锅炉板 + ≥10 字 + 关键词重叠」，且外部材料声明的
+    溯源校验只看「辩护中有数字 + 该字符串出现在原文」——《PROMPT_Q5B》的
+    few-shot 恰好教模型写「已在附录A.3完成」，而 A.3 里的单字 `3` 会撞上正文
+    任意「表3/图3」而通过，等于给致命缺陷开了一道纯文本后门。
+    """
+
+    CRIT = "消融实验缺失无法证明各模块贡献"
+    PAPER = "表3 消融实验：完整模型准确率 76.3，去掉模块B 后降到 71.1，去掉模块C 后 72.4。"
+
+    def test_fabricated_appendix_claim_is_not_successful(self):
+        from mock_api.depth_eval_v4 import DepthReviewer
+
+        defense = "消融实验已在附录A.3完成，正文因篇幅未展示"
+        # 正文里确实有「表3」，旧实现会因此放行
+        assert DepthReviewer._is_successful_rebuttal(defense, self.CRIT, self.PAPER) is False
+        # 无 paper_text 时同样不得放行
+        assert DepthReviewer._is_successful_rebuttal(defense, self.CRIT) is False
+
+    def test_traceable_numeric_defense_passes(self):
+        from mock_api.depth_eval_v4 import DepthReviewer
+
+        defense = "消融实验见正文表3：去掉模块B准确率从76.3降到71.1，模块贡献显著。"
+        assert DepthReviewer._is_successful_rebuttal(defense, self.CRIT, self.PAPER) is True
+
+    def test_boilerplate_and_short_defenses_fail(self):
+        from mock_api.depth_eval_v4 import DepthReviewer
+
+        assert DepthReviewer._is_successful_rebuttal("原文暂未涉及，将在终稿补充", self.CRIT) is False
+        assert DepthReviewer._is_successful_rebuttal("未涉及", self.CRIT) is False
+
+    def test_single_digit_citation_does_not_open_gate(self):
+        """单独一个 1 位数字（含从「A.3」「图2」里抽出的数字）不算可溯源证据。"""
+        from mock_api.depth_eval_v4 import DepthReviewer
+
+        defense = "消融实验已在附录A.3完成，完整结果见表3。"
+        assert DepthReviewer._is_successful_rebuttal(defense, self.CRIT, self.PAPER) is False
+
+
+# ===========================================================================
+# P4 配置通道收口回归护栏（2026-09-16）
+# ===========================================================================
+class TestConfigChannelClosure:
+    """`.env` 必须能真正影响这些部署可调项（P4：配置显式、失败响亮）。
+
+    病根：`env_first_*(name, <字面量>)` 的 fallback 传硬编码常量，而 .env 由 pydantic
+    Settings 解析、**从不注入 os.environ**（全仓无 load_dotenv）→ fallback 永远走字面量，
+    .env 里改这些开关**静默无效**。修法是让 fallback 指向 `get_settings().<字段>`。
+
+    本护栏断言「环境变量未设时，模块常量 == Settings 字段值」——若有人把 fallback
+    改回字面量，或改了 Settings 默认值却忘了同步，这里会失败。
+    """
+
+    def test_module_constants_track_settings_fields(self):
+        from mock_api import depth_eval_v4 as m
+        from mock_api.settings import get_settings
+
+        s = get_settings()
+        pairs = [
+            ("FATAL_VETO_MIN", m.FATAL_VETO_MIN, s.depth_fatal_veto_min),
+            ("FATAL_VETO_DOWNGRADE_FLOOR", m.FATAL_VETO_DOWNGRADE_FLOOR,
+             s.depth_fatal_veto_downgrade_floor),
+            ("STAT_REDLINE_MIN", m.STAT_REDLINE_MIN, s.depth_stat_redline_min),
+            ("_BENFORD_MIN_SAMPLES", m._BENFORD_MIN_SAMPLES,
+             s.depth_stat_benford_min_samples),
+            ("_EVIDENCE_VERBATIM_GATE", m._EVIDENCE_VERBATIM_GATE,
+             s.depth_evidence_verbatim_gate),
+            ("_EVIDENCE_VERBATIM_MIN_KEEP", m._EVIDENCE_VERBATIM_MIN_KEEP,
+             s.depth_evidence_verbatim_min_keep),
+            ("NODE_VIEW_HEAD_CHARS", m.NODE_VIEW_HEAD_CHARS, s.depth_node_view_chars),
+            ("NODE_VIEW_TAIL_CHARS", m.NODE_VIEW_TAIL_CHARS,
+             s.depth_node_view_tail_chars),
+        ]
+        for name, actual, expected in pairs:
+            assert actual == expected, (
+                f"{name}={actual} 与 Settings 字段值 {expected} 不一致——"
+                f"fallback 可能又变回字面量了，.env 将静默失效"
+            )
+
+    def test_score_offset_field_exists_for_env_channel(self):
+        """PAPERFORGE_DEPTH_SCORE_OFFSET 必须有 Settings 字段，否则 .env 通道断。"""
+        from mock_api.settings import get_settings
+
+        assert hasattr(get_settings(), "depth_score_offset")

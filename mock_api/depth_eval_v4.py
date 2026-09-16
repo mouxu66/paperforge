@@ -123,6 +123,14 @@ from .figure_claims import apply_curve_correction
 from .llm import ChatMessage, get_factory
 from .retry_utils import llm_retry
 from .severity_classifier import classify_claim_severity
+from .settings import (
+    env_first_bool,
+    env_first_float,
+    env_first_int,
+    env_first_str,
+    get_settings,
+    resolve_citation_verify_mode,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -139,6 +147,13 @@ LLM_STOP = ["\n\n"]
 DELTA_HARD_MIN = -0.25
 DELTA_HARD_MAX = 0.25
 
+# Q5c delta 的**正向**放宽幅度（对称性修复，2026-09-16）。
+# 背景：下界会随存活质疑数被放大（每 fatal -0.06 / 每多一条 minor -0.02），
+# 而上界旧实现只在「零质疑」时 +0.08，导致有质疑的论文只有下行空间。
+# 现无 fatal 时按 minor 数量分档放宽上界。
+DELTA_POSITIVE_WIDEN_CLEAN = 0.08  # 无任何存活质疑
+DELTA_POSITIVE_WIDEN_MINOR = 0.04  # 有 minor 但无 fatal
+
 # 向后兼容别名（保留模块级导出，供外部引用）
 from .config import DELTA_DEFAULT_MAX as _DELTA_DEFAULT_MAX
 from .config import DELTA_DEFAULT_MIN as _DELTA_DEFAULT_MIN
@@ -149,7 +164,25 @@ DELTA_DEFAULT_MAX = _DELTA_DEFAULT_MAX
 # 一票否决门槛：需 ≥ 该数量的致命缺陷才触发否决（避免单条 LLM 误判
 # 把 0.7~0.95 的论文直接拒稿/大修）。直接数原始 fatal 条数（CritiquePoint 无维度
 # 字段，纯文本去重不可靠，故不去做重）。
-FATAL_VETO_MIN = 2
+# P4（部署可调项 = 校验过的配置字段）：从硬编码常量改为 settings 字段，
+# 显式 env 优先（测试/运维热切换），否则用 settings（含 .env）。
+# ⚠️ 2026-09-16 修复：此前 fallback 传的是字面量 2，而 .env 不注入 os.environ
+# （全仓无 load_dotenv）→ settings 字段形同虚设，.env 里改不动这个阈值。
+# 现 fallback 指向 Settings 字段，env / .env / 默认值三级通道全部打通。
+# 默认值同时从 2 提到 3：Q5a 提示词曾把「消融缺失」这类常见局限锚定为 fatal，
+# 导致 36.4% 论文触发否决（见 deliverables/diag/评分偏低根因诊断_20260916.md）。
+FATAL_VETO_MIN = max(
+    1,
+    env_first_int("PAPERFORGE_DEPTH_FATAL_VETO_MIN", get_settings().depth_fatal_veto_min),
+)
+
+# 一票否决的降级门槛：校准分 ≥ 该值时只降级为 major_revision，不直接 reject。
+# 原实现硬编码 0.8，形成「0.79 → reject / 0.81 → major_revision」的任意断崖；
+# 现默认对齐 accept 档下界（VERDICT_ACCEPT_FLOOR=0.75），并可由配置覆盖。
+FATAL_VETO_DOWNGRADE_FLOOR = env_first_float(
+    "PAPERFORGE_DEPTH_FATAL_VETO_DOWNGRADE_FLOOR",
+    get_settings().depth_fatal_veto_downgrade_floor,
+)
 
 # 一票否决分数护栏：校准分 ≥ 该值且 LLM 自身显式判 accept 时，
 # 「高分 + accept」与「LLM 断言的 fatal」自相矛盾 → fatal 标签视为噪声，
@@ -161,7 +194,22 @@ FATAL_VETO_ACCEPT_FLOOR = 0.9
 # p 值不可能）是「算出来即证据」的确定性造假信号，不受 LLM 辩护/降级稀释。
 # 任两条同时出现 → 直接 reject（一票否决）。
 STAT_REDLINE_PREFIXES = ("[Benford偏离]", "[std过低]", "[p值不可能]")
-STAT_REDLINE_MIN = 2
+# P4 配置通道收口（2026-09-16）：fallback 由字面量 2 改为 Settings 字段。
+# .env 不注入 os.environ（全仓无 load_dotenv），只传字面量会让 .env 静默失效。
+STAT_REDLINE_MIN = max(
+    1,
+    env_first_int("PAPERFORGE_DEPTH_STAT_REDLINE_MIN", get_settings().depth_stat_redline_min),
+)
+
+# Benford 首位分布检验最小样本量（修假阳性：旧实现 ≥20 且首位取 int(str(v)[0])，
+# 导致 ≥31 个 0.x 比率必然误报 → 见 _leading_digit/_benford_flag）。
+_BENFORD_MIN_SAMPLES = max(
+    20,
+    env_first_int(
+        "PAPERFORGE_DEPTH_STAT_BENFORD_MIN_SAMPLES",
+        get_settings().depth_stat_benford_min_samples,
+    ),
+)
 
 # 实验审计联动红线（ADR-012 扩展）：消费 ExperimentAudit 最新完成审计中的
 # 高危造假类 Finding——这三类由确定性算法或双证据链检出（VLM 转写 + 统计指纹 /
@@ -179,6 +227,39 @@ AUDIT_FRAUD_REDLINE_MIN = 2
 # v4.2 图表证据：QE 证据池并入 PaperFigure 的上限条数 / 单条截断长度
 MAX_FIGURE_EVIDENCE = 8
 FIGURE_EVIDENCE_CHARS = 160
+
+# QE 证据原文锚定闸门（P0 修复：证据此前只校验 ID 存在性，模型自写文本即可当依据）
+_EVIDENCE_VERBATIM_GATE = env_first_bool(
+    "PAPERFORGE_DEPTH_EVIDENCE_VERBATIM_GATE", get_settings().depth_evidence_verbatim_gate
+)
+_EVIDENCE_VERBATIM_MIN_KEEP = max(
+    1,
+    env_first_int(
+        "PAPERFORGE_DEPTH_EVIDENCE_VERBATIM_MIN_KEEP",
+        get_settings().depth_evidence_verbatim_min_keep,
+    ),
+)
+_EVIDENCE_GRAM_N = 6  # 与感悟报告侧 _snippet_exists 同粒度（6-gram 包含率）
+_EVIDENCE_GRAM_THR = 0.6  # ≥60% 命中即视为「原文可定位」（容忍标点/OCR 微差）
+
+# ── 评分/辩论节点视图（P0 修复：此前所有评分节点只看正文前 4000 字）──
+# 事实：Q2/Q3/Q4/Q234/QF/Q5a/Q5b/Q5c 全部走 `_paper_view(text, ctx, MAX_CHARS_SHORT)`，
+# 而 text = paper_full_text → 只看到标题+摘要+引言，**看不到方法与实验章节**，
+# 严谨性（γ 最高 0.45）与致命缺陷辩论都是盲判。
+# 现状：上述节点已改为 `_scoring_view(ctx, node)`（Q0/Q1 保持头部截断，QE 用全文层）；
+# `_paper_view` 仅作为单端截断 + 全文补充的底层 helper 保留。
+# 现在按「头 + 尾」双端取样（尾部=结论/讨论区），并把字数改为配置字段：
+# 本地 9B ctx 有限，双端取样是不增加显存的前提下唯一能覆盖「结论」的办法；
+# 论文中段的完整覆盖仍依赖 ADR-014 P9 全文层（摘要 + 采样原文块）。
+NODE_VIEW_HEAD_CHARS = env_first_int(
+    "PAPERFORGE_DEPTH_NODE_VIEW_CHARS", get_settings().depth_node_view_chars
+)
+NODE_VIEW_TAIL_CHARS = max(
+    0,
+    env_first_int(
+        "PAPERFORGE_DEPTH_NODE_VIEW_TAIL_CHARS", get_settings().depth_node_view_tail_chars
+    )
+)
 
 # QF 曲线点二次校验：claim value 与曲线 y 范围比较时的相对容差
 _CURVE_Y_TOLERANCE = 0.05
@@ -200,6 +281,12 @@ class EvidenceItem(BaseModel):
     section: str = Field(default="", description="证据所在章节")
     keywords: list[str] = Field(default_factory=list, description="证据关键词，3-5个，用于辅助定位")
     severity: str = Field(default="minor", pattern=r"^fatal|minor$")
+    # 2026-09-16 证据可核性：这条证据能否在论文原文中定位到？
+    # 旧实现只校验「evidence_id 是否存在于池中」，池本身是同一模型写的自由文本，
+    # 于是「分项分数的依据」无法回溯到原文。现在 QE 抽取的条目一律跑字符 n-gram
+    # 包含率闸门；图表（OCR/图注）与图文一致性条目走独立来源，天然豁免。
+    source: str = Field(default="llm", description="llm | figure | claim_validation")
+    verified_in_text: bool = Field(default=True, description="是否能在论文原文中定位")
 
 
 class Q0Result(BaseModel):
@@ -721,19 +808,20 @@ def call_llm(
 # LLM 响应 TTL 缓存（避免重复调用：证据校验重试、相同 prompt 复用）
 # ---------------------------------------------------------------------------
 
-from .settings import get_settings
-
 # ── 选择性思考模式：仅指定节点开启 reasoning CoT ──
 # 从 PAPERFORGE_DEPTH_REASONING_NODES 读取（逗号分隔节点名），
 # 默认 Q5a,Q5b,Q5c（判断类节点受益于深度思考，抽取类节点不需要）。
 _REASONING_NODES: frozenset[str] = frozenset(
     n.strip().upper()
-    for n in os.getenv("PAPERFORGE_DEPTH_REASONING_NODES", "Q5a,Q5b,Q5c").split(
-        ","
-    )
+    for n in str(
+        env_first_str("PAPERFORGE_DEPTH_REASONING_NODES", get_settings().depth_reasoning_nodes)
+        or "Q5a,Q5b,Q5c"
+    ).split(",")
     if n.strip()
 )
-_REASONING_BUDGET = int(os.getenv("PAPERFORGE_REASONING_BUDGET", "2048"))
+_REASONING_BUDGET = env_first_int(
+    "PAPERFORGE_REASONING_BUDGET", int(get_settings().depth_reasoning_budget)
+)
 
 _LLM_CACHE_TTL = get_settings().llm_cache_ttl  # 秒，0=禁用
 _llm_cache: dict[int, tuple[float, str]] = {}  # key → (timestamp, content)
@@ -812,13 +900,26 @@ def _env_positive_float(name: str, default: float) -> float:
     return value
 
 
-_LLM_WATCHDOG_TIMEOUT = _env_positive_float(
-    "PAPERFORGE_LLM_WATCHDOG_TIMEOUT", 120.0
+# 看门狗超时：env 显式设置优先，否则用 Settings（同时读真实 env 与 .env）。
+# 修复：此前只读 os.environ，而 .env 从不注入进程环境 → .env 里的 600 秒静默无效，
+# 实际仍是 120 秒；本地 9B 开 CoT 时常被这条误杀成 llm_failed（分数被置空）。
+_LLM_WATCHDOG_TIMEOUT = max(
+    1.0,
+    env_first_float(
+        "PAPERFORGE_LLM_WATCHDOG_TIMEOUT",
+        float(get_settings().llm_watchdog_timeout),
+        minimum=1.0,
+    ),
 )  # 秒；任何 provider.chat() 超此时长视为僵尸调用
 # 思考模式额外放宽：CoT 生成使单次调用显著变长（实测 +30s/轮、偶发 >120s），
 # 固定 120s watchdog 会把「还在好好思考」的调用误杀成 llm_failed。
-_THINKING_EXTRA_TIMEOUT = _env_positive_float(
-    "PAPERFORGE_LLM_WATCHDOG_THINKING_EXTRA", 60.0
+_THINKING_EXTRA_TIMEOUT = max(
+    0.0,
+    env_first_float(
+        "PAPERFORGE_LLM_WATCHDOG_THINKING_EXTRA",
+        float(get_settings().llm_watchdog_thinking_extra),
+        minimum=0.0,
+    ),
 )  # 秒；thinking=True 时叠加到 watchdog 上限
 _llm_watchdog_executor: concurrent.futures.ThreadPoolExecutor | None = None
 _llm_watchdog_lock = threading.Lock()
@@ -1064,6 +1165,17 @@ def _format_evidence_pool_text(pool: dict[str, str]) -> str:
         return "（空）"
     lines = [f"  {eid}: {content}" for eid, content in pool.items()]
     return "\n".join(lines)
+
+
+def _evidence_pool_entry(item: EvidenceItem) -> str:
+    """证据池条目文本：含关键词后缀；未能在原文定位的加显式提醒。
+
+    未定位条目仍可能被下游节点引用（ID 校验只看成员资格），因此必须在模型可见
+    的文本里标明「这不是原文原句」，避免它被当作可直接引用的事实依据。
+    """
+    kw_suffix = f" [关键词: {', '.join(item.keywords)}]" if item.keywords else ""
+    prefix = "" if item.verified_in_text else "【未在原文定位，仅作参考、不得作为直接引用】"
+    return f"{prefix}{item.content}{kw_suffix}"
 
 
 _MAX_AXIS_TICKS = 10
@@ -1398,22 +1510,46 @@ class DepthReviewer:
     def _paper_view(
         self, text: str, ctx: PaperContext, max_chars: int, node_name: str | None = None
     ) -> str:
-        """论文视图 + 全文覆盖补充（ADR-014 P9）。
+        """论文视图（单端截断）+ 全文覆盖补充（ADR-014 P9）。
 
         优先使用节点专属补充（ctx.fulltext_node_supplements[node_name]），
         回退至默认补充（ctx.fulltext_supplement），都不存在时与旧行为一致。
         """
-        base = text[:max_chars]
-        # 节点专属补充优先
+        return self._append_supplement(text[:max_chars], ctx, node_name)
+
+    def _append_supplement(self, base: str, ctx: PaperContext, node_name: str | None = None) -> str:
+        """在视图末尾附加全文补充（P9）：节点专属优先，回退默认，都没有则原样返回。"""
         if node_name:
             supp = (ctx.fulltext_node_supplements.get(node_name) or "").strip()
             if supp:
                 return f"{base}\n\n{supp}"
-        # 回退至默认补充
         supp = (ctx.fulltext_supplement or "").strip()
         if not supp:
             return base
         return f"{base}\n\n{supp}"
+
+    def _scoring_view(self, ctx: PaperContext, node_name: str) -> str:
+        """评分/辩论节点的论文视图：**头 + 尾**双端取样 + 全文补充（2026-09-16 修复）。
+
+        修复背景：Q2/Q3/Q4/Q234/QF/Q5a/Q5b/Q5c 此前一律 `paper_full_text[:4000]`，
+        等价于只给「标题+摘要+引言」——**实验与结论根本不在输入里**，而严谨性权重
+        γ 最高 0.45、Q5a/Q5b 又直接基于方法细节做判断（盲判）。
+        现在尾部（结论/讨论区）也进入视野；中段仍由 ADR-014 P9 全文层
+        （全局摘要 + 采样原文块 + 节点定向补充）覆盖。
+
+        字数由 PAPERFORGE_DEPTH_NODE_VIEW_CHARS / _TAIL_CHARS 控制（默认 4000/2000）。
+        """
+        text = ctx.paper_full_text or ""
+        head = text[:NODE_VIEW_HEAD_CHARS]
+        tail = ""
+        if NODE_VIEW_TAIL_CHARS > 0 and len(text) > NODE_VIEW_HEAD_CHARS + NODE_VIEW_TAIL_CHARS:
+            tail = text[-NODE_VIEW_TAIL_CHARS:]
+        if tail:
+            skipped = len(text) - len(head) - len(tail)
+            base = f"{head}\n\n……（中间省略 {skipped} 字）……\n\n{tail}"
+        else:
+            base = head
+        return self._append_supplement(base, ctx, node_name)
 
     # ── v4.3 NodeOutput helpers ────────────────────────────────────
     def _wrap_failed(self, node_id: str, error: str) -> NodeOutput:
@@ -1808,6 +1944,12 @@ class DepthReviewer:
             self._log(f"[QE] 警告：仅提取 {len(items)} 条证据，预期 5-7 条")
         else:
             self._log(f"[QE] 成功提取 {len(items)} 条证据")
+
+        # ── 证据原文锚定闸门（P0-3，2026-09-16）─────────────────────────
+        # 旧行为：证据池只校验「ID 是否在池里」，而池本身由同一模型自由撰写，
+        # 下游拿它当「分数依据」却无法回溯到论文。现在把能在论文原文中定位到的
+        # 条目保留，定位不到的标为未核（并在池文本里加【未定位】前缀）。
+        items = self._anchor_qe_evidence(items, ctx.paper_full_text)
         return self._wrap_success(
             "QE",
             (
@@ -1815,6 +1957,79 @@ class DepthReviewer:
                 raw,
             ),
         )
+
+    # ------------------------------------------------------------------
+    # 证据原文锚定（P0-3）：把「模型自写文本」变成「可在原文定位的引用」
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _locate_evidence_in_text(content: str, paper_text: str) -> bool:
+        """判断一条证据能否在论文原文中定位（与感悟报告侧 _snippet_exists 同粒度）。
+
+        判定：去空白后取证据的字符 6-gram，≥60% 命中原文即视为可定位
+        （容忍标点/连字符/大小写差异）；证据不足 6 字时退回子串匹配。
+        不做语义判等——目的不是「语义对得上」而是「这句话真的出自论文」。
+        """
+        s = re.sub(r"\s+", "", content or "")
+        if not s:
+            return False
+        t = re.sub(r"\s+", "", paper_text or "")
+        if not t:
+            return False
+        n = _EVIDENCE_GRAM_N
+        if len(s) < n:
+            return s in t
+        grams = {s[i : i + n] for i in range(len(s) - n + 1)}
+        hits = sum(1 for g in grams if g in t)
+        return hits / len(grams) >= _EVIDENCE_GRAM_THR
+
+    def _anchor_qe_evidence(
+        self, items: list[EvidenceItem], paper_source: str
+    ) -> list[EvidenceItem]:
+        """对 QE 抽取的证据跑原文定位闸门（零 LLM）。
+
+        行为：
+        - 闸门关闭（PAPERFORGE_DEPTH_EVIDENCE_VERBATIM_GATE=0）→ 仅标注不改池（向后兼容）。
+        - 闸门开启：能定位的保留；定位不到的不再作为评分依据。
+          若可定位条目 < _EVIDENCE_VERBATIM_MIN_KEEP（默认 3），则保留全部
+          （避免把池清空导致下游误判「LLM 没产出证据」），但标记未定位。
+        Returns: 处理后（可能被过滤）的证据列表。
+        """
+        if not items:
+            return items
+        verified: list[EvidenceItem] = []
+        unverified: list[EvidenceItem] = []
+        for item in items:
+            if item.source != "llm":
+                verified.append(item)  # 图表/图文一致性：独立来源，豁免
+                continue
+            if self._locate_evidence_in_text(item.content, paper_source):
+                verified.append(item.model_copy(update={"verified_in_text": True}))
+            else:
+                unverified.append(item.model_copy(update={"verified_in_text": False}))
+
+        if not _EVIDENCE_VERBATIM_GATE:
+            if unverified:
+                self._log(
+                    f"[证据锚定] 闸门关闭：{len(unverified)}/{len(items)} 条未能在原文定位"
+                    f"（仅记录，不改动证据池）"
+                )
+            return verified + unverified
+
+        if len(verified) < _EVIDENCE_VERBATIM_MIN_KEEP:
+            if unverified:
+                self._log(
+                    f"[证据锚定] 警告：仅 {len(verified)} 条可定位（< 保留下限 "
+                    f"{_EVIDENCE_VERBATIM_MIN_KEEP}），保留全部 {len(items)} 条并标记未定位；"
+                    f"样例：{unverified[0].content[:60]!r}"
+                )
+            return verified + unverified
+
+        if unverified:
+            self._log(
+                f"[证据锚定] 剔除 {len(unverified)} 条无法在论文原文定位的证据"
+                f"（保留 {len(verified)} 条），样例：{unverified[0].content[:60]!r}"
+            )
+        return verified
 
     # ------------------------------------------------------------------
     # Q2: 创新与热点（纯文本解析 + 大 token 预算，避开推理模型思考耗尽）
@@ -1829,7 +2044,7 @@ class DepthReviewer:
         valid_ids = list(evidence_pool.keys())
 
         prompt = PROMPT_Q2.format(
-            paper=self._paper_view(text, ctx, MAX_CHARS_SHORT, node_name="Q2"),
+            paper=self._scoring_view(ctx, "Q2"),
             paper_type=q1_type,
             hotspots=hotspots_str,
             evidence_pool_text=evidence_text,
@@ -1902,7 +2117,7 @@ class DepthReviewer:
         valid_ids = list(evidence_pool.keys())
 
         prompt = prompt_template.format(
-            paper=self._paper_view(text, ctx, MAX_CHARS_SHORT, node_name="Q3"),
+            paper=self._scoring_view(ctx, "Q3"),
             paper_type=q1_type,
             secondary_type_info=secondary_info,
             secondary_checklist=secondary_checklist,
@@ -1990,7 +2205,7 @@ class DepthReviewer:
         valid_ids = list(evidence_pool.keys())
 
         prompt = PROMPT_Q4.format(
-            paper=self._paper_view(text, ctx, MAX_CHARS_SHORT, node_name="Q4"),
+            paper=self._scoring_view(ctx, "Q4"),
             evidence_pool_text=evidence_text,
         )
         self._log(f"[Q4] 开始调用 LLM（纯文本模式, max_tokens={self._max_tokens}）...")
@@ -2126,7 +2341,7 @@ class DepthReviewer:
         rigor_guide = Q234_RIGOR_GUIDE.get(q1.type, Q234_RIGOR_GUIDE["B"])
 
         prompt = PROMPT_Q234.format(
-            paper=self._paper_view(text, ctx, MAX_CHARS_SHORT, node_name="Q234"),
+            paper=self._scoring_view(ctx, "Q234"),
             paper_type=q1.type,
             secondary_type_info=secondary_info,
             rigor_guide=rigor_guide,
@@ -2348,7 +2563,7 @@ class DepthReviewer:
         valid_ids = list(evidence_pool.keys())
 
         prompt = PROMPT_QF.format(
-            paper=self._paper_view(text, ctx, MAX_CHARS_SHORT, node_name="QF"),
+            paper=self._scoring_view(ctx, "QF"),
             figure_text=figure_text,
             evidence_pool_text=evidence_text,
         )
@@ -2468,7 +2683,7 @@ class DepthReviewer:
         )
 
         prompt = PROMPT_Q5A.format(
-            paper=self._paper_view(text, ctx, MAX_CHARS_SHORT, node_name="Q5a"),
+            paper=self._scoring_view(ctx, "Q5a"),
             paper_type=q1.type,
             novelty=f"{q2.novelty_score:.2f}",
             hotspot=f"{q2.hotspot_alignment_score:.2f}",
@@ -2568,7 +2783,7 @@ class DepthReviewer:
         critique_str = "\n".join(critique_lines)
 
         prompt = PROMPT_Q5B.format(
-            paper=self._paper_view(text, ctx, MAX_CHARS_SHORT, node_name="Q5b"),
+            paper=self._scoring_view(ctx, "Q5b"),
             critique_points=critique_str,
             evidence_pool_text=evidence_text,
         )
@@ -2643,15 +2858,28 @@ class DepthReviewer:
         规则（DEPTH_DELTA_ADAPTIVE_ENABLED=False 时恒为 [default_min, default_max]）：
         - 存活 fatal 越多 → 向下修正空间越大（每个 fatal -0.06）；
         - 存活 minor 超过 1 条后每条再补 -0.02；
-        - 无任何存活质疑（干净论文）→ 向上放宽到 +0.20；
+        - **无存活 fatal → 向上同步放宽**（对称性修复，见下）；
         - 全局硬上限 [-0.25, +0.25] 永不被突破。
+
+        ⚠️ 对称性修复（2026-09-16）：旧实现只在「零质疑」时才放宽上界
+        （`hi = default_max + (0.08 if fatal_n == 0 and minor_n == 0 else 0.0)`），
+        而下界**任何**有质疑的论文都会被放宽 → 除完全干净的论文外，所有论文都是
+        「下界被放大、上界不动」的单向偏置。叠加 Q5c 实测 delta 均值 -0.0584
+        （64% 为负），构成结构性负偏。现按 fatal 有无分档放宽上界，
+        让「质疑已被辩护消化」的论文同样拿得到正向空间。
         """
         if not DEPTH_DELTA_ADAPTIVE_ENABLED:
             return default_min, default_max
         fatal_n = sum(1 for cp in balanced_cp if cp.severity == "fatal")
         minor_n = sum(1 for cp in balanced_cp if cp.severity == "minor")
         lo = default_min - min(0.17, 0.06 * fatal_n + 0.02 * max(0, minor_n - 1))
-        hi = default_max + (0.08 if fatal_n == 0 and minor_n == 0 else 0.0)
+        if fatal_n == 0:
+            # 无存活致命缺陷：向上放宽（无质疑给满，仅有 minor 给半档）
+            hi = default_max + (
+                DELTA_POSITIVE_WIDEN_CLEAN if minor_n == 0 else DELTA_POSITIVE_WIDEN_MINOR
+            )
+        else:
+            hi = default_max
         return max(DELTA_HARD_MIN, lo), min(DELTA_HARD_MAX, hi)
 
     # ------------------------------------------------------------------
@@ -2681,7 +2909,7 @@ class DepthReviewer:
         balancer_log_parts: list[str] = []
         for i, cp in enumerate(q5a.critique_points):
             defense = q5b.defense_points[i] if i < len(q5b.defense_points) else ""
-            rebutted = self._is_successful_rebuttal(defense, cp.point)
+            rebutted = self._is_successful_rebuttal(defense, cp.point, text)
             if rebutted and cp.severity == "fatal":
                 balanced_cp.append(CritiquePoint(point=cp.point, severity="minor"))
                 balancer_log_parts.append(
@@ -2734,7 +2962,7 @@ class DepthReviewer:
             )
 
         prompt = PROMPT_Q5C.format(
-            paper_abstract_conclusion=self._paper_view(text, ctx, MAX_CHARS_SHORT, node_name="Q5c"),
+            paper_abstract_conclusion=self._scoring_view(ctx, "Q5c"),
             base_score=base_score,
             novelty=f"{q2.novelty_score:.2f}",
             hotspot=f"{q2.hotspot_alignment_score:.2f}",
@@ -2850,20 +3078,42 @@ class DepthReviewer:
         r"(?i)(确实|核查|修正|校正|误差|误报|补充实验|重新验证|重新评估|附录|已添加|"
         r"新增|承认|限于|不足|我们同意|诚然|为此我们|已更正|经复算)"
     )
+    # D1-2 加固（2026-09-16）：外部材料声明识别。
+    # 背景 B/A2：prompt 的旧 few-shot 自己教模型回答「消融实验已在附录A.3完成」，
+    # 而平衡者只要求「非锅炉板 + ≥10 字 + 关键词重叠」就判定辩护成功 → fatal 降 minor，
+    # 一票否决（≥2 fatal）被纯文本编造洗掉。实测可复现。
+    # 现要求：凡声称「在附录/补充材料/其他章节/已开源」的辩护，必须给出**能在论文原文中
+    # 找到的数字证据**，否则视为未实质反驳。
+    _EXTERNAL_CLAIM_RE = re.compile(
+        r"(?i)(附录|附件|appendix|补充材料|supplementary|已在第[\d一二三四五六七八九十]+节|"
+        r"代码(?:已)?开源|已公开(?:代码|数据|权重)|we release|we provide in appendix)"
+    )
+    # 数字 token：`\d+(?:\.\d+)?`（注意 "A.3" 只会抽出 "3"，不会抽成 "A.3"）
+    _NUMBER_RE = re.compile(r"\d+(?:\.\d+)?")
 
     @staticmethod
     def _rebuttal_has_adversarial_number(defense: str) -> bool:
         """辩护需含至少一个数字（对抗性量化证据），否则视为未实质反驳。"""
         return bool(re.search(r"\d+\.?\d+\s*%?", defense))
 
-    @staticmethod
-    def _is_successful_rebuttal(defense: str, critique: str) -> bool:
+    @classmethod
+    def _is_successful_rebuttal(cls, defense: str, critique: str, paper_text: str = "") -> bool:
         """判断辩护是否成功反驳了质疑。
 
         判定标准（代码层硬规则，不依赖 LLM）：
         1. 辩护非锅炉板回复（非 "原文暂未涉及，将在终稿补充" 等默认答复）
         2. 辩护有实质技术内容（长度 ≥ 10 字符）
         3. 辩护与质疑关键术语有重叠（表明辩护确实针对该质疑）
+        4. 量化硬质疑需要对抗性数字 + 承认/修正表态
+        5. **外部材料声明必须有原文数字佐证**（新增）：辩护若声称某内容「在附录 /
+           补充材料 / 其他章节 / 已开源」，必须在辩护中给出至少一个**测量型**数字
+           （带小数点或 ≥2 位整数），且该数字能在 paper_text 中定位
+           （否则就是凭空断言附录存在——旧 prompt 的 few-shot 正在教这个）。
+           paper_text 为空时同样视为未反驳（宁严不宽：降级 fatal 的代价是放开拒稿）。
+
+           为什么必须限「测量型」：早期实现只要求「辩护中有数字 + 该字符串出现在
+           原文」，结果「附录A.3」里的单字 `3` 会撞上正文任意「表3/图3」而通过校验，
+           闸门形同虚设（2026-09-16 实测）。
         """
         if not defense or not critique:
             return False
@@ -2881,6 +3131,31 @@ class DepthReviewer:
         if len(defense_stripped) < 10:
             return False
         # 规则 3：术语重叠检测（从质疑和辩护中各提取关键词，检查交集）
+        # 规则 5（新增）：外部材料声明必须可溯源。
+        external = cls._EXTERNAL_CLAIM_RE.search(defense_stripped)
+        if external:
+            numbers = cls._NUMBER_RE.findall(defense_stripped)
+            traceable = False
+            if paper_text:
+                paper_norm = re.sub(r"\s+", "", paper_text)
+                for n in numbers:
+                    try:
+                        if float(n) <= 0:
+                            continue
+                    except ValueError:
+                        continue
+                    # 只认「像测量值」的数字：带小数点的（76.3）或 ≥2 位整数（95）。
+                    # 单个数字（尤其 "附录A.3" 里抽出的 "3"）会与正文任意
+                    # 「表3」之类的编号乱撞，等于把闸门架空——旧版就是这行
+                    # 让「凭空声称附录」照样通过。
+                    if "." not in n and len(n) < 2:
+                        continue
+                    if n in paper_norm or n.rstrip("0").rstrip(".") in paper_norm:
+                        traceable = True
+                        break
+            if not traceable:
+                return False  # 凭空声称附录/开源 → 不算实质反驳（fatal 保持 fatal）
+
         # 简单但有效的启发式：对中英文分别提取 2-gram 特征词
         critique_features = _extract_key_terms(critique)
         defense_features = _extract_key_terms(defense_stripped)
@@ -2888,10 +3163,10 @@ class DepthReviewer:
         # 至少需要 1 个关键术语重叠才认为"针对性辩护"
         # 规则 4（D1 加固）：量化硬质疑需要对抗性数字反驳 + 承认/修正表态，
         # 否则仅关键词重叠不算成功反驳（防止辩护复述主张而架空致命缺陷）。
-        if DepthReviewer._QUANT_CRITIQUE_RE.search(critique):
+        if cls._QUANT_CRITIQUE_RE.search(critique):
             if not (
-                DepthReviewer._rebuttal_has_adversarial_number(defense_stripped)
-                and DepthReviewer._CONCESSION_RE.search(defense_stripped)
+                cls._rebuttal_has_adversarial_number(defense_stripped)
+                and cls._CONCESSION_RE.search(defense_stripped)
             ):
                 return False
         return len(overlap) >= 1
@@ -3230,6 +3505,8 @@ class DepthReviewer:
                     content=content,
                     section="Figures",
                     keywords=["图表", "figure"],
+                    source="figure",
+                    verified_in_text=True,  # 图表走独立来源（OCR/图注），不参与正文定位闸门
                 )
             )
             added += 1
@@ -3305,6 +3582,8 @@ class DepthReviewer:
                     section="Figures",
                     keywords=["figure", "claim", str(metric), "out-of-range"],
                     severity=severity,
+                    source="claim_validation",
+                    verified_in_text=True,  # 由图片坐标轴/曲线点确定性导出，不依赖正文定位
                 )
             )
             added += 1
@@ -3382,6 +3661,67 @@ class DepthReviewer:
         return base_score, final_base, weights
 
     # ------------------------------------------------------------------
+    # 后置扣分（唯一实现，两条入口共用）
+    # ------------------------------------------------------------------
+    def _post_adjust_score(
+        self,
+        q5c: Q5cResult,
+        q0: Q0Result | None,
+        stat_flags: list[str],
+    ) -> Q5cResult:
+        """统一的后置扣分：增量风险 → 统计红旗 → 包装识别。
+
+        修复（2026-09-16）：该逻辑此前在 `review()`（串行）与 `review_async_dag()`
+        （DAG/生产）里各写了一份，且不完全一致——串行路径多一层包装识别
+        （pkg_penalty，最多 0.04，与 stat 合计封顶 0.20），DAG 路径只有 stat_penalty。
+        同一篇论文换个入口分数就会不同。现收敛为单一实现。
+
+        P5（模型可见 ⟺ 有日志）：每次扣分都写日志，可完全重建分数来源。
+        """
+        inc_risk = getattr(self, "_inc_risk", "unknown")
+        if inc_risk == "high" and q5c.delta > 0:
+            penalty = 0.05
+            before = q5c.calibrated_score
+            q5c = q5c.model_copy(
+                update={
+                    "calibrated_score": max(0.0, before - penalty),
+                    "delta": q5c.delta - penalty,
+                }
+            )
+            self._log(
+                f"[Q5c] incrementality_risk=high, delta>0 → 后置扣分 {penalty:.2f}, "
+                f"calibrated {before:.3f} → {q5c.calibrated_score:.3f}"
+            )
+
+        stat_penalty = _stat_penalty(stat_flags)
+        pkg_penalty = 0.0
+        _exp = getattr(q0, "expectation", None)
+        if isinstance(_exp, (int, float)) and _exp:
+            _gap = _exp - q5c.calibrated_score
+            if _gap > 0.2:
+                pkg_penalty = 0.04
+                self._log(
+                    f"[包装识别] Q0期望 {_exp:.2f} ≫ 校准分 {q5c.calibrated_score:.2f} "
+                    f"(gap={_gap:.2f})，论文包装可能强于实质，追加压分"
+                )
+
+        extra = min(stat_penalty + pkg_penalty, 0.20)
+        if extra > 0:
+            before = q5c.calibrated_score
+            q5c = q5c.model_copy(
+                update={
+                    "calibrated_score": max(0.0, before - extra),
+                    "delta": q5c.delta - extra,
+                }
+            )
+            self._log(
+                f"[Q5c] 统计/包装信号后置扣分 {extra:.2f} "
+                f"(stat={stat_penalty:.2f}, pkg={pkg_penalty:.2f}) → "
+                f"calibrated {before:.3f} → {q5c.calibrated_score:.3f}"
+            )
+        return q5c
+
+    # ------------------------------------------------------------------
     # 硬编码最终裁决（一票否决优先 + 非 fatal 分支严禁 reject）
     # P1-2: 增加语义脱耦分支
     # ------------------------------------------------------------------
@@ -3393,19 +3733,23 @@ class DepthReviewer:
     ) -> FinalVerdict:
         """代码层硬编码裁决。
 
-        路径覆盖矩阵：
-        ┌───────────┬──────────┬────────────────┬───────────────┐
-        │ has_fatal │ score    │ llm_verdict    │ final_verdict │
-        ├───────────┼──────────┼────────────────┼───────────────┤
-        │ True      │ ≥ 0.8*   │ (任意)         │ major_revision│ 一票否决
-        │ True      │ < 0.8    │ (任意)         │ reject        │ 一票否决
-        │ True      │ ≥ 0.9    │ accept         │ accept        │ 护栏豁免(伪fatal)
-        │ False     │ (任意)   │ reject         │ major_revision│ 严禁reject
-        │ False     │ ≥ 0.8    │ ≠ reject       │ accept        │ 分数对齐
-        │ False     │ [0.7,0.8)│ ≠ reject       │ minor_revision│ 分数对齐
-        │ False     │ [0.5,0.7)│ ≠ reject       │ major_revision│ 分数对齐
-        │ False     │ < 0.5    │ ≠ reject       │ major_revision│ 低分兜底
-        └───────────┴──────────┴────────────────┴───────────────┘
+        路径覆盖矩阵（阈值以配置为准：accept 档下界 VERDICT_ACCEPT_FLOOR=0.75，
+        minor 档下界 VERDICT_MINOR_FLOOR=0.65，reject 由校准/配置决定；
+        FATAL_VETO_MIN 可经 PAPERFORGE_DEPTH_FATAL_VETO_MIN 配置，
+        降级门槛 FATAL_VETO_DOWNGRADE_FLOOR 可经
+        PAPERFORGE_DEPTH_FATAL_VETO_DOWNGRADE_FLOOR 配置，默认 0.75）：
+        ┌───────────┬─────────────────┬────────────────┬───────────────┐
+        │ has_fatal │ score           │ llm_verdict    │ final_verdict │
+        ├───────────┼─────────────────┼────────────────┼───────────────┤
+        │ ≥MIN 条   │ ≥ DOWNGRADE_FLOOR│ (任意)        │ major_revision│ 一票否决降级
+        │ ≥MIN 条   │ < DOWNGRADE_FLOOR│ (任意)        │ reject        │ 一票否决
+        │ ≥MIN 条   │ ≥ 0.9           │ accept         │ accept        │ 护栏豁免(伪fatal)
+        │ 不足 MIN  │ (任意)          │ reject         │ major_revision│ 严禁reject
+        │ 不足 MIN  │ ≥ accept_thr    │ ≠ reject       │ accept        │ 分数对齐
+        │ 不足 MIN  │ ≥ 0.65          │ ≠ reject       │ minor_revision│ 分数对齐
+        │ 不足 MIN  │ ≥ reject_thr    │ ≠ reject       │ major_revision│ 分数对齐
+        │ 不足 MIN  │ < reject_thr    │ ≠ reject       │ major_revision│ 低分兜底
+        └───────────┴─────────────────┴────────────────┴───────────────┘
         """
         has_fatal = any(cp.severity == "fatal" for cp in critique_points)
         has_minor = any(cp.severity == "minor" for cp in critique_points)
@@ -3416,12 +3760,29 @@ class DepthReviewer:
 
         accept_threshold = self._calibration_result.accept_threshold or VERDICT_ACCEPT_THRESHOLD
         reject_threshold = self._calibration_result.reject_threshold or VERDICT_REJECT_THRESHOLD
-        # 阈值不变式：reject < minor < accept。accept 被校准/配置压到 accept 档下界
-        # 之下时上移回 VERDICT_ACCEPT_FLOOR（0.8），否则下方
+        # 阈值不变式：reject < minor < accept。accept 被校准集压到 accept 档下界
+        # 之下时上移回 VERDICT_ACCEPT_FLOOR（0.75），否则下方
         # `score >= VERDICT_MINOR_FLOOR` 这一档会被 accept 完全吞掉
-        # （minor_revision 档架空，0.6~0.7 的论文被误判 accept）。
-        accept_threshold = max(accept_threshold, VERDICT_ACCEPT_FLOOR)
-        reject_threshold = min(reject_threshold, VERDICT_MINOR_FLOOR - 0.05)
+        # （minor_revision 档架空，0.65~0.75 的论文被误判 accept）。
+        # 注意：**配置**侧的阈值已在加载期强校验（settings 验证器 +
+        # depth_calibration.validate_verdict_thresholds），此处只兜住校准集产出的值；
+        # 一旦真的夹紧，必须留下响亮日志——静默夹紧曾让「accept≥0.6 最优」的
+        # 标定结论永远无法复现（配置写了 0.6，跑起来还是 0.75）。
+        if accept_threshold < VERDICT_ACCEPT_FLOOR:
+            logger.warning(
+                "[裁决] 校准集 accept 阈值 %.3f 低于 accept 档下界 %.2f，已上移（来源：校准集，"
+                "非配置）",
+                accept_threshold,
+                VERDICT_ACCEPT_FLOOR,
+            )
+            accept_threshold = VERDICT_ACCEPT_FLOOR
+        if reject_threshold > VERDICT_MINOR_FLOOR - 0.05:
+            logger.warning(
+                "[裁决] 校准集 reject 阈值 %.3f 过高（≥ minor 档下界-0.05=%.2f），已下调",
+                reject_threshold,
+                VERDICT_MINOR_FLOOR - 0.05,
+            )
+            reject_threshold = VERDICT_MINOR_FLOOR - 0.05
 
         # ── 规则 1（最高优先级）：一票否决（需 ≥FATAL_VETO_MIN 条致命缺陷）──
         # 单条致命缺陷不足以否决：避免 LLM 一次误判把 0.7~0.95 的论文直接拒稿/大修。
@@ -3429,17 +3790,17 @@ class DepthReviewer:
         # 高分与 fatal 标签自相矛盾 → fatal 视为噪声，跳过否决（落到规则 2 分数对齐）。
         strong_and_accepted = (score >= FATAL_VETO_ACCEPT_FLOOR) and (llm_v == "accept")
         if fatal_count >= FATAL_VETO_MIN and not strong_and_accepted:
-            if score >= 0.8:
+            if score >= FATAL_VETO_DOWNGRADE_FLOOR:
                 final_verdict = "major_revision"
                 reason = (
                     f"存在 {fatal_count} 个致命缺陷（需 ≥{FATAL_VETO_MIN} 条才触发一票否决），"
-                    f"虽然校准分 {score:.3f} ≥ 0.8，但强制降级为 major_revision"
+                    f"虽然校准分 {score:.3f} ≥ {FATAL_VETO_DOWNGRADE_FLOOR}，但强制降级为 major_revision"
                 )
             else:
                 final_verdict = "reject"
                 reason = (
                     f"存在 {fatal_count} 个致命缺陷（一票否决触发），"
-                    f"校准分 {score:.3f} < 0.8，判定为 reject"
+                    f"校准分 {score:.3f} < {FATAL_VETO_DOWNGRADE_FLOOR}，判定为 reject"
                 )
             return FinalVerdict(
                 calibrated_score=score,
@@ -3721,10 +4082,7 @@ class DepthReviewer:
         qe = qe_result
         evidence_pool: dict[str, str] = {}
         for item in qe.evidence_pool:
-            kw_suffix = ""
-            if item.keywords:
-                kw_suffix = f" [关键词: {', '.join(item.keywords)}]"
-            evidence_pool[item.id] = item.content + kw_suffix
+            evidence_pool[item.id] = _evidence_pool_entry(item)
         self._log(f"QE: {len(evidence_pool)} 条证据, IDs={list(evidence_pool.keys())}")
 
         # ── 证据池为空 → 不可恢复的评审失败（LLM 未返回有效输出） ──
@@ -3742,8 +4100,7 @@ class DepthReviewer:
             qe.evidence_pool, paper_id
         )
         for item in qe.evidence_pool[n_llm_items:]:
-            kw_suffix = f" [关键词: {', '.join(item.keywords)}]" if item.keywords else ""
-            evidence_pool[item.id] = item.content + kw_suffix
+            evidence_pool[item.id] = _evidence_pool_entry(item)
         if figure_n:
             self._log(f"QE: 证据池扩至 {len(evidence_pool)} 条（含 {figure_n} 条图表证据）")
 
@@ -3813,53 +4170,13 @@ class DepthReviewer:
             f"llm_v={q5c.llm_verdict}, delta_missing={q5c.delta_missing}"
         )
 
-        # 增量风险后置扣分：Q5c 系统性正偏时直接校正
-        inc_risk = getattr(self, "_inc_risk", "unknown")
-        if inc_risk == "high" and q5c.delta > 0:
-            penalty = 0.05
-            q5c = q5c.model_copy(
-                update={
-                    "calibrated_score": max(0.0, q5c.calibrated_score - penalty),
-                    "delta": q5c.delta - penalty,
-                }
-            )
-            self._log(
-                f"[Q5c] incrementality_risk=high, delta>0 → 后置扣分 {penalty:.2f}, "
-                f"calibrated {q5c.calibrated_score + penalty:.3f} → {q5c.calibrated_score:.3f}"
-            )
-
-        # ── D2：统计红旗后置扣分（此前统计检测只诊断、不进分数）──
-        # 提前计算（零 LLM）并在下方复用；统计红旗反向反馈进 calibrated_score。
+        # 后置扣分（增量风险 + 统计红旗 + 包装识别）：
+        # 与 DAG 路径共用同一实现（此前串行路径多了一层 pkg_penalty，
+        # 导致同一篇论文换入口分差可达 0.04 —— 双实现漂移）。
         self._stat_flags = _statistical_plausibility_check(full_text)
         for _f in self._stat_flags:
             self._log(f"[统计合理性] {_f}")
-        stat_penalty = _stat_penalty(self._stat_flags)
-
-        # ── D4：包装识别（Q0 期望 ≫ 校准分说明包装强于实质，辩护易中和致命缺陷）──
-        pkg_penalty = 0.0
-        _exp = getattr(q0, "expectation", 0.5)
-        if isinstance(_exp, (int, float)) and _exp:
-            _gap = _exp - q5c.calibrated_score
-            if _gap > 0.2:
-                pkg_penalty = 0.04
-                self._log(
-                    f"[包装识别] Q0期望 {_exp:.2f} ≫ 校准分 {q5c.calibrated_score:.2f} "
-                    f"(gap={_gap:.2f})，论文包装可能强于实质，追加压分"
-                )
-
-        _extra = min(stat_penalty + pkg_penalty, 0.20)
-        if _extra > 0:
-            q5c = q5c.model_copy(
-                update={
-                    "calibrated_score": max(0.0, q5c.calibrated_score - _extra),
-                    "delta": q5c.delta - _extra,
-                }
-            )
-            self._log(
-                f"[Q5c] 统计/包装信号后置扣分 {_extra:.2f} "
-                f"(stat={stat_penalty:.2f}, pkg={pkg_penalty:.2f}) → "
-                f"calibrated {q5c.calibrated_score + _extra:.3f} → {q5c.calibrated_score:.3f}"
-            )
+        q5c = self._post_adjust_score(q5c, q0, self._stat_flags)
 
         figure_coverage = self._figure_coverage(qf)
         balanced_cp = self._apply_figure_corroboration(balanced_cp, qf)
@@ -3903,11 +4220,16 @@ class DepthReviewer:
         abstract: str = "",
         hotspots: list[str] | None = None,
         paper_meta: dict[str, Any] | None = None,
+        paper_obj: Any | None = None,
     ) -> DepthV4Result:
-        """使用 DepthDAG 引擎执行拓扑并行审稿。
+        """使用 DepthDAG 引擎执行拓扑波次并行审稿。
 
         通过 build_depth_dag + DepthDAG.execute()
         实现真正的 DAG 拓扑波次并行，自动处理依赖传递与失败级联取消。
+
+        paper_obj：传入原论文 ORM 对象时，热点词走 `_load_hotspots`
+        （支持 hotspots_source=paper/db 配置）。此前 DAG 路径硬编码 DEFAULT_HOTSPOTS，
+        使该配置只对串行 `review()` 生效（双实现漂移）。
         """
         self._paper_meta = paper_meta
         self._logs = []
@@ -3917,7 +4239,8 @@ class DepthReviewer:
             return self._fast_result(paper_id, title)
 
         if hotspots is None:
-            hotspots = DEFAULT_HOTSPOTS
+            hotspots = self._load_hotspots(paper_obj)
+        self._log(f"热点词: {hotspots[:5]}{'...' if len(hotspots) > 5 else ''}")
 
         # 1. 文本分段
         segments = segment_paper_text(full_text, abstract)
@@ -3999,9 +4322,7 @@ class DepthReviewer:
                     )
                     ev_items = qe_result.evidence_pool
                     ev_pool: dict[str, str] = {
-                        item.id: item.content
-                        + (f" [关键词: {', '.join(item.keywords)}]" if item.keywords else "")
-                        for item in ev_items
+                        item.id: _evidence_pool_entry(item) for item in ev_items
                     }
                     if figure_n:
                         self._log(
@@ -4138,37 +4459,11 @@ class DepthReviewer:
             self._log(f"  节点 {name}: {elapsed:.2f}s")
         self._log(f"总耗时: {pipeline_result.total_elapsed:.2f}s")
 
-        # 7. 增量风险后置扣分（DAG 路径）
-        inc_risk = getattr(self, "_inc_risk", "unknown")
-        if inc_risk == "high" and q5c_res.delta > 0:
-            penalty = 0.05
-            q5c_res = q5c_res.model_copy(
-                update={
-                    "calibrated_score": max(0.0, q5c_res.calibrated_score - penalty),
-                    "delta": q5c_res.delta - penalty,
-                }
-            )
-            self._log(
-                f"[Q5c] incrementality_risk=high, delta>0 → 后置扣分 {penalty:.2f}, "
-                f"calibrated {q5c_res.calibrated_score + penalty:.3f} → {q5c_res.calibrated_score:.3f}"
-            )
-
-        # 7.5 统计红旗后置扣分（DAG 路径，与串行 review 的 D2 保持一致）
+        # 7. 后置扣分（增量风险 + 统计红旗 + 包装识别）—— 与串行 review() 共用同一实现
         self._stat_flags = _statistical_plausibility_check(full_text)
         for _f in self._stat_flags:
             self._log(f"[统计合理性] {_f}")
-        stat_penalty = _stat_penalty(self._stat_flags)
-        if stat_penalty > 0:
-            q5c_res = q5c_res.model_copy(
-                update={
-                    "calibrated_score": max(0.0, q5c_res.calibrated_score - stat_penalty),
-                    "delta": q5c_res.delta - stat_penalty,
-                }
-            )
-            self._log(
-                f"[Q5c] 统计信号后置扣分 {stat_penalty:.2f} → "
-                f"calibrated {q5c_res.calibrated_score + stat_penalty:.3f} → {q5c_res.calibrated_score:.3f}"
-            )
+        q5c_res = self._post_adjust_score(q5c_res, q0_res, self._stat_flags)
 
         # 8. 应用硬性裁决并组装
         figure_coverage = self._figure_coverage(qf_res)
@@ -4525,12 +4820,75 @@ def _constant_offset_flag(a: list[float], b: list[float], label: str) -> str | N
     return None
 
 
-def _benford_flag(all_vals: list[float], context: str) -> str | None:
-    """Benford 首位数字分布偏离（≥20 个正值且 χ²>30）。"""
-    positive = [v for v in all_vals if v > 0]
-    first_digits = [int(str(v)[0]) for v in positive if str(v)[0].isdigit()]
+def _is_positive_number(value: Any) -> bool:
+    """是否为可参与统计的有限正数（排除 bool 与 nan/inf）。"""
+    if isinstance(value, bool):
+        return False
+    if not isinstance(value, (int, float)):
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            return False
+    return math.isfinite(value) and value > 0
+
+
+def _leading_digit(value: Any) -> int | None:
+    """取数值的**首位有效数字**（Benford 定律的正确口径）。
+
+    0.85 → 8；0.0132 → 1；12.3 → 1；-3.4 → 3（取绝对值）；0/非有限 → None。
+
+    修复（2026-09-16）：旧实现是 `int(str(v)[0])`，对比率型数值（0.85）得到数字 "0"，
+    而 0 不在 1–9 的期望集合内 → 所有样本都计入「观测为 0」→ χ² 恰等于样本量 n，
+    于是**任何 ≥31 个 0.x 的论文表格都会被判为严重偏离 Benford**（可复现），
+    再叠加任一其他指纹就通过 `_statistical_redline` 直接 reject。
+    ML 论文里 accuracy/F1/AUC 全是 0.x，这个假阳性面很大。
+    """
+    try:
+        v = abs(float(value))
+    except (TypeError, ValueError):
+        return None
+    if v == 0.0 or not math.isfinite(v):
+        return None
+    exp = math.floor(math.log10(v))
+    mantissa = v / (10.0**exp)
+    digit = int(mantissa)
+    if digit < 1:  # 浮点边界：mantissa 可能算出 0.9999999
+        digit = int(v / (10.0 ** (exp + 1)))
+    if digit > 9:  # 浮点进位（9.9999999 → 10）
+        return 9
+    return digit if 1 <= digit <= 9 else None
+
+
+def _benford_flag(
+    all_vals: list[float],
+    context: str,
+    *,
+    min_samples: int | None = None,
+) -> str | None:
+    """Benford 首位数字分布偏离（默认 ≥50 个正值且 χ²>30）。
+
+    min_samples 可经 PAPERFORGE_DEPTH_STAT_BENFORD_MIN_SAMPLES 调整（下限 20）：
+    χ² 随样本量增长，样本太小时该检验没有区分力（旧默认 20 在 n=20~30 上
+    几乎只会误报）。
+    """
+    threshold = _BENFORD_MIN_SAMPLES if min_samples is None else max(20, int(min_samples))
+    if not isinstance(all_vals, (list, tuple)):
+        return None
+
+    # 适用性闸门（关键）：Benford 定律只适用于**跨多个数量级**的自然量级数据。
+    # 有界比率（0.62~0.99 的 accuracy/F1/AUC）均匀分布于 [0,1]，本身就不服从
+    # Benford；对它们跑该检验是统计误用，会稳定报假阳性。
+    # 故要求 max/min ≥ 100（跨两个数量级）才做检验，否则直接放弃（不报旗）。
+    magnitudes = [abs(float(v)) for v in all_vals if _is_positive_number(v)]
+    if not magnitudes:
+        return None
+    lo, hi = min(magnitudes), max(magnitudes)
+    if lo <= 0 or hi / lo < 100.0:
+        return None
+
+    first_digits = [d for d in (_leading_digit(v) for v in all_vals) if d is not None]
     n = len(first_digits)
-    if n < 20:
+    if n < threshold:
         return None
     observed = Counter(first_digits)
     benford_exp = {d: n * math.log10(1 + 1 / d) for d in range(1, 10)}
@@ -4545,7 +4903,7 @@ def _benford_flag(all_vals: list[float], context: str) -> str | None:
         return (
             f"[Benford偏离] {context} {n} 个数值首位数字分布严重偏离 Benford 定律"
             f"（首位 {top_dev} 实际 {obs_pct:.0f}% vs 理论 {exp_pct:.0f}%，"
-            f"χ²={chi2:.0f}），人类编造数据常趋向均匀分布，疑似捏造"
+            f"χ²={chi2:.0f}，n={n}），人类编造数据常趋向均匀分布，疑似捏造"
         )
     return None
 
@@ -5053,24 +5411,21 @@ def _eval_params_snapshot() -> dict:
 def _citation_integrity_report(full_text: str) -> dict:
     """ADR-014 P4：论文侧引用真值校验（解决 W8：此前只数引用个数、不查真伪）。
 
-    环境开关（默认关闭，零开销、100% 向后兼容）：
-      - 未设置 PAPERFORGE_CITATION_VERIFY            → 返回 {}（不计算）
+    配置通道（2026-09-16 统一收口）：显式 env > Settings（兼容 .env），三态语义见
+    ``settings.resolve_citation_verify_mode``：
+      - 未配置 / 空串                                 → 本链路默认档 skip → 返回 {}
       - PAPERFORGE_CITATION_VERIFY=offline          → 仅本地抽取 + 引用一致性（不触网）
       - PAPERFORGE_CITATION_VERIFY=1/true/on/yes     → 额外接 Crossref 在线核验真伪
 
+    本链路默认档 = "skip"：深度审稿是批量任务（LLM 已占绝大部分成本），
+    未配置时不额外跑引用校验。
+
     fail-open：任何异常（网络/解析/限流）都返回 {}，绝不阻断评测管线。
     """
-    raw = os.environ.get("PAPERFORGE_CITATION_VERIFY")
-    if raw is None or raw.strip() == "":
+    mode = resolve_citation_verify_mode(default="skip")
+    if mode == "skip":
         return {}
-    mode = raw.strip().lower()
-    if mode in ("offline",):
-        online = False
-    elif mode in ("1", "true", "yes", "on"):
-        online = True
-    else:
-        # 其他非空值视为开启离线一致性检查（安全默认）
-        online = False
+    online = mode == "online"
     try:
         from .integrity.citation_verifier import assess_citation_integrity
 
@@ -5095,10 +5450,11 @@ def _score_uncertainty_report(
     仅当 PAPERFORGE_UNCERTAINTY_GATE 开启时计算，默认返回 {}（零开销、向后兼容）。
     fail-open：任何异常返回 {}，绝不改变原有 verdict。
     """
-    raw = os.environ.get("PAPERFORGE_UNCERTAINTY_GATE")
-    if raw is None or raw.strip() == "":
+    # 配置通道统一（2026-09-16）：env 显式设置优先，否则回落 Settings（含 .env）。
+    # 旧实现只读 os.environ，使 .env 里的 PAPERFORGE_UNCERTAINTY_GATE=1 静默失效。
+    if not env_first_bool("PAPERFORGE_UNCERTAINTY_GATE", get_settings().uncertainty_gate):
         return {}
-    gate = raw.strip().lower() in ("1", "true", "on", "yes")
+    gate = True
     try:
         from .stats.bootstrap import uncertainty_gate
 
@@ -5109,7 +5465,9 @@ def _score_uncertainty_report(
             float(getattr(q4, "influence_score", 0.5)),
             float(getattr(q4, "reproducibility_score", 0.5)),
         ]
-        width = float(os.environ.get("PAPERFORGE_UNCERTAINTY_WIDTH", "0.15"))
+        width = env_first_float(
+            "PAPERFORGE_UNCERTAINTY_WIDTH", float(get_settings().uncertainty_width), minimum=1e-6
+        )
         result = uncertainty_gate(
             float(calibrated_score), sub_scores, width_threshold=width, gate_enabled=gate
         )
