@@ -1,7 +1,7 @@
 {
   "name": "paperforge-web",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "description": "PaperForge 学术写作助手前端 — 工程化 React 单页应用",
   "scripts": {

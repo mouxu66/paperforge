@@ -2,7 +2,7 @@
   "app": {
     "title": "论文检索",
     "subtitle": "学术写作助手",
-    "version": "v1.0.0 · React SPA"
+    "version": "v1.1.0 · React SPA"
   },
   "nav": {
     "home": "首页",

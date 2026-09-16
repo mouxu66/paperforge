@@ -2,7 +2,7 @@
   "app": {
     "title": "Paper Search",
     "subtitle": "Academic Writing Assistant",
-    "version": "v1.0.0 · React SPA"
+    "version": "v1.1.0 · React SPA"
   },
   "nav": {
     "home": "Home",
