@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { Paper } from "@/api/types";
+import type { PaperDepthScore } from "@/api/depth";
 import { arxivUrl, formatAuthors, formatSize } from "@/utils/format";
 import { SOURCE_COLOR, CATEGORY_COLOR } from "@/utils/constants";
 import { useMetadataActions } from "@/hooks/useMetadataActions";
@@ -28,8 +29,24 @@ interface Props {
   selected?: boolean;
   onToggleSelect?: () => void;
   onEnrich?: () => void;
-  depthScore?: { verdict: string | null; noveltyScore: number | null };
+  depthScore?: PaperDepthScore;
 }
+
+/** 判决 → 中文短语。tooltip 与卡片主体共用，避免两处措辞漂移。 */
+const VERDICT_LABELS: Record<string, string> = {
+  accept: "接收",
+  minor_revision: "小修",
+  major_revision: "大修",
+  reject: "拒稿",
+};
+
+/** 判决 → 颜色（与 DepthReviewTab / ReflectionResultView 的语义保持一致）。 */
+const VERDICT_COLORS: Record<string, string> = {
+  accept: "#52c41a",
+  minor_revision: "#1677ff",
+  major_revision: "#fa8c16",
+  reject: "#ff4d4f",
+};
 
 export default function PaperCard({ paper, selected, onToggleSelect, onEnrich, depthScore }: Props) {
   const navigate = useNavigate();
@@ -207,18 +224,25 @@ export default function PaperCard({ paper, selected, onToggleSelect, onEnrich, d
           style={{ fontSize: 13, lineHeight: 1.8, color: "var(--pf-text-placeholder)" }}
         >
           {depthScore && depthScore.verdict && (
-            <Tooltip title={t("paper.depthSummary", {
-                verdict: depthScore.verdict,
-                novelty: depthScore.noveltyScore != null ? (depthScore.noveltyScore * 100).toFixed(0) : t("paper.notAvailable", "暂无"),
-              })}>
+            <Tooltip
+              title={t("paper.depthSummary", {
+                verdict: VERDICT_LABELS[depthScore.verdict] || depthScore.verdict,
+                score:
+                  depthScore.calibratedScore != null
+                    ? (depthScore.calibratedScore * 100).toFixed(0)
+                    : t("paper.notAvailable", "暂无"),
+                fatal: depthScore.fatalCount ?? 0,
+                novelty:
+                  depthScore.noveltyScore != null
+                    ? (depthScore.noveltyScore * 100).toFixed(0)
+                    : t("paper.notAvailable", "暂无"),
+              })}
+            >
               <span
                 style={{
                   fontSize: 12,
                   fontWeight: 600,
-                  color: depthScore.verdict === 'accept' ? '#52c41a'
-                    : depthScore.verdict === 'minor_revision' ? '#1677ff'
-                    : depthScore.verdict === 'major_revision' ? '#fa8c16'
-                    : '#ff4d4f',
+                  color: VERDICT_COLORS[depthScore.verdict] || "#ff4d4f",
                   cursor: 'pointer',
                 }}
                 onClick={(e) => {
@@ -227,14 +251,10 @@ export default function PaperCard({ paper, selected, onToggleSelect, onEnrich, d
                 }}
               >
                 <Radar size={12} style={{ marginRight: 2, verticalAlign: "middle" }} />
-                {depthScore.verdict === 'accept' ? '接收'
-                  : depthScore.verdict === 'minor_revision' ? '小修'
-                  : depthScore.verdict === 'major_revision' ? '大修'
-                  : depthScore.verdict === 'reject' ? '拒稿'
-                  : depthScore.verdict}
-                {depthScore.noveltyScore != null && (
+                {VERDICT_LABELS[depthScore.verdict] || depthScore.verdict}
+                {depthScore.calibratedScore != null && (
                   <span style={{ marginLeft: 4, color: "var(--pf-text-placeholder)" }}>
-                    {(depthScore.noveltyScore * 100).toFixed(0)}
+                    {(depthScore.calibratedScore * 100).toFixed(0)}
                   </span>
                 )}
               </span>

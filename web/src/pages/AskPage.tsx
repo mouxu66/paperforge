@@ -172,73 +172,74 @@ export default function AskPage() {
   };
 
   return (
-    <div className="pf-ask-workspace" style={{ display: "flex", gap: 20, maxWidth: 1180, margin: "0 auto" }}>
-      {/* 历史对话侧边栏 */}
-      <div style={{ width: 260, flexShrink: 0 }}>
-        <AskHistorySidebar
-          items={historyItems}
-          activeHistoryId={activeHistoryId}
-          onSelect={handleHistoryClick}
-          onRemoveItem={handleRemoveItem}
-          onClearAll={handleClearAll}
-        />
-      </div>
+    <div className="pf-page-wide">
+      {/* 页头提升到全宽：此前它挂在 .pf-ask-main 内，被左侧历史栏推到 x=570，
+          与全站其它页面标题的 290 基线不齐。 */}
+      <PageHeader title={t("ask.title")} description={t("ask.subtitle")} />
 
-      {/* 主内容区 */}
-      <div className="pf-ask-main" style={{ flex: 1, maxWidth: 900 }}>
-        <PageHeader title={t("ask.title")} description={t("ask.subtitle")} />
+      <div className="pf-ask-workspace" style={{ display: "flex", gap: 20 }}>
+        {/* 主内容区（提问 + 结果） */}
+        <div className="pf-ask-main" style={{ flex: 1, minWidth: 0 }}>
+          {/* 提问输入区 */}
+          <AskInput
+            query={query}
+            onQueryChange={setQuery}
+            loading={loading}
+            onSubmit={handleSubmit}
+            paperOptions={paperOptions}
+            selectedIds={selectedIds}
+            onSelectedIdsChange={setSelectedIds}
+          />
 
-        {/* 提问输入区 */}
-        <AskInput
-          query={query}
-          onQueryChange={setQuery}
-          loading={loading}
-          onSubmit={handleSubmit}
-          paperOptions={paperOptions}
-          selectedIds={selectedIds}
-          onSelectedIdsChange={setSelectedIds}
-        />
-
-        {/* 未配置模型时的内联提示（不阻断提问，但给出明确引导） */}
-        {!hasModel && !loading && !streaming && !result && (
-          <Card
-            className="pf-glass-card"
-            variant="borderless"
-            style={{ marginBottom: 20, padding: 16 }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-              <Zap style={{ color: "var(--pf-text-placeholder)", fontSize: 20 }} />
-              <div style={{ flex: 1, minWidth: 240 }}>
-                <div
-                  className="pf-serif"
-                  style={{ fontSize: 15, fontWeight: 600, color: "var(--pf-text-primary)" }}
-                >
-                  {t("ask.noModelTitle")}
+          {/* 未配置模型时的内联提示（不阻断提问，但给出明确引导） */}
+          {!hasModel && !loading && !streaming && !result && (
+            <Card
+              className="pf-glass-card"
+              variant="borderless"
+              style={{ marginBottom: 20, padding: 16 }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <Zap style={{ color: "var(--pf-text-placeholder)", fontSize: 20 }} />
+                <div style={{ flex: 1, minWidth: 240 }}>
+                  <div
+                    className="pf-serif"
+                    style={{ fontSize: 15, fontWeight: 600, color: "var(--pf-text-primary)" }}
+                  >
+                    {t("ask.noModelTitle")}
+                  </div>
+                  <div style={{ fontSize: 13, color: "var(--pf-text-muted)", marginTop: 2 }}>
+                    {t("ask.noModelDesc")}
+                  </div>
                 </div>
-                <div style={{ fontSize: 13, color: "var(--pf-text-muted)", marginTop: 2 }}>
-                  {t("ask.noModelDesc")}
-                </div>
+                <Button type="primary" icon={<Zap />} onClick={() => navigate("/models")}>
+                  {t("ask.goToModels")}
+                </Button>
               </div>
-              <Button
-                type="primary"
-                icon={<Zap />}
-                onClick={() => navigate("/models")}
-              >
-                {t("ask.goToModels")}
-              </Button>
-            </div>
-          </Card>
-        )}
+            </Card>
+          )}
 
-        {/* 结果展示区 */}
-        <AskResult
-          result={result}
-          loading={loading}
-          onNavigate={navigate}
-          streaming={streaming}
-          streamingText={streamingText}
-          streamingRefs={streamingRefs}
-        />
+          {/* 结果展示区 */}
+          <AskResult
+            result={result}
+            loading={loading}
+            onNavigate={navigate}
+            streaming={streaming}
+            streamingText={streamingText}
+            streamingRefs={streamingRefs}
+            onPickExample={setQuery}
+          />
+        </div>
+
+        {/* 历史对话侧边栏（右栏）：此前在左侧，会把页面标题挤离 290 基线 */}
+        <div className="pf-ask-history-col" style={{ width: 260, flexShrink: 0 }}>
+          <AskHistorySidebar
+            items={historyItems}
+            activeHistoryId={activeHistoryId}
+            onSelect={handleHistoryClick}
+            onRemoveItem={handleRemoveItem}
+            onClearAll={handleClearAll}
+          />
+        </div>
       </div>
     </div>
   );

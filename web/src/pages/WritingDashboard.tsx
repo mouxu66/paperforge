@@ -263,7 +263,7 @@ export default function WritingDashboard() {
   };
 
   return (
-    <div className="pf-writing-workspace" style={{ maxWidth: 1000, margin: "0 auto" }}>
+    <div className="pf-writing-workspace pf-page-read">
       <div
         className="pf-writing-header"
         style={{

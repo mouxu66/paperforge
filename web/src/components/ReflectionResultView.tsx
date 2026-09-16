@@ -228,7 +228,7 @@ export default function ReflectionResultView() {
   const uncoveredKeypoints = r?.coverage_uncovered ?? [];
 
   return (
-    <div style={{ maxWidth: 900, margin: "0 auto", padding: "24px 16px" }}>
+    <div className="pf-page-read" style={{ padding: "24px 0" }}>
       {/* 顶部状态栏 */}
       <Space style={{ marginBottom: 16 }}>
         <Button size="small" icon={<ArrowLeft />} onClick={() => navigate("/reflection")}>

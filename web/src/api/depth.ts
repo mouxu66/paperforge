@@ -372,11 +372,43 @@ export async function listDepthV4Papers(
 }
 
 /** 按论文ID批量查询深度评审分数 */
+/**
+ * 列表卡片用的轻量评审摘要（`GET /depth/v4/scores`）。
+ *
+ * ⚠️ 展示口径：卡片主体必须用 `calibrated_score`（综合分）——判决就是由它 +
+ * `fatal_count` 决定的；`novelty_score` 是 Q2 单维度的创新分，与判决不同源。
+ * 曾经卡片显示 novelty，导致「创新分 50 却大修、65 却拒稿」被误判为系统算错。
+ */
+export interface DepthScoreEntry {
+  verdict: string | null;
+  /** 综合分（0~1），判决依据；2026-09-16 前后端未返回，故为可选以兼容旧响应 */
+  calibrated_score?: number | null;
+  /** Q2 创新分（0~1），仅单维度参考值 */
+  novelty_score: number | null;
+  /** 致命缺陷条数（Q5a severity=fatal）；≥2 条触发一票否决（分数再高也拒稿） */
+  fatal_count?: number | null;
+}
+
+/**
+ * 列表/卡片用的 UI 归一化摘要（snake_case → camelCase，并补齐缺省值）。
+ *
+ * 卡片主体显示 `calibratedScore`（综合分，与判决同源）；`noveltyScore` 只进 tooltip。
+ */
+export interface PaperDepthScore {
+  verdict: string | null;
+  /** 综合分（0~1）——判决依据，卡片主体显示它 */
+  calibratedScore: number | null;
+  /** Q2 创新分（0~1）——单维度参考，不再作为卡片主数字 */
+  noveltyScore: number | null;
+  /** 致命缺陷条数；≥2 条触发一票否决（分数不低也会拒稿） */
+  fatalCount: number | null;
+}
+
 export async function getDepthScoresByPaperIds(
   paperIds: string[],
-): Promise<Record<string, { verdict: string | null; novelty_score: number | null }>> {
+): Promise<Record<string, DepthScoreEntry>> {
   if (paperIds.length === 0) return {};
-  const { data } = await depthHttp.get<{ scores: Record<string, { verdict: string | null; novelty_score: number | null }> }>(
+  const { data } = await depthHttp.get<{ scores: Record<string, DepthScoreEntry> }>(
     "/depth/v4/scores",
     { params: { paper_ids: paperIds.join(",") } },
   );

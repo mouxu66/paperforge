@@ -224,7 +224,7 @@ export default function DetailPage() {
 
   if (loading) {
     return (
-      <div style={{ maxWidth: 900, margin: "0 auto", padding: "0 24px" }}>
+      <div className="pf-page-read">
         <Skeleton active paragraph={{ rows: 12 }} />
       </div>
     );
@@ -288,13 +288,16 @@ export default function DetailPage() {
     },
     {
       key: "depthReview",
-      label: t("detail.tabDepthReview", "深度评审"),
-      children: <DepthReviewTab paperId={paper.id} />,
+      label:
+        (paper.category ?? "").trim().toLowerCase() === "report"
+          ? t("detail.tabReflectionReview", "感悟报告评审")
+          : t("detail.tabDepthReview", "深度评审"),
+      children: <DepthReviewTab paperId={paper.id} category={paper.category} />,
     },
   ];
 
   return (
-    <div style={{ maxWidth: 900, margin: "0 auto", padding: "0 24px" }}>
+    <div className="pf-page-read">
       <Link
         to="/"
         style={{

@@ -119,7 +119,7 @@ export default function ModelsPage() {
   });
 
   return (
-    <div style={{ maxWidth: 1000, margin: "0 auto", padding: "24px 0" }}>
+    <div className="pf-page-read" style={{ padding: "24px 0" }}>
       <Card
         className="pf-glass-card"
         title={

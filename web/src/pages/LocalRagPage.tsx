@@ -62,7 +62,7 @@ export default function LocalRagPage() {
   const [files, setFiles] = useState<UploadFile[]>([]);
 
   return (
-    <div style={{ maxWidth: 900, margin: "0 auto", padding: "0 24px" }}>
+    <div className="pf-page-read">
       <PageHeader
         title={t("nav.localRag")}
         description={t("nav.localRagDesc", "基于本地知识库的检索增强生成 — 问答 · 综述 · 写作")}

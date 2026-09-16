@@ -1,4 +1,4 @@
-import { HelpCircle, FileText } from "lucide-react";
+import { HelpCircle, FileText, ArrowRight } from "lucide-react";
 import { Typography, Card, Space, Tag, Empty, Spin } from "antd";
 
 import { useTranslation } from "react-i18next";
@@ -17,6 +17,8 @@ interface AskResultProps {
   streamingRefs?: AskReference[];
   /** 是否处于流式输出中 */
   streaming?: boolean;
+  /** 空状态下点击示例问法：把问题填进输入框（不直接发起请求） */
+  onPickExample?: (question: string) => void;
 }
 
 /** 结果展示区：加载中 / 流式输出 / 回答+参考文献 / 空状态 */
@@ -27,6 +29,7 @@ export default function AskResult({
   streamingText = "",
   streamingRefs = [],
   streaming = false,
+  onPickExample,
 }: AskResultProps) {
   const { t } = useTranslation();
   // 加载中（RAG 检索阶段）
@@ -55,7 +58,9 @@ export default function AskResult({
           style={{ marginBottom: 20, padding: 8 }}
           title={
             <Space>
-              <span className="pf-ask-result-icon"><HelpCircle /></span>
+              <span className="pf-ask-result-icon">
+                <HelpCircle />
+              </span>
               <span className="pf-serif" style={{ fontSize: 16, fontWeight: 600 }}>
                 {t("ask.answer")}
               </span>
@@ -118,7 +123,9 @@ export default function AskResult({
           style={{ marginBottom: 20, padding: 8 }}
           title={
             <Space>
-              <span className="pf-ask-result-icon"><HelpCircle /></span>
+              <span className="pf-ask-result-icon">
+                <HelpCircle />
+              </span>
               <span className="pf-serif" style={{ fontSize: 16, fontWeight: 600 }}>
                 {t("ask.answer")}
               </span>
@@ -169,25 +176,38 @@ export default function AskResult({
     );
   }
 
-  // 空状态
+  // 空状态：不是一个"什么都没有"的白框，而是一组可直接点击的示例问法。
+  // 此前这里只有问号 + 两行说明，占掉一大块高度却没有任何可点击出口。
+  // 点击示例只把问题填进输入框（不直接发起请求），避免误触产生模型调用。
+  const exampleKeys = ["exampleQ1", "exampleQ2", "exampleQ3", "exampleQ4"] as const;
+
   return (
-    <Card
-      className="pf-glass-card pf-ask-empty"
-      variant="borderless"
-      style={{ textAlign: "center", padding: 48 }}
-    >
-      <HelpCircle
-        style={{ fontSize: 40, color: "var(--pf-text-placeholder)", marginBottom: 16 }}
-      />
-      <div
-        className="pf-serif"
-        style={{ fontSize: 16, color: "var(--pf-text-muted)", marginBottom: 6 }}
-      >
-        {t("ask.askLibraryHint")}
+    <Card className="pf-glass-card pf-ask-empty" variant="borderless">
+      <div className="pf-ask-empty-head">
+        <HelpCircle style={{ fontSize: 32, color: "var(--pf-text-placeholder)" }} />
+        <div className="pf-serif pf-ask-empty-title">{t("ask.askLibraryHint")}</div>
+        <div className="pf-ask-empty-desc">{t("ask.askLibraryDesc")}</div>
       </div>
-      <div style={{ fontSize: 13, color: "var(--pf-text-placeholder)" }}>
-        {t("ask.askLibraryDesc")}
-      </div>
+
+      {onPickExample && (
+        <div className="pf-ask-empty-examples">
+          <div className="pf-ask-empty-examples-label">{t("ask.examplesLabel")}</div>
+          {exampleKeys.map((key) => {
+            const question = t(`ask.${key}`);
+            return (
+              <button
+                type="button"
+                key={key}
+                className="pf-ask-example"
+                onClick={() => onPickExample(question)}
+              >
+                <span className="pf-ask-example-text">{question}</span>
+                <ArrowRight size={14} aria-hidden="true" />
+              </button>
+            );
+          })}
+        </div>
+      )}
     </Card>
   );
 }

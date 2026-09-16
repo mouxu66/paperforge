@@ -88,8 +88,9 @@
     "okText": "OK"
   },
   "home": {
-    "title": "Paper Library",      "subtitle": "Local RAG academic writing assistant for search, Q&A, and writing",
-      "kicker": "PaperForge research workspace",
+    "title": "Paper Library",
+    "subtitle": "Local RAG academic writing assistant for search, Q&A, and writing",
+    "kicker": "PaperForge research workspace",
     "heroSignal": "Research workspace ready",
     "heroFlow": "Collect · Understand · Create",
     "heroArtLabel": "LIBRARY SIGNAL",
@@ -192,6 +193,11 @@
     "noReferences": "No references yet",
     "askLibraryHint": "Ask the Paper Library",
     "askLibraryDesc": "Enter a question and the system will retrieve relevant passages from indexed papers and generate an answer with citations",
+    "examplesLabel": "Try one of these",
+    "exampleQ1": "How does the self-attention mechanism in Transformers work?",
+    "exampleQ2": "When should I use RAG versus fine-tuning on a small knowledge base?",
+    "exampleQ3": "What are the main disagreements among the robot-learning methods in this library?",
+    "exampleQ4": "Summarize the core contribution of the most-cited paper in the library",
     "history": "History",
     "noHistory": "No conversation history",
     "clearAllHistory": "Clear all history",
@@ -359,7 +365,7 @@
     "citationsShort": "{{count}} citations",
     "chunksShort": "{{count}} chunks",
     "notAvailable": "Not available",
-    "depthSummary": "DEPTH review: {{verdict}}, novelty: {{novelty}}",
+    "depthSummary": "DEPTH review: {{verdict}}｜overall {{score}}｜fatal flaws {{fatal}}｜novelty {{novelty}}",
     "influentialCitations": "Influential Citations",
     "relatedPapers": "Related Papers",
     "relatedBySemantic": "Based on semantic similarity",
@@ -603,7 +609,8 @@
     "tabRelationGraph": "Relation Graph",
     "tabAnnotations": "Annotations",
     "tabFigures": "Figures",
-    "tabDepthReview": "Depth Review"
+    "tabDepthReview": "Depth Review",
+    "tabReflectionReview": "Reflection Report Review"
   },
   "write": {
     "title": "Writing Workbench",
@@ -1078,6 +1085,9 @@
     "reviewStarted": "Review task submitted ({{taskId}})",
     "reviewStartFailed": "Failed to start review",
     "noReview": "No DEPTH v4.1 review result for this paper",
+    "reportPipelineTitle": "This is a reflection/reading report — not a paper-review target",
+    "reportPipelineDesc": "Reflection reports use their own rubric (Well Done / Needs Evidence / Needs Depth / Rewrite Required) and do not enter the DEPTH v4.2 paper pipeline. Please open the reflection report result page.",
+    "gotoReflection": "View reflection report review",
     "startReview": "Start Depth Review",
     "errorTitle": "Failed to fetch review result",
     "statusRunning": "Running",

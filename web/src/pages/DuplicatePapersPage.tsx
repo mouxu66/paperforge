@@ -49,7 +49,7 @@ export default function DuplicatePapersPage() {
   }
 
   return (
-    <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 12px 24px" }}>
+    <div className="pf-page-wide" style={{ paddingBottom: 24 }}>
       <Breadcrumb
         style={{ marginBottom: 16 }}
         items={[

@@ -87,7 +87,7 @@ export default function GeneratePage() {
   };
 
   return (
-    <div style={{ maxWidth: 900, margin: "0 auto" }}>
+    <div className="pf-page-read">
       <PageHeader title={t("generate.title")} description={t("generate.subtitle")} />
 
       {/* WP-2.3: 跨文档对比表入口 */}

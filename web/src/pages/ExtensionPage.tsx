@@ -17,7 +17,7 @@ export default function ExtensionPage() {
   const supportedSites = (t("extension.sites", { returnObjects: true }) as string[]) || [];
 
   return (
-    <div style={{ maxWidth: 800, margin: "0 auto" }}>
+    <div className="pf-page-form">
       <PageHeader title={t("extension.title")} description={t("extension.subtitle")} />
       <Card className="pf-glass-card" style={{ marginBottom: 24 }}>
         <Space orientation="vertical" size="large" style={{ width: "100%" }}>

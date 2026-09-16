@@ -27,7 +27,7 @@ import { useHomeActions } from "@/hooks/useHomeActions";
 
 import DepthEvalModal from "@/components/home/DepthEvalModal";
 import DeleteConfirmModal from "@/components/home/DeleteConfirmModal";
-import { getDepthScoresByPaperIds } from "@/api/depth";
+import { getDepthScoresByPaperIds, type PaperDepthScore } from "@/api/depth";
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -89,18 +89,20 @@ export default function HomePage() {
     loadPapers();
   }, [keyword, category, sort, source, page, semantic, loadPapers]);
 
-  const [depthScoreMap, setDepthScoreMap] = useState<Map<string, { verdict: string | null; noveltyScore: number | null }>>(new Map());
+  const [depthScoreMap, setDepthScoreMap] = useState<Map<string, PaperDepthScore>>(new Map());
 
-  // 加载当前页论文的 DEPTH 评分
+  // 加载当前页论文的 DEPTH 评分（卡片显示综合分，创新分/致命缺陷数进 tooltip）
   useEffect(() => {
     if (items.length === 0) return;
     getDepthScoresByPaperIds(items.map((p) => p.id))
       .then((scores) => {
-        const map = new Map<string, { verdict: string | null; noveltyScore: number | null }>();
+        const map = new Map<string, PaperDepthScore>();
         for (const [pid, s] of Object.entries(scores)) {
           map.set(pid, {
             verdict: s.verdict,
+            calibratedScore: s.calibrated_score ?? null,
             noveltyScore: s.novelty_score,
+            fatalCount: s.fatal_count ?? null,
           });
         }
         setDepthScoreMap(map);

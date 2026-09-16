@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Skeleton, Pagination, App } from "antd";
 import { useTranslation } from "react-i18next";
 import type { Paper } from "@/api/types";
+import type { PaperDepthScore } from "@/api/depth";
 import { enrichPaperMetadata, previewEnrichPaperMetadata } from "@/api/papers";
 import PaperCard from "./PaperCard";
 import { Reveal } from "./motion";
@@ -35,7 +36,7 @@ interface Props {
   onFirstRunCta?: () => void;
   /** 当前分类，用于渲染分类特定的空态 */
   category?: string;
-  depthScoreMap?: Map<string, { verdict: string | null; noveltyScore: number | null }>;
+  depthScoreMap?: Map<string, PaperDepthScore>;
 }
 
 export default function PaperList({

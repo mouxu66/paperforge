@@ -234,13 +234,13 @@ export function exportWord(html: string, refs: AskReference[], filename: string)
     'xmlns:w="urn:schemas-microsoft-com:office:word" ' +
     'xmlns="http://www.w3.org/TR/REC-html40">' +
     '<head><meta charset="utf-8"><style>' +
-    "body{font-family:Georgia,serif;font-size:14px;line-height:1.9;color:#1a1a2e}" +
+    "body{font-family:Georgia,serif;font-size:14px;line-height:1.9;color:#1a1a1a}" +
     "h1{font-size:1.5em}h2{font-size:1.3em}h3{font-size:1.15em}" +
     "table{border-collapse:collapse;width:100%}" +
     "th,td{border:1px solid #ccc;padding:8px}" +
     "th{background:#f5f5f5}" +
     "code{background:#f1f5f9;padding:2px 6px}" +
-    "blockquote{border-left:3px solid #1e40af;padding-left:12px;color:#666}" +
+    "blockquote{border-left:3px solid #003b5c;padding-left:12px;color:#666}" +
     "</style></head><body>" +
     html +
     refsHtml +
@@ -298,13 +298,13 @@ export function exportPdf(html: string, refs: AskReference[], filename: string):
     "<html><head><title>" +
       escapeHtml(filename) +
       "</title><style>" +
-      'body{font-family:Georgia,"Times New Roman",serif;padding:40px;line-height:1.9;color:#1a1a2e;max-width:800px;margin:0 auto}' +
+      'body{font-family:Georgia,"Times New Roman",serif;padding:40px;line-height:1.9;color:#1a1a1a;max-width:800px;margin:0 auto}' +
       "h1{font-size:1.5em}h2{font-size:1.3em}h3{font-size:1.15em}" +
       "table{border-collapse:collapse;width:100%}" +
       "th,td{border:1px solid #ccc;padding:8px}" +
       "th{background:#f5f5f5}" +
       "code{background:#f1f5f9;padding:2px 6px;border-radius:3px}" +
-      "blockquote{border-left:3px solid #1e40af;padding-left:12px;color:#666}" +
+      "blockquote{border-left:3px solid #003b5c;padding-left:12px;color:#666}" +
       "ol{padding-left:1.5em}" +
       "</style></head><body>" +
       html +

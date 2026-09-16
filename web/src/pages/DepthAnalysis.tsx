@@ -416,7 +416,7 @@ export default function DepthAnalysis() {
   ];
 
   return (
-    <div className="pf-depth-workspace" style={{ padding: 24, maxWidth: 1200, margin: "0 auto" }}>
+    <div className="pf-depth-workspace pf-page-wide" style={{ padding: "24px 0" }}>
       <Typography.Title level={4} style={{ marginTop: 0 }}>
         <Radar style={{ marginRight: 8 }} />
         {t("depth.title")}

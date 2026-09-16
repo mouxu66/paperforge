@@ -34,12 +34,21 @@ const VERDICT_COLORS: Record<string, string> = {
   reject: "red",
 };
 
+/** 感悟/读后报告的 category 值。报告的评审链路是 reflection，不是 DEPTH v4.2 论文审稿。 */
+const REPORT_CATEGORY = "report";
+
+/** 报告走错链路的提示语关键词（后端 400 detail 中会包含 "reflection"）。 */
+const REPORT_PIPELINE_HINT = "reflection";
+
 interface DepthReviewTabProps {
   paperId: string;
+  /** 论文分类；category === 'report' 表示这是感悟/读后报告，必须走 reflection 链路。 */
+  category?: string;
 }
 
-export default function DepthReviewTab({ paperId }: DepthReviewTabProps) {
+export default function DepthReviewTab({ paperId, category }: DepthReviewTabProps) {
   const { t } = useTranslation();
+  const isReport = (category ?? "").trim().toLowerCase() === REPORT_CATEGORY;
   const { message } = App.useApp();
   const [result, setResult] = useState<DepthReviewV4Result | null>(null);
   const [loading, setLoading] = useState(true);
@@ -60,6 +69,13 @@ export default function DepthReviewTab({ paperId }: DepthReviewTabProps) {
 
   const fetchResult = useCallback(
     async (isRefresh = false) => {
+      // 感悟/读后报告不走论文审稿链路：不发请求，直接交给报告结果页。
+      if (isReport) {
+        setLoading(false);
+        setRefreshing(false);
+        setError(null);
+        return;
+      }
       if (fetchingRef.current) return;
       fetchingRef.current = true;
       if (!isRefresh) setLoading(true);
@@ -76,10 +92,18 @@ export default function DepthReviewTab({ paperId }: DepthReviewTabProps) {
         if (e?.name === "CanceledError" || e?.name === "AbortError") {
           return;
         }
+        const detail = e?.response?.data?.detail;
         if (e?.response?.status === 404) {
           setError("no_review");
+        } else if (
+          e?.response?.status === 400 &&
+          typeof detail === "string" &&
+          detail.includes(REPORT_PIPELINE_HINT)
+        ) {
+          // 后端边界守卫拒绝了目标：说明这是报告，但调用方没传 category。
+          setError("report_pipeline");
         } else {
-          setError(e?.response?.data?.detail || t("depth.fetchError", "获取审稿结果失败"));
+          setError(detail || t("depth.fetchError", "获取审稿结果失败"));
         }
       } finally {
         if (mountedRef.current) {
@@ -89,7 +113,7 @@ export default function DepthReviewTab({ paperId }: DepthReviewTabProps) {
         fetchingRef.current = false;
       }
     },
-    [paperId, t],
+    [paperId, t, isReport],
   );
 
   useEffect(() => {
@@ -120,6 +144,32 @@ export default function DepthReviewTab({ paperId }: DepthReviewTabProps) {
       setStarting(false);
     }
   };
+
+  // 报告走错链路的统一提示（正常路径 category 已判定；异常路径由后端 400 兜底）
+  const reportNotice = (
+    <Alert
+      type="info"
+      showIcon
+      title={t("depth.reportPipelineTitle", "这是感悟/读后报告，不走论文审稿链路")}
+      description={t(
+        "depth.reportPipelineDesc",
+        "感悟报告使用独立的评审标准（写得好 / 需补证据 / 需深化 / 需重写），不进入 DEPTH v4.2 论文审稿。请到感悟报告结果页查看。",
+      )}
+      action={
+        <Button
+          size="small"
+          type="primary"
+          onClick={() => navigate(`/reflection/result/${paperId}`)}
+        >
+          {t("depth.gotoReflection", "查看感悟报告评审")}
+        </Button>
+      }
+    />
+  );
+
+  if (isReport || error === "report_pipeline") {
+    return reportNotice;
+  }
 
   if (loading) {
     return <Skeleton active paragraph={{ rows: 6 }} />;

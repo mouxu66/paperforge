@@ -36,86 +36,93 @@
   }
 }
 
+/* 设计体系：暖纸底 + 单一 navy 主色 + 三档圆角 + 三级阴影。
+   2026-09-16 收敛：此前同屏并存 #1e40af/#3157c8/#3b82f6/#0f9fbd 四支蓝，
+   圆角 10/16/22 与两套阴影并行；现统一到本区块，改值即全局生效。 */
 :root {
-  /* 语义底色（浅色） */
+  /* 语义底色（浅色）—— 暖纸底承载，纯白留给卡片 */
   --pf-bg-primary: #ffffff;
-  --pf-bg-secondary: #f3f6fb;
-  --pf-bg-tertiary: #f8fafc;
-  --pf-bg-elevated: rgba(255, 255, 255, 0.82);
-  --pf-text-primary: #1a1a2e;
-  --pf-text-secondary: #475569;
-  --pf-text-muted: #64748b;
-  --pf-text-placeholder: #94a3b8;
-  --pf-border: #e8ecf1;
-  --pf-border-light: #e2e8f0;
-  /* 品牌色 */
-  --pf-primary: #3157c8;
-  --pf-primary-hover: #2445ad;
-  --pf-primary-soft: #e9efff;
-  --pf-accent: #0f9fbd;
-  --pf-glow: rgba(49, 87, 200, 0.18);
-  --pf-radius-sm: 10px;
-  --pf-radius-md: 16px;
-  --pf-radius-lg: 22px;
+  --pf-bg-secondary: #fafaf7;
+  --pf-bg-tertiary: #f7f5f0;
+  --pf-bg-elevated: rgba(255, 255, 255, 0.86);
+  --pf-text-primary: #1a1a1a;
+  --pf-text-secondary: #444444;
+  --pf-text-muted: #7a7a7a;
+  --pf-text-placeholder: #9a9a9a;
+  --pf-border: #e5e2d7;
+  --pf-border-light: #ece9e0;
+  /* 品牌色 —— 唯一主色 navy；accent 改为暖棕，不再与主色争蓝 */
+  --pf-primary: #003b5c;
+  --pf-primary-hover: #00527d;
+  --pf-primary-soft: #e8eef2;
+  --pf-accent: #7d5a2f;
+  --pf-glow: rgba(0, 59, 92, 0.14);
+  /* 圆角三档封顶 */
+  --pf-radius-sm: 6px;
+  --pf-radius-md: 10px;
+  --pf-radius-lg: 16px;
   /* 感悟报告强调色（暖琥珀，呼应纸质文档） */
   --pf-report-accent: #b45309;
   --pf-report-accent-soft: rgba(180, 83, 9, 0.08);
   /* 侧边栏导航专用（图标系统，2026-07-20） */
-  --pf-nav-icon: #666666;
-  --pf-nav-active: #3b82f6;
-  /* 状态色 */
-  --pf-success: #16a34a;
-  --pf-warning: #faad14;
-  --pf-error: #dc2626;
-  --pf-info: #3b82f6;
+  --pf-nav-icon: #6a6a6a;
+  --pf-nav-active: #003b5c;
+  /* 状态色 —— 每色一个语义，不再重叠 */
+  --pf-success: #0e4d3c;
+  --pf-warning: #8a6a1f;
+  --pf-error: #b22222;
+  --pf-info: #003b5c;
   /* 引用情感色（WP-2.2） */
-  --pf-sentiment-supportive: #16a34a;
-  --pf-sentiment-critical: #dc2626;
-  --pf-sentiment-background: #6b7280;
+  --pf-sentiment-supportive: #0e4d3c;
+  --pf-sentiment-critical: #b22222;
+  --pf-sentiment-background: #6e6e6e;
   /* 兼容旧变量 */
-  --pf-ink: #1a1a2e;
-  --pf-muted: #6b7280;
-  --pf-line: #e8ecf1;
-  --pf-bg: #f3f6fb;
-  --pf-shadow-sm: 0 4px 14px rgba(25, 45, 90, 0.05);
-  --pf-shadow-md: 0 14px 36px rgba(25, 45, 90, 0.09);
+  --pf-ink: #1a1a1a;
+  --pf-muted: #7a7a7a;
+  --pf-line: #e5e2d7;
+  --pf-bg: #fafaf7;
+  /* 三级阴影 —— L1 列表行 / L2 卡片 / L3 悬浮层；暖灰跟随底色 */
+  --pf-shadow-sm: 0 1px 2px rgba(30, 24, 12, 0.06);
+  --pf-shadow-md: 0 6px 16px rgba(30, 24, 12, 0.1);
+  --pf-shadow-lg: 0 14px 36px rgba(30, 24, 12, 0.14);
   /* 滚动条（G2 令牌化，2026-07-16） */
-  --pf-scrollbar: #cbd5e1;
-  --pf-scrollbar-hover: #94a3b8;
+  --pf-scrollbar: #c9c4b4;
+  --pf-scrollbar-hover: #a8a294;
 }
 
 [data-theme="dark"] {
-  --pf-bg-primary: #151821;
-  --pf-bg-secondary: #10131a;
-  --pf-bg-tertiary: #1b202b;
-  --pf-bg-elevated: rgba(27, 32, 43, 0.86);
+  --pf-bg-primary: #1c1a16;
+  --pf-bg-secondary: #14120f;
+  --pf-bg-tertiary: #24211b;
+  --pf-bg-elevated: rgba(36, 33, 27, 0.88);
   --pf-text-primary: rgba(255, 255, 255, 0.88);
-  --pf-text-secondary: rgba(255, 255, 255, 0.65);
-  --pf-text-muted: rgba(255, 255, 255, 0.45);
+  --pf-text-secondary: rgba(255, 255, 255, 0.66);
+  --pf-text-muted: rgba(255, 255, 255, 0.46);
   --pf-text-placeholder: rgba(255, 255, 255, 0.3);
-  --pf-border: #303030;
-  --pf-border-light: #3a3a3a;
-  --pf-primary: #7898ff;
-  --pf-primary-hover: #9bb2ff;
-  --pf-primary-soft: rgba(120, 152, 255, 0.16);
-  --pf-accent: #57d7e7;
-  --pf-glow: rgba(120, 152, 255, 0.22);
+  --pf-border: #363128;
+  --pf-border-light: #423c31;
+  --pf-primary: #7fb3d3;
+  --pf-primary-hover: #a3cbe3;
+  --pf-primary-soft: rgba(127, 179, 211, 0.14);
+  --pf-accent: #c9a06a;
+  --pf-glow: rgba(127, 179, 211, 0.2);
   /* 感悟报告强调色（暗色模式提亮） */
-  --pf-report-accent: #f59e0b;
-  --pf-report-accent-soft: rgba(245, 158, 11, 0.12);
+  --pf-report-accent: #f0a94e;
+  --pf-report-accent-soft: rgba(240, 169, 78, 0.12);
   /* 侧边栏导航专用（图标系统，2026-07-20） */
   --pf-nav-icon: rgba(255, 255, 255, 0.62);
-  --pf-nav-active: #3b82f6;
-  --pf-success: #4ade80;
-  --pf-warning: #facc15;
-  --pf-error: #f87171;
-  --pf-info: #60a5fa;
+  --pf-nav-active: #7fb3d3;
+  --pf-success: #6fbf9b;
+  --pf-warning: #e0b463;
+  --pf-error: #e88a8a;
+  --pf-info: #8cc0dc;
   --pf-ink: rgba(255, 255, 255, 0.88);
-  --pf-muted: rgba(255, 255, 255, 0.45);
-  --pf-line: #303030;
-  --pf-bg: #10131a;
-  --pf-shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.2);
-  --pf-shadow-md: 0 16px 40px rgba(0, 0, 0, 0.3);
+  --pf-muted: rgba(255, 255, 255, 0.46);
+  --pf-line: #363128;
+  --pf-bg: #14120f;
+  --pf-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --pf-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.42);
+  --pf-shadow-lg: 0 18px 44px rgba(0, 0, 0, 0.5);
   --pf-scrollbar: rgba(255, 255, 255, 0.25);
   --pf-scrollbar-hover: rgba(255, 255, 255, 0.4);
 }
@@ -133,9 +140,9 @@ body,
 }
 
 body {
+  /* 单层极淡主色光晕，保留品牌感但不与卡片抢注意力 */
   background:
-    radial-gradient(circle at 88% -8%, rgba(49, 87, 200, 0.08), transparent 28rem),
-    radial-gradient(circle at 8% 18%, rgba(15, 159, 189, 0.045), transparent 22rem),
+    radial-gradient(circle at 88% -8%, rgba(0, 59, 92, 0.05), transparent 28rem),
     var(--pf-bg);
   color: var(--pf-ink);
   -webkit-font-smoothing: antialiased;
@@ -170,6 +177,23 @@ body {
 .pf-page-shell {
   width: min(100%, 1480px);
   margin: 0 auto;
+}
+
+/* 页面内容宽度档位：全部左对齐。
+   .pf-page-shell 已经负责整体居中，各页若再叠加 maxWidth + margin:auto，
+   就会在白底上留下左右不对称的空档（曾出现 720/800/900/1000/1100/1180/1200/1400 八种宽度）。
+   统一到这里，新增页面直接挂类名，不再写内联宽度。 */
+.pf-page-form {
+  max-width: 860px;
+}
+
+.pf-page-read {
+  max-width: 1040px;
+}
+
+/* 宽工作台：对比表 / 重复合并 / 写作编辑器，铺满可用宽度 */
+.pf-page-wide {
+  max-width: none;
 }
 
 .pf-content {
@@ -542,7 +566,7 @@ svg.lucide {
   height: 120px;
   border: 1px solid var(--pf-glow);
   border-radius: 50%;
-  box-shadow: 0 0 0 14px rgba(49, 87, 200, 0.025), 0 0 0 28px rgba(49, 87, 200, 0.018);
+  box-shadow: 0 0 0 14px rgba(0, 59, 92, 0.025), 0 0 0 28px rgba(0, 59, 92, 0.018);
   pointer-events: none;
 }
 
@@ -1041,18 +1065,7 @@ svg.lucide {
   background: rgba(27, 32, 43, 0.42);
 }
 
-@media (max-width: 1023px) {
-  .pf-stat-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
 @media (max-width: 767px) {
-  .pf-stat-grid {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 12px;
-  }
-
   .pf-page-hero {
     min-height: 0;
     margin-top: -2px;
@@ -1080,29 +1093,6 @@ svg.lucide {
 
   .pf-hero-divider {
     display: none;
-  }
-}
-
-/* ============================================================
-   Shared page banner
-   The supplied PaperForge artwork is a desktop-only brand anchor.
-   ============================================================ */
-.pf-page-banner {
-  display: none;
-}
-
-@media (min-width: 1024px) {
-  .pf-page-banner {
-    display: block;
-    width: 100%;
-    height: clamp(138px, 11vw, 180px);
-    margin: -8px 0 18px;
-    border: 1px solid rgba(120, 152, 255, 0.38);
-    border-radius: var(--pf-radius-lg);
-    position: relative;
-    overflow: hidden;
-    background: #17365d;
-    box-shadow: 0 16px 34px rgba(15, 52, 88, 0.18);
   }
 }
 

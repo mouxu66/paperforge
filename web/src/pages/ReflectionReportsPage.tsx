@@ -22,11 +22,9 @@ export default function ReflectionReportsPage() {
 
   return (
     <div
+      className="pf-page-wide"
       style={{
-        width: "100%",
-        maxWidth: 1680,
-        margin: "0 auto",
-        padding: "24px 16px",
+        padding: "24px 0",
       }}
     >
       <PageHeader

@@ -25,10 +25,6 @@ vi.mock("@/components/VramEventPanel", () => ({
   default: () => <div data-testid="vram-event-panel" />,
 }));
 
-vi.mock("@/components/ResearchPageAccent", () => ({
-  default: () => <div data-testid="research-page-accent" />,
-}));
-
 vi.mock("antd", async () => {
   const actual = await vi.importActual<typeof import("antd")>("antd");
   const message = {

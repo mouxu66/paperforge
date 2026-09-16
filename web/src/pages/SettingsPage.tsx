@@ -7,7 +7,6 @@ import { importFromZotero } from "@/api/zotero";
 import type { ZoteroImportResult } from "@/api/types";
 import { useNavigate } from "react-router-dom";
 import VramEventPanel from "@/components/VramEventPanel";
-import ResearchPageAccent from "@/components/ResearchPageAccent";
 import PageHeader from "@/components/PageHeader";
 import DepthSettingsPanel from "@/components/DepthSettingsPanel";
 import SecondOpinionSettingsPanel from "@/components/SecondOpinionSettingsPanel";
@@ -78,16 +77,12 @@ export default function SettingsPage() {
     }
   };
 
+  // 页面宽度档位统一由 .pf-page-form 承担（左对齐；不再各页自己 maxWidth + margin:auto 居中）。
+  // 原先这里还挂了一块 ResearchPageAccent 装饰带，它把 H1「设置」又印了一遍，
+  // 与页头形成重复标题；该装饰已整体移除。
   return (
-    <div style={{ maxWidth: 720, margin: "0 auto" }}>
+    <div className="pf-page-form">
       <PageHeader title={t("settings.title")} />
-      <ResearchPageAccent
-        icon={<Import />}
-        label={t("settings.title")}
-        detail={t("settings.zoteroImport")}
-        tone="blue"
-        index="WORKSPACE SETTINGS 09"
-      />
 
       <Card
         className="pf-glass-card"

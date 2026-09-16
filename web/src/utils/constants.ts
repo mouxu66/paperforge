@@ -24,10 +24,11 @@ export const SOURCE_COLOR: Record<string, string> = {
 };
 
 // 分类 → 学科色彩（PaperCard 圆点指示器 / SideBar 侧边栏指示器共用）
+// 六个色相互相可区分；llm 取主色、lora 取次强调，与全局体系同源。
 export const CATEGORY_COLOR: Record<string, string> = {
-  all: "#94a3b8",
-  llm: "#1e40af",
-  lora: "#3b82f6",
+  all: "#9a9a9a",
+  llm: "#003b5c",
+  lora: "#7d5a2f",
   rl: "#8b5cf6",
   cv: "#ec4899",
   comm: "#10b981",

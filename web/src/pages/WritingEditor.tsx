@@ -633,7 +633,7 @@ export default function WritingEditor() {
   }
 
   return (
-    <div style={{ maxWidth: 1200, margin: "0 auto", padding: isMobile ? "0 8px" : 0 }}>
+    <div className="pf-page-wide" style={{ padding: isMobile ? "0 8px" : 0 }}>
       {/* 顶部信息栏 */}
       <div style={{ marginBottom: 16 }}>
         <Space size={isMobile ? 6 : 12} align="center" wrap>

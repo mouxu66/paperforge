@@ -232,7 +232,7 @@ export default function ComparePapersPage() {
   }, [t, navigate, rows]);
 
   return (
-    <div style={{ maxWidth: 1400, margin: "0 auto" }}>
+    <div className="pf-page-wide">
       <PageHeader
         title={t("compare.title")}
         description={t("compare.subtitle")}
