@@ -179,7 +179,7 @@ export default function HomePage() {
           <span>{t("home.statsLabel", "研究库索引")}</span>
           <span aria-hidden="true">{isReportTab ? "REPORTS" : "LIBRARY"}</span>
         </div>
-        <div className="pf-home-stats">
+        <div className="pf-home-stats" data-tour="stats">
           <StatCards stats={stats} loading={!stats} isReport={isReportTab} />
         </div>
       </div>
@@ -279,7 +279,7 @@ export default function HomePage() {
           </div>
           <span className="pf-home-library-count">{t("common.total", { count: total })}</span>
         </div>
-        <div className="pf-home-search" style={{ marginBottom: 20 }}>
+        <div className="pf-home-search" data-tour="search" style={{ marginBottom: 20 }}>
           <SearchBar
             keyword={keyword}
             sort={sort}

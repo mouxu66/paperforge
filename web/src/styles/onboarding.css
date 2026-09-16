@@ -1,0 +1,194 @@
+/* 新手引导（spotlight 分步导览）
+ *
+ * 层级：3000 —— 高于 antd 的 Modal/Drawer(1000) 与 Dropdown(1050)，
+ * 低于 .pf-fullscreen-overlay(9999)，避免与全屏预览抢层。
+ *
+ * 交互：根容器 pointer-events:none —— 遮罩由 box-shadow 造洞而成，不拦截点击，
+ * 用户可以在引导过程中真实操作被高亮的按钮。只有气泡本身接收事件。
+ */
+
+.pf-onboarding {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  pointer-events: none;
+}
+
+.pf-onboarding-highlight {
+  position: fixed;
+  border-radius: var(--pf-radius-md, 10px);
+  /* 第一层：向外铺 9999px 形成「挖洞」遮罩；第二层：inset 画高亮描边 */
+  box-shadow:
+    0 0 0 9999px rgba(20, 16, 8, 0.55),
+    inset 0 0 0 2px var(--pf-primary);
+  transition:
+    top 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+    left 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+    width 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+    height 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+}
+
+/* 锚点缺失时的整屏压暗（居中展示步骤） */
+.pf-onboarding-veil {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 16, 8, 0.55);
+  pointer-events: none;
+}
+
+[data-theme="dark"] .pf-onboarding-highlight,
+.dark .pf-onboarding-highlight {
+  box-shadow:
+    0 0 0 9999px rgba(0, 0, 0, 0.72),
+    inset 0 0 0 2px var(--pf-primary);
+}
+
+[data-theme="dark"] .pf-onboarding-veil,
+.dark .pf-onboarding-veil {
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.pf-onboarding-bubble {
+  position: fixed;
+  pointer-events: auto;
+  padding: 16px 18px 14px;
+  background: var(--pf-bg-primary);
+  border: 1px solid var(--pf-border);
+  border-radius: var(--pf-radius-lg, 16px);
+  box-shadow: 0 14px 36px rgba(30, 24, 12, 0.22);
+  transition: opacity 0.18s ease;
+  animation: pf-onboarding-in 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.pf-onboarding-bubble:focus {
+  outline: none;
+}
+
+@keyframes pf-onboarding-in {
+  from {
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pf-onboarding-bubble,
+  .pf-onboarding-highlight {
+    animation: none;
+    transition: none;
+  }
+}
+
+.pf-onboarding-bubble-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.pf-onboarding-step-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--pf-primary-soft);
+  color: var(--pf-primary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.pf-onboarding-skip {
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: 12px;
+  color: var(--pf-text-placeholder);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.pf-onboarding-skip:hover {
+  color: var(--pf-text-secondary);
+  text-decoration: underline;
+}
+
+.pf-onboarding-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--pf-text-primary);
+  margin-bottom: 6px;
+  line-height: 1.4;
+}
+
+.pf-onboarding-desc {
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--pf-text-secondary);
+}
+
+.pf-onboarding-tip {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: var(--pf-radius-sm, 6px);
+  background: var(--pf-bg-tertiary);
+  border-left: 3px solid var(--pf-primary);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--pf-text-secondary);
+}
+
+/* 锚点缺失提示：显式告知降级原因，而不是让这一步看起来「本来就长这样」 */
+.pf-onboarding-warning {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: var(--pf-radius-sm, 6px);
+  background: rgba(180, 83, 9, 0.08);
+  border-left: 3px solid var(--pf-warning);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--pf-text-secondary);
+}
+
+.pf-onboarding-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--pf-border-light);
+}
+
+.pf-onboarding-dots {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.pf-onboarding-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--pf-border);
+  transition: background 0.2s ease, width 0.2s ease;
+}
+
+.pf-onboarding-dot-active {
+  width: 16px;
+  border-radius: 3px;
+  background: var(--pf-primary);
+}
+
+.pf-onboarding-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

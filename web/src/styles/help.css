@@ -1,0 +1,367 @@
+/* 帮助中心（/help）
+ *
+ * 布局：左目录（sticky）+ 右内容；窄屏收成单列并把目录变成横向滚动条，
+ * 避免目录把正文挤成窄条。
+ */
+
+.pf-help-page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* ── 3 分钟上手 ───────────────────────────────────────────── */
+
+.pf-help-quickstart {
+  padding: 18px 20px;
+  background: var(--pf-bg-tertiary);
+  border: 1px solid var(--pf-border-light);
+  border-radius: var(--pf-radius-lg, 16px);
+}
+
+.pf-help-quickstart-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--pf-primary);
+}
+
+.pf-help-quickstart-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.pf-help-quickstart-step {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.pf-help-quickstart-no {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--pf-primary);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pf-help-quickstart-step-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--pf-text-primary);
+  margin-bottom: 3px;
+}
+
+.pf-help-quickstart-step-desc {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--pf-text-muted);
+}
+
+/* ── 主体两栏 ─────────────────────────────────────────────── */
+
+.pf-help-body {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 32px;
+  align-items: start;
+}
+
+.pf-help-toc {
+  position: sticky;
+  top: 84px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pf-help-toc-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--pf-text-placeholder);
+  padding: 0 10px 8px;
+}
+
+.pf-help-toc-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-left: 2px solid transparent;
+  background: none;
+  border-radius: 0 var(--pf-radius-sm, 6px) var(--pf-radius-sm, 6px) 0;
+  font-size: 13px;
+  color: var(--pf-text-muted);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.pf-help-toc-item:hover {
+  color: var(--pf-text-primary);
+  background: var(--pf-bg-tertiary);
+}
+
+.pf-help-toc-item-active {
+  color: var(--pf-primary);
+  font-weight: 600;
+  border-left-color: var(--pf-primary);
+  background: var(--pf-primary-soft);
+}
+
+.pf-help-toc-no {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--pf-text-placeholder);
+}
+
+.pf-help-toc-item-active .pf-help-toc-no {
+  color: var(--pf-primary);
+}
+
+.pf-help-toc-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 章节 ─────────────────────────────────────────────────── */
+
+.pf-help-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+.pf-help-section {
+  padding: 22px 24px;
+  background: var(--pf-bg-primary);
+  border: 1px solid var(--pf-border);
+  border-radius: var(--pf-radius-lg, 16px);
+  scroll-margin-top: 84px;
+}
+
+.pf-help-section-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.pf-help-section-icon {
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--pf-radius-md, 10px);
+  background: var(--pf-primary-soft);
+  color: var(--pf-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+
+.pf-help-section-no {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--pf-text-placeholder);
+  font-variant-numeric: tabular-nums;
+}
+
+.pf-help-section-title {
+  margin: 2px 0 0;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--pf-text-primary);
+  line-height: 1.35;
+}
+
+.pf-help-section-intro {
+  margin: 0 0 16px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--pf-text-secondary);
+}
+
+/* ── 步骤列表 ─────────────────────────────────────────────── */
+
+.pf-help-steps {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pf-help-step {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.pf-help-step-no {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--pf-border);
+  background: var(--pf-bg-tertiary);
+  color: var(--pf-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pf-help-step-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.pf-help-step-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--pf-text-primary);
+  margin-bottom: 3px;
+}
+
+.pf-help-step-desc {
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--pf-text-secondary);
+}
+
+/* ── 观察点 / 误区 ────────────────────────────────────────── */
+
+.pf-help-note {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: var(--pf-radius-sm, 6px);
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--pf-text-secondary);
+}
+
+.pf-help-note strong {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+
+.pf-help-note-see {
+  background: var(--pf-bg-tertiary);
+  border-left: 3px solid var(--pf-primary);
+}
+
+.pf-help-note-see strong {
+  color: var(--pf-primary);
+}
+
+.pf-help-note-pitfall {
+  margin-top: 10px;
+  background: rgba(138, 106, 31, 0.08);
+  border-left: 3px solid var(--pf-warning);
+}
+
+.pf-help-note-pitfall strong {
+  color: var(--pf-warning);
+}
+
+.pf-help-cta {
+  margin-top: 12px;
+  padding-left: 0;
+  font-size: 13px;
+}
+
+/* ── 06 更多 ──────────────────────────────────────────────── */
+
+.pf-help-more-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pf-help-more-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--pf-text-secondary);
+}
+
+.pf-help-more-item .ant-tag {
+  flex-shrink: 0;
+  margin: 0;
+}
+
+/* ── 响应式 ───────────────────────────────────────────────── */
+
+@media (max-width: 1080px) {
+  .pf-help-body {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .pf-help-toc {
+    position: static;
+    flex-direction: row;
+    overflow-x: auto;
+    gap: 6px;
+    padding-bottom: 4px;
+  }
+
+  .pf-help-toc-title {
+    display: none;
+  }
+
+  .pf-help-toc-item {
+    flex-shrink: 0;
+    border-left: none;
+    border-bottom: 2px solid transparent;
+    border-radius: var(--pf-radius-sm, 6px);
+    white-space: nowrap;
+  }
+
+  .pf-help-toc-item-active {
+    border-left-color: transparent;
+    border-bottom-color: var(--pf-primary);
+  }
+
+  .pf-help-quickstart-steps {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+}
+
+@media (max-width: 640px) {
+  .pf-help-section {
+    padding: 18px 16px;
+  }
+}

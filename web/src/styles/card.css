@@ -400,6 +400,15 @@
   height: 13px;
 }
 
+/* 全文索引尚未完成的论文：用虚线下划线暗示「此处可 hover 看原因」，
+   颜色退一档，避免「0 个文本块」被当成正常状态扫过去。 */
+.pf-paper-footer-metric-pending {
+  color: var(--pf-warning);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: help;
+}
+
 .pf-paper-card-meta > span[style*="margin"] {
   margin-inline: 2px !important;
 }

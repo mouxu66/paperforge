@@ -20,6 +20,7 @@
     "repo": "Repository",
     "language": "Language",
     "settings": "Settings",
+    "help": "Help Center",
     "extension": "Extension",
     "theme": "Theme",
     "domain": {
@@ -364,6 +365,7 @@
     "citationCount": "Citations",
     "citationsShort": "{{count}} citations",
     "chunksShort": "{{count}} chunks",
+    "indexPendingHint": "Full-text indexing has not finished: semantic search cannot find it yet, while keyword search and reading/annotation are unaffected",
     "notAvailable": "Not available",
     "depthSummary": "DEPTH review: {{verdict}}｜overall {{score}}｜fatal flaws {{fatal}}｜novelty {{novelty}}",
     "influentialCitations": "Influential Citations",
@@ -1220,5 +1222,144 @@
     "invalidClaims": "Inconsistent claims",
     "validRate": "Consistency rate",
     "inconsistentWarning": "Detected {{invalidClaims}} numerical claim(s) inconsistent with the figure axis range; please review."
+  },
+  "onboarding": {
+    "ariaLabel": "Getting started tour",
+    "progress": "Step {{current}} of {{total}}",
+    "skip": "Skip tour",
+    "prev": "Back",
+    "next": "Next",
+    "done": "Start using",
+    "anchorMissing": "The element for this step is not on screen right now — the page may still be loading or laid out differently. The tour keeps trying to locate it.",
+    "step": {
+      "welcome": {
+        "title": "Welcome to PaperForge",
+        "desc": "Six quick steps through the path you will use most: import papers, wait for indexing, search, then find Q&A and review. You can skip at any point.",
+        "tip": "This tour appears automatically only once. You can replay it any time from the Help Center in the top-right corner."
+      },
+      "upload": {
+        "title": "Step 1: Bring papers in",
+        "desc": "Drag PDFs or DOCX files into this area, or click to pick files. If you know the arXiv ID, importing from arXiv above is faster.",
+        "tip": "Scanned PDFs have no text layer and must be OCR'd before their full text can be searched."
+      },
+      "index": {
+        "title": "Step 2: Let indexing finish",
+        "desc": "After import, PaperForge extracts title, authors and abstract, then builds a full-text index. The chunks and index size on each card show progress.",
+        "tip": "Semantic search returns nothing until indexing finishes — switch to Keyword mode to search right away."
+      },
+      "search": {
+        "title": "Step 3: Two ways to search",
+        "desc": "Keyword search matches fields exactly and works immediately after import. Semantic search ranks by meaning and needs the index. The toggle on the right switches between them.",
+        "tip": "When a search comes up empty, switch back to Keyword first to confirm the paper is in your library — usually indexing simply has not finished."
+      },
+      "understand": {
+        "title": "Q&A and deep review live here",
+        "desc": "The Understand menu holds Q&A and DEPTH review: Q&A answers only from papers in your library, and DEPTH produces a four-dimension score plus review comments.",
+        "tip": "Both need a model configured first — pick one under Settings then Models."
+      },
+      "help": {
+        "title": "Come back any time",
+        "desc": "This button in the top-right corner opens the Help Center, with step-by-step guides for the five core features, what each parameter means, and common pitfalls.",
+        "tip": "The Help Center can replay this tour and documents how each feature actually behaves."
+      }
+    }
+  },
+  "help": {
+    "kicker": "Help center",
+    "title": "Help Center",
+    "subtitle": "How the five core features work, how to read their output, and where newcomers usually misjudge. Walk through it once and you are set.",
+    "toc": "Contents",
+    "seeLabel": "What you will see",
+    "pitfallLabel": "Common pitfall",
+    "replayOnboarding": "Replay the tour",
+    "quickstart": {
+      "title": "Up and running in 3 minutes",
+      "s1": { "title": "Import a paper", "desc": "Drag a PDF into the upload area and wait for indexing" },
+      "s2": { "title": "Try a search", "desc": "Keyword mode works instantly; semantic mode waits for the index" },
+      "s3": { "title": "Get it reviewed", "desc": "Select papers, submit a DEPTH review, read the scores and critiques" }
+    },
+    "import": {
+      "title": "Importing papers",
+      "intro": "Everything is built on your own library, so the first step is getting PDFs and DOCX files in.",
+      "s1": { "title": "Drag and drop", "desc": "The upload area on the home page accepts dragged PDF/DOCX files, or click to pick them. Per-file progress is shown as it goes." },
+      "s2": { "title": "Import from arXiv", "desc": "If you know the arXiv ID or title, the arXiv importer fetches it directly — no manual download needed." },
+      "s3": { "title": "Wait for indexing", "desc": "PaperForge extracts title, authors and abstract, then builds a full-text index. Cards show the chunk count and index size." },
+      "see": "Paper cards appear and their chunk count and index size change from 0 to real values.",
+      "pitfall": "Searching semantically right after import returns nothing — indexing has not finished. Switch to Keyword mode.",
+      "cta": "Go to home"
+    },
+    "search": {
+      "title": "Search: choosing among three ways",
+      "intro": "One search box, three ways to look. Picking the wrong one makes it feel like nothing was found.",
+      "s1": { "title": "Keyword search (FTS5)", "desc": "Matches title, authors, keywords and arXiv ID as fields. It does not depend on the vector index, so it works the moment a paper is imported." },
+      "s2": { "title": "Semantic search", "desc": "Ranks by meaning and needs the full-text vector index. Best when your wording differs from the paper's — searching for parameter-efficient fine-tuning also surfaces papers that only say LoRA." },
+      "s3": { "title": "Figure search", "desc": "Vector-matches your query against text OCR'd from figures — useful when a metric name appeared inside a chart. Note it matches the text in the figure, not a semantic understanding of the figure itself." },
+      "see": "The mode toggle next to the search box shows Keyword or Semantic; switching it visibly changes result ordering.",
+      "pitfall": "When semantic search is empty, switch back to Keyword to confirm the paper is in the library — usually indexing is incomplete, not the paper missing.",
+      "cta": "Go to search"
+    },
+    "ask": {
+      "title": "Q&A: answers only from your library",
+      "intro": "This is the biggest difference from general-purpose AI: it answers only from papers in your library, and never fabricates what is not there.",
+      "s1": { "title": "Choose the scope", "desc": "Ask against the whole library, or select a few papers on the home page and ask only about them." },
+      "s2": { "title": "Ask in plain language", "desc": "For example, how does each of these handle long-tailed distributions? The more specific the question, the more usable the comparison." },
+      "s3": { "title": "Check the citations", "desc": "Every answer carries sources; open them to verify against the original passages. Do not skip this step." },
+      "see": "Cited papers and passages are listed under each answer. When the library genuinely lacks support, it says so explicitly.",
+      "pitfall": "I cannot answer that is not a bug — it is a refusal to fabricate. Rephrase toward what your library covers, or import the relevant papers first.",
+      "cta": "Go to Q&A"
+    },
+    "write": {
+      "title": "Writing workspace",
+      "intro": "From outline to finished draft, citations can only come from your library — which is why fabricated references cannot appear.",
+      "s1": { "title": "Create a project", "desc": "Create a project on the Writing page and set the topic and target structure, which constrain later generation." },
+      "s2": { "title": "Outline first", "desc": "Fixing the outline before expanding chapters is more controllable than generating a whole draft at once, and structural problems surface earlier." },
+      "s3": { "title": "Write chapter by chapter", "desc": "Each chapter can be generated or rewritten on its own. Citations are picked from your library and saved with the text." },
+      "s4": { "title": "Export", "desc": "Export to Word, Markdown or LaTeX, with references available as BibTeX." },
+      "see": "In the chapter editor the outline is on the left and the draft on the right; every reference in the list comes from your own library.",
+      "pitfall": "Without a configured model, draft generation is unavailable — but outline, citation insertion and export still work. Build the structure first, then write once the model is set up.",
+      "cta": "Go to writing"
+    },
+    "depth": {
+      "title": "Deep review (DEPTH v4.2)",
+      "intro": "Four-dimension scoring plus rounds of critique and defense produce a review. The score is a usability assessment from a reviewer's perspective, not a verdict on the paper's worth.",
+      "s1": { "title": "Select and submit", "desc": "Select one or more papers on the home page and click V4 deep review. Multiple papers queue up; progress appears on the research pulse card." },
+      "s2": { "title": "Four dimensions", "desc": "Novelty, rigor, influence and reproducibility, each scored 0-1 and shown on a radar chart." },
+      "s3": { "title": "Weights follow the paper type", "desc": "Theoretical breakthroughs weigh novelty most, method improvements weigh rigor most, and applied transfers lean toward influence and reproducibility. The less certain the model is about the type, the closer the weights move to the average across types." },
+      "s4": { "title": "Read the verdict and critiques", "desc": "Four verdict tiers: Accept, Minor Revision, Major Revision, Reject. Critique points and the authors defense are listed below, and the chair reasoning explains how the tier was reached." },
+      "see": "Paper cards show an overall score (0-100); the result page has the radar chart, dimension scores, critiques, defense and verdict reasoning.",
+      "pitfall": "A veto needs at least three fatal flaws — a single one is not enough to reject outright. When the score is low, check whether the critiques hold before deciding what to fix.",
+      "cta": "Go to DEPTH"
+    },
+    "more": {
+      "title": "Want to know more",
+      "docsTag": "Docs",
+      "docs": "The docs/ directory holds a hands-on tutorial, architecture notes and deployment guides.",
+      "troubleTag": "Troubleshooting",
+      "trouble": "Startup failures, indexing not taking effect, empty searches — see RUNBOOK.md in the repository root.",
+      "repoTag": "Repository",
+      "repo": "Source code, releases and issue reporting live at github.com/mouxu66/paperforge."
+    }
+  },
+  "noModel": {
+    "title": "No model configured yet",
+    "desc": "Q&A, literature review and writing need a model; search, figure search and DEPTH review do not, and work right now",
+    "guideTitle": "Set up a model in 3 steps",
+    "step1Title": "Open model management",
+    "step1Desc": "Go to Settings then Models, or use the button below. The page can detect local ports to find an already-running inference service.",
+    "step2Title": "Choose cloud or local",
+    "step2Desc": "Cloud: just fill in an API key. Local: start an inference service (such as Ollama or vLLM) and detect its port. Both are supported — pick what fits your setup.",
+    "step3Title": "Come back and retry",
+    "step3Desc": "Once the model is ready, Q&A, review generation and writing become available immediately. Until then, search, figure search and DEPTH review are unaffected."
+  },
+  "indexPending": {
+    "title": "This paper has not been indexed yet",
+    "desc": "Semantic search cannot find it yet; keyword search, reading/annotation and DEPTH review are unaffected",
+    "guideTitle": "Why can this one not be found?",
+    "step1Title": "Its full-text index is not ready",
+    "step1Desc": "Newly imported or freshly OCR'd papers must be chunked and vectorised before they enter the semantic search candidate set.",
+    "step2Title": "Find it with keyword search",
+    "step2Desc": "Keyword search uses FTS5 and does not depend on the vector index, so it can locate the paper by title, author or term right now.",
+    "step3Title": "Everything else still works",
+    "step3Desc": "Reading, annotation, citation and DEPTH review rely only on metadata or the original text. Once indexing finishes, semantic search covers it automatically."
   }
 }

@@ -28,6 +28,7 @@ const FigureSearchPage = lazy(() => import("./pages/FigureSearchPage"));
 const ReflectionResultView = lazy(() => import("./components/ReflectionResultView"));
 const ExtensionPage = lazy(() => import("./pages/ExtensionPage"));
 const LocalRagPage = lazy(() => import("./pages/LocalRagPage"));
+const HelpCenterPage = lazy(() => import("./pages/HelpCenterPage"));
 const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
 
 /** P2-3: 懒加载 fallback —— 骨架屏替代白屏/Spin */
@@ -87,6 +88,8 @@ export default function App() {
             <Route path="/reflection" element={<ReflectionReportsPage />} />
             <Route path="/reflection/result/:paperId" element={<ReflectionResultView />} />
             <Route path="/favorites" element={<FavoritesPage />} />
+            {/* 帮助中心：新手引导的最后一步与顶部「?」按钮都指向这里 */}
+            <Route path="/help" element={<HelpCenterPage />} />
             <Route path="/paper/:id" element={<DetailPage />} />
             <Route path="/404" element={<NotFoundPage />} />
             <Route path="*" element={<Navigate to="/404" replace />} />

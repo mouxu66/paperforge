@@ -149,4 +149,45 @@ describe("EmptyState", () => {
     expect(screen.queryByText("reports.emptyTitle")).not.toBeInTheDocument();
     expect(screen.queryByText("reports.emptyDesc")).not.toBeInTheDocument();
   });
+
+  // ── 未配置模型（noModel）─────────────────────────────────────
+
+  it("noModel 类型渲染标题、描述与 3 步引导", () => {
+    render(<EmptyState type="noModel" />);
+    expect(screen.getByText("noModel.title")).toBeInTheDocument();
+    expect(screen.getByText("noModel.desc")).toBeInTheDocument();
+    expect(screen.getByText("noModel.guideTitle")).toBeInTheDocument();
+    expect(screen.getByText("noModel.step1Title")).toBeInTheDocument();
+    expect(screen.getByText("noModel.step2Title")).toBeInTheDocument();
+    expect(screen.getByText("noModel.step3Title")).toBeInTheDocument();
+  });
+
+  it("noModel 类型支持主行动按钮（去模型管理）", () => {
+    const onClick = vi.fn();
+    render(<EmptyState type="noModel" action={{ label: "ask.goToModels", onClick }} />);
+    fireEvent.click(screen.getByText("ask.goToModels"));
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  // ── 单篇论文索引未完成（indexPending）────────────────────────
+
+  it("indexPending 类型渲染标题、描述与 3 步引导", () => {
+    render(<EmptyState type="indexPending" />);
+    expect(screen.getByText("indexPending.title")).toBeInTheDocument();
+    expect(screen.getByText("indexPending.desc")).toBeInTheDocument();
+    expect(screen.getByText("indexPending.guideTitle")).toBeInTheDocument();
+    expect(screen.getByText("indexPending.step1Title")).toBeInTheDocument();
+    expect(screen.getByText("indexPending.step3Title")).toBeInTheDocument();
+  });
+
+  it("新增类型不改变既有类型的回退行为", () => {
+    const { unmount } = render(<EmptyState type="default" />);
+    expect(screen.getByText("common.noData")).toBeInTheDocument();
+    expect(screen.queryByText("noModel.title")).not.toBeInTheDocument();
+    unmount();
+
+    render(<EmptyState type="figures" />);
+    expect(screen.getByText("figures.empty")).toBeInTheDocument();
+    expect(screen.queryByText("indexPending.title")).not.toBeInTheDocument();
+  });
 });

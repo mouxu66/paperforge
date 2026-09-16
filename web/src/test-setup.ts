@@ -68,6 +68,29 @@ Object.defineProperty(window, "ResizeObserver", {
   value: ResizeObserverMock,
 });
 
+// Mock IntersectionObserver (JSDOM does not implement it; the Help Center uses it
+// to highlight the current section in its table of contents). The mock never fires
+// callbacks — tests assert rendered output, not scroll-driven state.
+class IntersectionObserverMock {
+  readonly root = null;
+  readonly rootMargin = "";
+  readonly thresholds: readonly number[] = [];
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+  takeRecords() {
+    return [];
+  }
+}
+Object.defineProperty(window, "IntersectionObserver", {
+  writable: true,
+  value: IntersectionObserverMock,
+});
+Object.defineProperty(globalThis, "IntersectionObserver", {
+  writable: true,
+  value: IntersectionObserverMock,
+});
+
 // Mock react-i18next for all tests
 const mockT = (key: string) => key;
 const mockI18n = { language: "zh" };

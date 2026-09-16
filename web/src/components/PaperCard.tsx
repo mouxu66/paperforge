@@ -260,9 +260,28 @@ export default function PaperCard({ paper, selected, onToggleSelect, onEnrich, d
               </span>
             </Tooltip>
           )}
-          <span className="pf-paper-footer-metric">
-            <Database aria-hidden="true" /> {t("paper.chunksShort", { count: paper.chunkCount })}
-          </span>
+          {/* chunkCount=0 表示全文索引还没建好：直接说明「现在还能怎么用它」，
+              而不是让用户对着「0 个文本块」自己猜。 */}
+          <Tooltip
+            title={
+              paper.chunkCount === 0
+                ? t(
+                    "paper.indexPendingHint",
+                    "全文索引尚未完成：语义检索暂时搜不到它，关键词搜索与阅读标注不受影响",
+                  )
+                : undefined
+            }
+          >
+            <span
+              className={
+                paper.chunkCount === 0
+                  ? "pf-paper-footer-metric pf-paper-footer-metric-pending"
+                  : "pf-paper-footer-metric"
+              }
+            >
+              <Database aria-hidden="true" /> {t("paper.chunksShort", { count: paper.chunkCount })}
+            </span>
+          </Tooltip>
           <span className="pf-paper-footer-metric">
             <FileText aria-hidden="true" /> {formatSize(paper.indexSize)}
           </span>

@@ -3,6 +3,8 @@
 @import "./layout.css";
 @import "./markdown.css";
 @import "./reflection.css";
+@import "./onboarding.css";
+@import "./help.css";
 
 /* 评审记录页头部：标题与提交入口保持同一横向区块，窄屏时自然换行 */
 .pf-reflection-page-header {

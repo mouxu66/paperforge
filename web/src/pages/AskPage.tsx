@@ -1,6 +1,5 @@
-import { Zap } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Button, Card, App } from "antd";
+import { App } from "antd";
 
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -12,6 +11,7 @@ import AskHistorySidebar from "@/components/AskHistorySidebar";
 import PageHeader from "@/components/PageHeader";
 import AskInput from "@/components/AskInput";
 import AskResult from "@/components/AskResult";
+import EmptyState from "@/components/EmptyState";
 import { useHistoryStore, type HistoryItem } from "@/store/useHistoryStore";
 
 export default function AskPage() {
@@ -191,31 +191,13 @@ export default function AskPage() {
             onSelectedIdsChange={setSelectedIds}
           />
 
-          {/* 未配置模型时的内联提示（不阻断提问，但给出明确引导） */}
+          {/* 未配置模型：用带引导步骤的空态替代单句提示——新手卡住的不是
+              「没配模型」这个事实，而是「去哪配、配哪种、不配还能不能干别的」。 */}
           {!hasModel && !loading && !streaming && !result && (
-            <Card
-              className="pf-glass-card"
-              variant="borderless"
-              style={{ marginBottom: 20, padding: 16 }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                <Zap style={{ color: "var(--pf-text-placeholder)", fontSize: 20 }} />
-                <div style={{ flex: 1, minWidth: 240 }}>
-                  <div
-                    className="pf-serif"
-                    style={{ fontSize: 15, fontWeight: 600, color: "var(--pf-text-primary)" }}
-                  >
-                    {t("ask.noModelTitle")}
-                  </div>
-                  <div style={{ fontSize: 13, color: "var(--pf-text-muted)", marginTop: 2 }}>
-                    {t("ask.noModelDesc")}
-                  </div>
-                </div>
-                <Button type="primary" icon={<Zap />} onClick={() => navigate("/models")}>
-                  {t("ask.goToModels")}
-                </Button>
-              </div>
-            </Card>
+            <EmptyState
+              type="noModel"
+              action={{ label: t("ask.goToModels"), onClick: () => navigate("/models") }}
+            />
           )}
 
           {/* 结果展示区 */}

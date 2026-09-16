@@ -1,7 +1,12 @@
-import { Inbox, FileSearch, Image, FileText, Search, BookOpen } from "lucide-react";
+import { Inbox, FileSearch, Image, FileText, Search, BookOpen, Cpu } from "lucide-react";
 import { Empty, Button } from "antd";
 import { useTranslation } from "react-i18next";
-import { buildFirstRunGuide, buildOcrGuide } from "./EmptyState.guide";
+import {
+  buildFirstRunGuide,
+  buildOcrGuide,
+  buildNoModelGuide,
+  buildIndexPendingGuide,
+} from "./EmptyState.guide";
 
 
 export type EmptyStateType =
@@ -15,7 +20,11 @@ export type EmptyStateType =
   | "citations"
   | "upload"
   | "firstRun"
-  | "report";
+  | "report"
+  /** 未配置模型：生成类能力不可用，但检索/审稿不受影响 */
+  | "noModel"
+  /** 单篇论文索引未完成：语义检索搜不到它，其余功能正常 */
+  | "indexPending";
 
 interface GuideStep {
   icon: React.ReactNode;
@@ -59,6 +68,8 @@ const ICONS: Record<EmptyStateType, React.ReactNode> = {
   upload: <Inbox />,
   firstRun: <Search />,
   report: <BookOpen />,
+  noModel: <Cpu />,
+  indexPending: <FileSearch />,
 };
 
 
@@ -88,43 +99,72 @@ export default function EmptyState({
 }: Props) {
   const { t } = useTranslation();
 
-  // 默认标题/描述/引导按 type 取（对 firstRun/search/ocr/report 四态给丰富文案，其余保持原 fallback）
-  const isContextual =
-    type === "firstRun" || type === "search" || type === "ocr" || type === "report";
-  const defaultTitle = isContextual
-    ? type === "firstRun"
-      ? t("home.firstRun.title", "欢迎来到 PaperForge")
-      : type === "search"
-        ? t("search.noResultsTitle", "没有匹配的论文")
-        : type === "ocr"
-          ? t("search.noOcrResultsTitle", "语义搜索未返回结果")
-          : t("reports.emptyTitle", "暂无感悟报告")
-    : undefined;
+  // 上下文化空态：标题与描述按 type 取值。
+  // 用映射表而非嵌套三元：新增场景只加一行，且「哪些 type 有专属文案」一眼可见。
+  const CONTEXTUAL: Partial<
+    Record<EmptyStateType, { titleKey: string; title: string; descKey: string; desc: string }>
+  > = {
+    firstRun: {
+      titleKey: "home.firstRun.title",
+      title: "欢迎来到 PaperForge",
+      descKey: "home.firstRun.desc",
+      desc: "导入或上传论文后，搜索、问答、深度审稿即刻可用",
+    },
+    search: {
+      titleKey: "search.noResultsTitle",
+      title: "没有匹配的论文",
+      descKey: "search.noResults",
+      desc: "没有匹配的论文",
+    },
+    ocr: {
+      titleKey: "search.noOcrResultsTitle",
+      title: "语义搜索未返回结果",
+      descKey: "search.noOcrResultsDesc",
+      desc: "当前论文库尚未完成全文索引，语义检索暂时无结果",
+    },
+    noModel: {
+      titleKey: "noModel.title",
+      title: "还没有配置模型",
+      descKey: "noModel.desc",
+      desc: "问答、综述与写作的生成能力需要一个模型；检索、图检索与深度审稿不依赖它，现在就能用",
+    },
+    indexPending: {
+      titleKey: "indexPending.title",
+      title: "该论文的索引尚未完成",
+      descKey: "indexPending.desc",
+      desc: "语义检索暂时搜不到它；关键词搜索、阅读标注与深度审稿不受影响",
+    },
+    report: {
+      titleKey: "reports.emptyTitle",
+      title: "暂无感悟报告",
+      descKey: "reports.emptyDesc",
+      desc: "点击上方「提交感悟」按钮，或切换到「论文」标签开始导入论文。",
+    },
+  };
+
+  const contextual = CONTEXTUAL[type];
+  const isContextual = Boolean(contextual);
+  const defaultTitle = contextual ? t(contextual.titleKey, contextual.title) : undefined;
   const defaultDesc =
     description ??
-    (type === "search"
-      ? t("search.noResults")
+    (contextual
+      ? t(contextual.descKey, contextual.desc)
       : type === "figures"
         ? t("figures.empty")
-        : type === "firstRun"
-          ? t("home.firstRun.desc", "导入或上传论文后，搜索、问答、深度审稿即刻可用")
-          : type === "ocr"
-            ? t("search.noOcrResultsDesc", "当前论文库尚未完成全文索引，语义检索暂时无结果")
-            : type === "report"
-              ? t(
-                  "reports.emptyDesc",
-                  "点击上方「提交感悟」按钮，或切换到「论文」标签开始导入论文。",
-                )
-              : t("common.noData"));
+        : t("common.noData"));
 
-  // 首次跑引导：未传 guide 时按 type=firstRun 注入默认 3 步骤
+  // 引导步骤：未显式传入时按 type 注入默认步骤
   const effectiveGuide =
     guide ??
     (type === "firstRun"
       ? buildFirstRunGuide(t)
       : type === "ocr"
         ? buildOcrGuide(t)
-        : undefined);
+        : type === "noModel"
+          ? buildNoModelGuide(t)
+          : type === "indexPending"
+            ? buildIndexPendingGuide(t)
+            : undefined);
 
   const icon = ICONS[type];
 

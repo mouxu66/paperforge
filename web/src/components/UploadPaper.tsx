@@ -227,7 +227,7 @@ export default function UploadPaper() {
   const hasFailed = items.some((it) => it.status === "failed");
 
   return (
-    <div id="upload-paper-anchor" style={{ marginBottom: 16 }}>
+    <div id="upload-paper-anchor" data-tour="upload" style={{ marginBottom: 16 }}>
       <Dragger {...draggerProps} style={{ padding: "12px 8px" }}>
         <p className="ant-upload-drag-icon">
           <Inbox style={{ color: "var(--pf-primary)", fontSize: 36 }} />

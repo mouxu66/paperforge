@@ -1,4 +1,4 @@
-import { Home, Star, Github, BookOpen, HelpCircle, Pencil, Zap, Globe, Settings, Loader, Radar, FileText, Image, Moon, Sun, Monitor, Copy, Table, Puzzle, ScanSearch, Menu as MenuIcon } from "lucide-react";
+import { Home, Star, Github, BookOpen, HelpCircle, Pencil, Zap, Globe, Settings, Loader, Radar, FileText, Image, Moon, Sun, Monitor, Copy, Table, Puzzle, ScanSearch, Menu as MenuIcon, LifeBuoy } from "lucide-react";
 import { Layout, Menu, Badge, Tooltip, Button, Tag, Dropdown } from "antd";
 
 import { Link, useLocation } from "react-router-dom";
@@ -29,6 +29,7 @@ const ROUTE_MAP = [
   { prefix: "/generate", key: "/generate" },
   { prefix: "/models", key: "/models" },
   { prefix: "/settings", key: "/settings" },
+  { prefix: "/help", key: "/help" },
   { prefix: "/paper", key: "/" },
 ] as const;
 
@@ -198,7 +199,7 @@ export default function TopNav({ onToggleNav }: { onToggleNav?: () => void }) {
           // 🧠 理解/分析 (Understand & Analyze) — 问答/DEPTH/综述
           {
             key: "understand",
-            label: t("nav.domain.understand", "理解"),
+            label: <span data-tour="nav-understand">{t("nav.domain.understand", "理解")}</span>,
             children: [
               {
                 key: "/ask",
@@ -274,6 +275,11 @@ export default function TopNav({ onToggleNav }: { onToggleNav?: () => void }) {
                 icon: <Settings />,
                 label: <Link to="/settings">{t("nav.settings")}</Link>,
               },
+              {
+                key: "/help",
+                icon: <LifeBuoy />,
+                label: <Link to="/help">{t("nav.help", "帮助中心")}</Link>,
+              },
             ],
           },
         ]}
@@ -283,6 +289,19 @@ export default function TopNav({ onToggleNav }: { onToggleNav?: () => void }) {
         <VramStatusIndicator />
         <ModelSelector />
         <DevTools />
+        {/* 帮助中心：新手引导最后一步会高亮这里，作为「随时回来重看」的固定入口 */}
+        <Tooltip title={t("nav.help", "帮助中心")}>
+          <Link to="/help" data-tour="nav-help">
+            <Button
+              className="pf-help-button"
+              type="text"
+              size="small"
+              icon={<LifeBuoy />}
+              aria-label={t("nav.help", "帮助中心")}
+              style={{ color: "var(--pf-text-muted)", fontWeight: 500 }}
+            />
+          </Link>
+        </Tooltip>
         {/* 主题切换 */}
         <Dropdown
           menu={{
@@ -325,7 +344,8 @@ export default function TopNav({ onToggleNav }: { onToggleNav?: () => void }) {
           </Link>
         </Tooltip>
         <Tooltip title={t("nav.repo")}>
-          <a href="https://github.com/mouxu/PaperForge" target="_blank" rel="noreferrer">
+          {/* 原链接指向 mouxu/PaperForge（404），改为实际仓库地址 */}
+          <a href="https://github.com/mouxu66/paperforge" target="_blank" rel="noreferrer">
             <Github
               style={{ fontSize: 16, color: "var(--pf-text-muted)", cursor: "pointer" }}
             />
