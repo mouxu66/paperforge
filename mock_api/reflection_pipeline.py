@@ -36,6 +36,23 @@ from .reflection_fidelity import (
     compute_coverage,
     compute_fidelity,
 )
+from .settings import (
+    env_first_bool,
+    env_first_str,
+    get_settings,
+    resolve_citation_verify_mode,
+)
+
+
+def _settings_flags_penalize() -> bool:
+    """原论文/图表统计红旗是否扣学生分（Settings 字段，默认 False）。
+
+    fail-open：Settings 异常时返回历史行为（False = 不扣），绝不因配置读取失败改变评分。
+    """
+    try:
+        return bool(get_settings().reflection_penalize_paper_flags)
+    except Exception:  # noqa: BLE001 - 配置异常不得影响评分链路
+        return False
 
 # 6 维权重（2026-08-04 控制变量实验校准，详见 deliverables/experiment_C_extension_report.md）
 # 校准依据：41 篇人工基准 + 论文原文核验，60/40 随机划分 × 50 稳健性验证。
@@ -114,10 +131,6 @@ def _get_paper_title_abstract(db, paper_id: str | None) -> str:
         return "\n\n".join(parts)
     except Exception:  # noqa: BLE001 - fail-open，绝不影响主评审流程
         return ""
-
-
-def _lookup_source_paper_id_by_docx(db, path: str) -> str | None:
-    """通过报告 docx 路径反查数据库里已绑定的源论文 ID。"""
 
 
 def _load_figure_series(
@@ -352,20 +365,23 @@ def analyze_reflection_file(
     # （一票否决级，对齐论文侧 FATAL_VETO）；inconsistent → needs_evidence。
     # 校验本身 fail-open（网络/限流异常降级为 unknown，绝不误杀报告）。
     citation_integrity: dict = {}
-    _cv_flag = os.environ.get("PAPERFORGE_CITATION_VERIFY")
-    if _cv_flag is not None and _cv_flag.strip() == "0":
-        citation_integrity = {}
-    else:
+    # 配置通道统一（2026-09-16）：三态由 settings.resolve_citation_verify_mode 统一解析
+    # （显式 env > Settings/.env），不再在此处自造默认值。
+    # 本链路默认档 = "offline"：单篇报告成本低，未配置时仍跑本地一致性检查、不触网
+    # （保持历史可测行为）；旧实现只读 os.environ → .env 里的 CITATION_VERIFY=1
+    # 静默失效，在线核验被降级且面板上没有任何提示。
+    _cv_mode = resolve_citation_verify_mode(default="offline")
+    if _cv_mode != "skip":
         try:
             from .integrity.citation_verifier import assess_citation_integrity
 
             citation_integrity = assess_citation_integrity(
                 parse.raw_text,
-                verify_online=_cv_flag is not None
-                and _cv_flag.strip().lower() in ("1", "true", "on", "yes"),
+                verify_online=_cv_mode == "online",
             )
         except Exception:  # noqa: BLE001 - 引用校验异常隔离，不影响主流程
             citation_integrity = {}
+    citation_verify_mode = _cv_mode
 
     # 3. 现有 4 维（容错）
     four = None
@@ -424,7 +440,8 @@ def analyze_reflection_file(
     except Exception:  # noqa: BLE001 - 证据检索失败绝不影响评分主链路
         evidence_diag.update(status="error", message="证据检索异常，已跳过")
 
-    if os.environ.get("PAPERFORGE_BENCH_NO_LLM") == "1":
+    _bench_no_llm = env_first_str("PAPERFORGE_BENCH_NO_LLM")
+    if _bench_no_llm == "1" or (_bench_no_llm is None and get_settings().bench_no_llm):
         four = _heuristic_four(parse.sections)
     else:
         try:
@@ -473,8 +490,12 @@ def analyze_reflection_file(
                     score_uncertainty=_safe_dict(getattr(res, "score_uncertainty", None)),
                     # 思考模式审计（PAPERFORGE_REFLECTION_THINKING=1 时非空）：
                     # 每次 LLM 调用的 CoT 摘录，供离线 A/B / 前端查看。
+                    # 防御：必须走 _safe_str_list——旧实现直接对 getattr 结果切片，
+                    # 测试替身（Mock）或异常类型会让这一行抛 TypeError，从而把整个
+                    # diag.update 回滚，连带 score_uncertainty 等全部诊断字段静默丢失
+                    # （P5 违规：模型可见的东西却在诊断里查不到）。
                     thinking_excerpts=[
-                        t[:600] for t in getattr(reviewer, "_thinking_excerpts", [])[:8]
+                        t[:600] for t in _safe_str_list(getattr(reviewer, "_thinking_excerpts", None))[:8]
                     ],
                 )
                 # LLM 故障判定：解析彻底失败，或任一次调用空返回（超时/连接失败）。
@@ -505,14 +526,25 @@ def analyze_reflection_file(
     # 只作用于 LLM 分、绝不触碰 fidelity/coverage（向量层独立保证）；
     # llm_failed 时 four 全为 None，apply_dim_offsets 原样保留 None 不造分。
     four_cal = apply_dim_offsets(four)
+    # 2026-09-16（B1 修复）：以前把 status∈{no_paper, too_short, degraded_model}
+    # 的 fidelity/coverage（值为 None）写成 0.0 再计入加权——相当于「系统没拿到资料」
+    # 和「学生编造」同罚，占权重 40% 的分数被静默归零（0.8 的好报告→≈0.48）。
+    # 这与同模块 apply_dim_offsets「None 绝不变成假分数」的原则自相矛盾。
+    # 现改为：不可测的维度一律保持 None → 不参与加权归一化（weights 按可用维度归一），
+    # 并在返回值里给出来源与原因，供人工复核。
     scores = {
         "understanding_accuracy": four_cal.get("understanding_accuracy"),
         "analysis_depth": four_cal.get("analysis_depth"),
         "innovative_insights": four_cal.get("innovative_insights"),
         "evidence_support": four_cal.get("evidence_support"),
-        "fidelity": fid.fidelity if fid.fidelity is not None else 0.0,
-        "coverage": cov.coverage if cov.coverage is not None else 0.0,
+        "fidelity": fid.fidelity,
+        "coverage": cov.coverage,
     }
+    unavailable_dims = {
+        "fidelity": None if fid.fidelity is not None else fid.status,
+        "coverage": None if cov.coverage is not None else cov.status,
+    }
+    system_degraded = any(v is not None for v in unavailable_dims.values())
     copy_ratio = cov.copy_ratio if cov.copy_ratio is not None else (fid.copy_ratio or 0.0)
     # ── 照抄封杀：copy_ratio ≥ COPY_RATIO_FAIL → fidelity/coverage 向量分全部置零 ──
     # 照抄报告在向量层天然高分（每句都能在论文里找到高余弦匹配），占权重 40%。
@@ -521,8 +553,12 @@ def analyze_reflection_file(
     # 现直接清零：照抄 ≠ 忠实，抄来的句子不算「覆盖了核心要点」。
     copy_crushed = not llm_failed and copy_ratio is not None and copy_ratio >= COPY_RATIO_FAIL
     if copy_crushed:
+        # 照抄是「可测且确定」的结论，与「不可测」不同：这里必须真的归零，
+        # 且把两个维度标为可用（否则照抄者会因为维度不可用而免于扣分）。
         scores["fidelity"] = 0.0
         scores["coverage"] = 0.0
+        # 照抄检测（字符 n-gram）不依赖嵌入，确定性成立 → 覆盖「不可测」结论
+        unavailable_dims = {"fidelity": None, "coverage": None}
     # LLM 失败时平均分也必须为空；否则确定性 fidelity/coverage 的部分加权平均
     # 会制造一个看似真实的总分，继续污染排名/诚信报告。
     if llm_failed:
@@ -601,7 +637,18 @@ def analyze_reflection_file(
     #    等差/重复/恒定偏移/Benford 等零 LLM 信号，检测学生引用的数据是否可信。
     _report_flags = _statistical_plausibility_check(parse.raw_text)
     _paper_flags = _statistical_plausibility_check(full or "")
-    _all_stat_flags = _report_flags + _paper_flags + _figure_flags
+    # 2026-09-16（B3 修复）：原论文自身、以及原论文图表里的统计/造假红旗，
+    # 默认**不再扣学生报告的分**——学生不为所读论文的数据负责，且论文侧红晒
+    # （尤其 Benford）本身存在假阳性。它们仍会完整回传（paper_statistical_flags /
+    # figure_fraud_flags）作为教学/诚信提示。
+    # 需要恢复旧行为时设 PAPERFORGE_REFLECTION_PENALIZE_PAPER_FLAGS=1。
+    _penalize_paper_flags = env_first_bool(
+        "PAPERFORGE_REFLECTION_PENALIZE_PAPER_FLAGS",
+        _settings_flags_penalize(),
+    )
+    _all_stat_flags = _report_flags + (
+        _paper_flags + _figure_flags if _penalize_paper_flags else []
+    )
     stat_penalty = 0.0
     for _f in _all_stat_flags:
         if _f.startswith("[std过低]") or _f.startswith("[p值不可能]"):
@@ -679,14 +726,24 @@ def analyze_reflection_file(
         # —— 引用真值校验（ADR-014 P4，fabricated 已进 verdict 硬校验层）——
         "citation_integrity": citation_integrity,
         "citation_override_reason": citation_override_reason,
+        # 引用校验实际生效的档位（skip/offline/online）——配置可见化（P5）：
+        # 运维不必猜「到底触网了没」，结果里直接带出解析后的模式。
+        "citation_verify_mode": citation_verify_mode,
         # —— 统计合理性检测（零 LLM，复用论文侧检测，对报告同样生效）——
         "statistical_flags": _report_flags,
         # —— 论文原文统计检测（检测学生引用的论文是否有数据篡改信号）——
         "paper_statistical_flags": _paper_flags,
         # —— Figure 级别造假检测（跨表复制、末位偏好、精度一致、互补/高度相似）——
         "figure_fraud_flags": _figure_flags,
-        # —— 统计红旗扣分（对齐论文侧 stat_penalty，最高 0.15）——
+        # —— 统计红旗扣分（仅报告自身缺陷；原论文/图表红旗默认 advisory）——
         "stat_penalty": round(stat_penalty, 4),
+        "stat_penalty_scope": (
+            "report+paper+figures" if _penalize_paper_flags else "report_only"
+        ),
+        # —— 系统降级可见化（B1）：哪些维度因「没资料/没模型」而不可测 ——
+        "system_degraded": system_degraded,
+        "unavailable_dimensions": {k: v for k, v in unavailable_dims.items() if v is not None},
+        "score_dimensions_used": sorted(k for k, v in scores.items() if v is not None),
         # —— 报告条件化证据检索（PAPERFORGE_REFLECTION_EVIDENCE=1 时非 disabled）——
         "evidence_retrieval": evidence_diag,
         # —— 思考模式 CoT 审计（PAPERFORGE_REFLECTION_THINKING=1 时非空，默认 []）——

@@ -77,7 +77,7 @@ logger = logging.getLogger(__name__)
 # reflection schema（claims×3-5 + evidence×3-5 + 4 维 + summary 约 1500-3000
 # tokens）。硬下限 3000 匹配主流 provider 的 context budget（GPT-4 / Claude /
 # GLM-4 均支持 4096+），可由 PAPERFORGE_REFLECTION_MAX_TOKENS 调高。
-from .settings import get_settings
+from .settings import env_first_str, get_settings
 
 _REFLECTION_MAX_TOKENS_FLOOR = get_settings().reflection_max_tokens
 
@@ -135,12 +135,23 @@ _INNOVATION_NO_MARKER_CAP = 0.50  # R4.5：无原创性标记时创新分封顶�
 # 校准策略：在硬编码层（R4.5 之后）插入确定性的结构下限，防千问 validates_confidence。
 # 环境开关 PAPERFORGE_QWEN_CALIBRATION=1（默认关闭，向后兼容）。
 # 运行 5-AI 对比基线后，用户可用此开关调整千问评分使其接近多 AI 共识。
-_QWEN_CALIBRATION_ENABLED = os.environ.get("PAPERFORGE_QWEN_CALIBRATION", "0").strip().lower() in (
-    "1",
-    "true",
-    "yes",
-    "on",
-)
+def _qwen_calibration_enabled() -> bool:
+    """千问校准层开关（P7/R5-R7）。
+
+    配置通道统一（2026-09-16）：显式 env 优先，否则回落 Settings（含 .env）。
+    旧实现只在导入时读一次 os.environ → .env 里的开关无效。
+    """
+    from .settings import env_first_str, get_settings
+
+    raw = env_first_str("PAPERFORGE_QWEN_CALIBRATION")
+    if raw is not None and raw.strip():
+        return raw.strip().lower() in ("1", "true", "yes", "on")
+    try:
+        return bool(get_settings().qwen_calibration)
+    except Exception:  # noqa: BLE001 - 配置异常 fail-open（不启用额外封顶）
+        return False
+
+
 _QWEN_CALIBRATION_2SEC_CAP = 0.70  # R5：仅 2 段时全维封顶
 _QWEN_CALIBRATION_3SEC_CAP = 0.50  # R5：仅 3 段时 ii 封顶
 _QWEN_CALIBRATION_REFL_MIN_CHARS = 100  # R6：reflection 段字数下限
@@ -349,8 +360,17 @@ def _reflection_thinking_enabled() -> bool:
     是否真的让模型先思考再打分由本开关 + chat_template_kwargs.enable_thinking
     决定。CoT 经 get_last_reasoning() 抓取进 _thinking_excerpts 审计，
     content 保持纯 JSON，safe_json_parse 不受影响。
+
+    配置通道统一（2026-09-16）：env 非空时以 env 为准（严格 =1，保持历史语义，
+    测试也依赖这一点）；env 未设置时回落 Settings（含 .env）。
     """
-    return os.environ.get("PAPERFORGE_REFLECTION_THINKING", "").strip() == "1"
+    raw = os.environ.get("PAPERFORGE_REFLECTION_THINKING")
+    if raw is not None:
+        return raw.strip() == "1"
+    try:
+        return bool(get_settings().reflection_thinking)
+    except Exception:  # noqa: BLE001 - 配置异常 fail-open（保持旧行为：不开思考）
+        return False
 
 
 def _truncate_head_tail(
@@ -960,7 +980,7 @@ class ReflectionReviewer:
         # 用确定性规则封顶使其接近多 AI 中位数基线。
         # 优先使用调用方预解析的 section_count / ref_len（docx parser 更可靠）；
         # 未提供时 fallback 扫描 raw_text。
-        if _QWEN_CALIBRATION_ENABLED and full_text:
+        if _qwen_calibration_enabled() and full_text:
             section_count = (
                 override_section_count
                 if override_section_count is not None
@@ -1357,9 +1377,14 @@ class ReflectionReviewer:
             if cv_reason:
                 self._log(f"  [crossval] {cv_reason}")
                 final_overrides.append(cv_reason)
+            # verdict 升级只能在**真的加了分**时考虑（bonus > 0）。
+            # 否则「出处核验成功」会单独把 verdict 从 needs_evidence 抬到 well_done，
+            # 而分数一分未动——比加分本身更严重地让元数据影响结论（2026-09-16 修复）。
+            if bonus > 0:
                 # 加分后可能改变 verdict（average 重算）：若原 verdict 是 well_done 但加分后
                 # average 仍 < AVERAGE_SCORE_POOR，则保持原 verdict（不因加分降级）；
-                # 若原 verdict 是 needs_evidence 但加分后 average >= 0.50，升级为 well_done
+                # 若原 verdict 是 needs_evidence 但加分后 average >= AVERAGE_SCORE_POOR，
+                # 升级为 well_done
                 new_avg = final_scores.get("average", 0)
                 if scored.verdict == "needs_evidence" and new_avg >= AVERAGE_SCORE_POOR:
                     scored = scored.model_copy(update={"verdict": "well_done"})
@@ -1394,30 +1419,138 @@ class ReflectionReviewer:
         )
 
 
+# 6 维融合才会出现的维度。出现在 scores 里即说明已进入 reflection_pipeline 的
+# 显式权重归一（W: coverage 0.35 最高），此时 average 是「6 维加权平均」。
+_PIPELINE_ONLY_DIMS = ("fidelity", "coverage")
+
+
+def _fmt_score(value: object) -> str:
+    """把分数字面量渲染成两位小数；None 标注为「不可测」。
+
+    旧实现直接 f"{v:.2f}"：scores 里一旦有 None（fidelity/coverage 在
+    「无绑定论文 / 报告过短」时按设计保持 None，见 reflection_pipeline 的
+    unavailable_dims）就会 TypeError，让整个评审在拼理由时崩掉。
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return "不可测" if value is None else str(value)
+    return f"{value:.2f}"
+
+
+def _average_label(scores: dict) -> str:
+    """描述 average 的口径，避免两种口径都标成「4 维平均」。
+
+    同名 average 其实有两个来源，混标会直接误导复核老师：
+    - **4 维平均**：understanding/analysis/innovation/evidence 的简单均值
+      （本模块硬校验层产出，reason 初版用的就是这个）
+    - **6 维加权平均**：再加 fidelity/coverage，按 reflection_pipeline 的
+      显式权重 W 归一（coverage 权重 0.35，是「综合得分」在 UI 里的那个数）
+    """
+    dims = {k for k, v in scores.items() if k != "average" and v is not None}
+    if dims & set(_PIPELINE_ONLY_DIMS):
+        return "6 维加权平均"
+    return "4 维平均"
+
+
+def _conclusion_for_verdict(verdict: str) -> str:
+    """verdict → 一句人话结论。"""
+    if verdict == "well_done":
+        return "结论: 报告证据充实、分析有深度、观点有支撑"
+    if verdict == "needs_evidence":
+        return "结论: 报告分数尚可但证据不足，需补充具体引用/数据"
+    if verdict == "needs_depth":
+        return "结论: 报告对原文理解不够深，需进一步精读并展开分析"
+    if verdict == "rewrite_required":
+        return "结论: 报告几乎无有效证据支撑，建议大幅重写"
+    if verdict == "llm_failed":
+        return "结论: 评审未产出可信结果（模型故障），不代表报告质量"
+    return f"结论: {verdict}"
+
+
 def _build_verdict_reason(
     verdict: str,
-    scores: dict[str, float],
+    scores: dict,
     effective_evidence: int,
     overrides: list[str],
 ) -> str:
-    """组装人类可读的 verdict 解释。"""
+    """组装人类可读的 verdict 解释。
+
+    ⚠️ 这是**阶段性**产物：调用点之后 verdict 与分数还会被改至少四处
+    （6 维融合、fidelity 硬规则、云端第二评审纠正、crossval 加分升级）。
+    对外展示前必须用 :func:`rebuild_verdict_reason` 按最终值重建，
+    否则会出现「标签写得好 + 理由写着需深化」的自相矛盾。
+    """
     parts: list[str] = []
     if overrides:
         parts.append("硬编码规则触发: " + " | ".join(overrides))
     parts.append(
-        f"evidence_id 有效锚定数={effective_evidence}; 4 维平均={scores.get('average', 0):.2f}"
+        f"evidence_id 有效锚定数={effective_evidence}; "
+        f"{_average_label(scores)}={_fmt_score(scores.get('average'))}"
     )
-    score_str = ", ".join(f"{k}={v:.2f}" for k, v in scores.items() if k != "average")
-    parts.append(f"各维度: {score_str}")
-    if verdict == "well_done":
-        parts.append("结论: 报告证据充实、分析有深度、观点有支撑")
-    elif verdict == "needs_evidence":
-        parts.append("结论: 报告分数尚可但证据不足，需补充具体引用/数据")
-    elif verdict == "needs_depth":
-        parts.append("结论: 报告对原文理解不够深，需进一步精读并展开分析")
-    elif verdict == "rewrite_required":
-        parts.append("结论: 报告几乎无有效证据支撑，建议大幅重写")
+    score_str = ", ".join(
+        f"{k}={_fmt_score(v)}" for k, v in scores.items() if k != "average"
+    )
+    if score_str:
+        parts.append(f"各维度: {score_str}")
+    parts.append(_conclusion_for_verdict(verdict))
     return " | ".join(parts)
+
+
+def _pick_final_score(rr: dict, key: str) -> object:
+    """按 UI 的同一优先级取值：analysis_v2 → 顶层 → scores。
+
+    ReflectionResultView 读分数用的就是这条链（``analysis_v2?.x ?? x ?? scores?.x``），
+    理由文本必须与页面显示同源，否则「理由是 A 分数、页面是 B 分数」。
+    """
+    analysis = rr.get("analysis_v2")
+    if isinstance(analysis, dict) and analysis.get(key) is not None:
+        return analysis[key]
+    if rr.get(key) is not None:
+        return rr[key]
+    scores = rr.get("scores")
+    if isinstance(scores, dict):
+        return scores.get(key)
+    return None
+
+
+def rebuild_verdict_reason(rr: dict) -> str:
+    """用**最终**的分数与 verdict 重建人类可读理由。
+
+    为什么需要独立入口：``_build_verdict_reason`` 在 4 维硬校验阶段就被调用，
+    之后 verdict 还会被 6 维融合、fidelity 硬规则、云端第二评审、crossval 加分
+    分别改写，而那段字符串没人重算——于是历史记录里出现
+    「verdict=well_done，理由却写着『需进一步精读并展开分析』（needs_depth 的结论）」。
+
+    Args:
+        rr: 完整的 reflection_result dict（写入 DB 前的最终形态）。
+
+    Returns:
+        与最终分数/verdict 自洽的理由字符串。
+    """
+    scores: dict = {}
+    final_scores = rr.get("scores")
+    if isinstance(final_scores, dict):
+        scores.update(final_scores)
+    # 融合层把 fidelity/coverage 落在 analysis_v2；补齐后维度列表才完整
+    analysis = rr.get("analysis_v2")
+    if isinstance(analysis, dict):
+        for dim in _PIPELINE_ONLY_DIMS:
+            if dim not in scores and analysis.get(dim) is not None:
+                scores[dim] = analysis[dim]
+
+    avg = _pick_final_score(rr, "average")
+    if avg is not None:
+        scores["average"] = avg
+
+    effective = rr.get("effective_evidence_count")
+    if not isinstance(effective, int):
+        effective = 0
+
+    overrides = rr.get("hardcoded_overrides")
+    if not isinstance(overrides, list):
+        overrides = []
+
+    verdict = str(rr.get("verdict") or "")
+    return _build_verdict_reason(verdict, scores, effective, overrides)
 
 
 # ===========================================================================
@@ -1753,12 +1886,30 @@ def _compute_crossval_accuracy(pair: dict) -> tuple[float, dict]:
     return accuracy, {"title": tm, "author": am, "arxiv": has_arxiv}
 
 
+def _crossval_bonus_enabled() -> bool:
+    """出处核验是否折算成 understanding_accuracy 加分（默认关）。
+
+    默认关的理由：加分项衡量的是「报告里抄写的原论文标题/作者/arXiv 号对不对」，
+    却被加到「理解准确性」维度上——**元数据拄写正确 ≠ 理解准确**（B5）。
+    核验本身仍照常执行，结果只作 advisory 写进 hardcoded_overrides。
+
+    配置通道：显式 env PAPERFORGE_REFLECTION_CROSSVAL_BONUS > Settings/.env。
+    """
+    raw = env_first_str("PAPERFORGE_REFLECTION_CROSSVAL_BONUS")
+    if raw is not None and raw.strip():
+        return raw.strip().lower() in ("1", "true", "yes", "on")
+    try:
+        return bool(get_settings().reflection_crossval_bonus_enabled)
+    except Exception:  # noqa: BLE001 - 配置异常 fail-open（保持默认：不加分）
+        return False
+
+
 def apply_crossval_bonus(
     scores: dict[str, float], student_id: str, full_text: str = ""
 ) -> tuple[dict[str, float], float, str]:
     """对已验证出处的报告，按引用准确度给 understanding_accuracy 加分。
 
-    自动流程：扫描全文找出处 → arXiv API 验证 → 配对成功则加分。
+    自动流程：扫描全文找出处 → arXiv API 验证 → 配对成功（且加分开关开启）才加分。
     无出处或验证失败 → 不加分（不惩罚无出处）。
 
     Args:
@@ -1767,18 +1918,26 @@ def apply_crossval_bonus(
         full_text: 报告全文（用于扫描出处）
 
     Returns:
-        (new_scores, bonus, reason) - 加分后的分数、加分值、原因说明
+        (new_scores, bonus, reason) - 加分后的分数、加分值、原因说明。
+        加分关闭时 bonus=0.0，但 reason 仍返回出处核验结果（advisory）。
 
     环境变量 PAPERFORGE_REFLECTION_SKIP_CROSSVAL=1 时跳过在线验证
     （离线/沙箱环境 arXiv API 不可达，避免每次 30s 超时拖慢批量评测）。
+    加分默认关：PAPERFORGE_REFLECTION_CROSSVAL_BONUS=1 可恢复旧的加分行为。
     """
-    if os.environ.get("PAPERFORGE_REFLECTION_SKIP_CROSSVAL") == "1":
+    if env_first_str("PAPERFORGE_REFLECTION_SKIP_CROSSVAL") == "1":
         return scores, 0.0, ""
     pair = _resolve_paper_pair(student_id, full_text)
     if not pair:
         return scores, 0.0, ""
 
     accuracy, detail = _compute_crossval_accuracy(pair)
+    if not _crossval_bonus_enabled():
+        return scores, 0.0, (
+            f"出处核验（advisory，不计分）: arXiv:{pair['arxiv_id']} 配对成功，"
+            f"准确度={accuracy:.2f}（标题{detail['title']:.2f}+作者{detail['author']:.2f}"
+            f"+arxiv{detail['arxiv']:.1f}）；加分已关（设 PAPERFORGE_REFLECTION_CROSSVAL_BONUS=1 开启）"
+        )
     bonus = round(accuracy * _CROSSVAL_BONUS_MAX, 4)
 
     # 加分后封顶 1.0

@@ -272,6 +272,19 @@ def _load_local_onnx_embedder():
 
 
 # —— 多语言嵌入器（paraphrase-multilingual-MiniLM-L12-v2，仅 fidelity 链路）——
+def _local_ml_preferred() -> bool:
+    """是否优先加载本地多语言 ONNX（settings 字段，默认 True）。
+
+    fail-open：settings 异常时不改变历史行为（True）。
+    """
+    try:
+        from .settings import get_settings
+
+        return bool(get_settings().local_ml_embedder)
+    except Exception:  # noqa: BLE001 - 配置异常不得影响嵌入加载
+        return True
+
+
 def get_ml_embedder():
     """懒加载多语言模型。优先本地 ONNX；否则 fastembed；均失败返回 None。
 
@@ -286,7 +299,14 @@ def get_ml_embedder():
         return None
 
     # 1) 本地 ONNX（优先，绕过 Hub API 握手与下载重试）
-    if os.environ.get("PAPERFORGE_LOCAL_ML") != "0":
+    # 配置通道统一：显式 env 优先，否则 Settings（含 .env）。
+    _local_ml_raw = os.environ.get("PAPERFORGE_LOCAL_ML")
+    _local_ml_ok = (
+        _local_ml_raw.strip() != "0"
+        if _local_ml_raw is not None
+        else _local_ml_preferred()
+    )
+    if _local_ml_ok:
         try:
             _ml_embedder = _load_local_onnx_embedder()
             if _ml_embedder is not None:
@@ -586,8 +606,11 @@ def compute_fidelity(
         if base_vec is None:
             return FidelityResult(
                 fidelity=None,
+                grounded_ratio=None,
                 status="degraded_model",
-                message="嵌入模型不可用，无法计算忠实度",
+                # 照抄检测（字符 n-gram）不需要嵌入模型，仍然可算并保留
+                copy_ratio=compute_copy_ratio(rep_text, paper_full_text),
+                message="嵌入模型不可用，无法计算忠实度（照抄检测仍有效）",
             )
         gram_paper_deg = re.sub(r"\s+", "", paper_full_text or "")
         xling_ids_deg = {
@@ -618,9 +641,28 @@ def compute_fidelity(
             elif sim < STRAY_THR and _has_assertive(s):
                 stray.append(s[:160])
         anchors2.sort(key=lambda a: a["sim"], reverse=True)
-        fidelity = round(matched_len / total_len, 3) if total_len else None
         grounded_ratio = round(matched_len / total_len, 3) if total_len else None
         copy_ratio = round(copy_len / total_len, 3) if total_len else 0.0
+        # 2026-09-16（B1 同族修复）：跨语言场景下用**英文** bge 算中文句子相似度，
+        # 得到的 fidelity 不是「学生编造」的证据，而是「系统量不了」。
+        # 旧实现把它当真实分数返回（叠加跨语言惩罚 0.5）→ 整批中文报告 fidelity≈0
+        # → FIDELITY_FAIL → 全员 rewrite_required。现改为 fidelity=None（不可测），
+        # 保留 grounded_ratio/copy_ratio/anchors 供人工诊断，绝不伪造成 0 分。
+        if xling_ids_deg:
+            return FidelityResult(
+                fidelity=None,
+                grounded_ratio=grounded_ratio,
+                anchors=anchors2[:10],
+                stray_claims=stray,
+                copy_ratio=copy_ratio,
+                copy_sentences=copy_sents,
+                status="degraded_model",
+                message=(
+                    f"多语言模型不可用，无法比对 {len(xling_ids_deg)} 句跨语言复述："
+                    "忠实度不可测（不作为评分依据；照抄检测仍有效）"
+                ),
+            )
+        fidelity = round(matched_len / total_len, 3) if total_len else None
         return FidelityResult(
             fidelity=fidelity,
             grounded_ratio=grounded_ratio,
@@ -629,7 +671,7 @@ def compute_fidelity(
             copy_ratio=copy_ratio,
             copy_sentences=copy_sents,
             status="degraded_model",
-            message="多语言模型不可用，回退英文 bge 比对（结果仅供粗参考）",
+            message="多语言模型不可用，回退英文 bge 比对（同语种比对仍有效，跨语种已置空）",
         )
 
     # —— 主路径：句对句 + 照抄判定 ——
@@ -694,6 +736,24 @@ def compute_fidelity(
         grounded_ratio = copy_ratio = 0.0
         fidelity = 0.0
 
+    # 降级判定（B1 同族）：未用多语言模型却存在跨语言句 → 相似度由英文模型给出，
+    # 不具可比性（中文句经英文分词器会退化成字符级噪声）。此时不得把它当分数：
+    # 旧行为会让整批中文报告 fidelity≈0 → FIDELITY_FAIL → 全员 rewrite_required。
+    if (not use_ml) and xling_indexes:
+        return FidelityResult(
+            fidelity=None,
+            grounded_ratio=round(grounded_ratio, 3),
+            anchors=anchors[:10],
+            stray_claims=stray,
+            copy_ratio=round(copy_ratio, 3),
+            copy_sentences=copy_sents,
+            status="degraded_model",
+            message=(
+                f"未启用多语言嵌入，而报告有 {len(xling_indexes)} 句跨语言复述："
+                "忠实度不可测（不作为评分依据；照抄/覆盖检测仍有效）"
+            ),
+        )
+
     status = "ok"
     return FidelityResult(
         fidelity=fidelity,
@@ -729,26 +789,100 @@ _CONCLUSION_KW = (
 )
 
 
+# 结果句信号：含百分号/指标关键词/「= 数值」的句子才是「论文核心要点」的主要载体。
+_RESULT_SIGNAL_KW = (
+    "accuracy",
+    "precision",
+    "recall",
+    "f1",
+    "bleu",
+    "rouge",
+    "auc",
+    "psnr",
+    "ssim",
+    "error",
+    "loss",
+    "速度",
+    "精度",
+    "准确率",
+    "召回率",
+    "效率",
+    "提升",
+    "降低",
+)
+
+
 def _extract_paper_keypoints(paper_text: str, max_n: int = MAX_PAPER_KEYPOINTS) -> list[str]:
-    """从原论文抽取关键句（摘要区 + 结论区），用于反向覆盖度比对。"""
-    sents = split_sentences(paper_text or "")
+    """从原论文抽取关键句（摘要区 + 结论区 + 分层结果句）。
+
+    2026-09-16 修复（B2）：旧实现是 `sents[:8]` + 结论关键词句，再按 max_n 截断——
+    由于前 8 句先入队，**事实上几乎只抽到摘要区前 8 句**（而且 PDF 解析出的前几句
+    常常是期刊头/作者/版权块）。而覆盖度占总分权重 0.35，等于用「有没有提到论文开头
+    那几句话」当正确性核心指标。
+    现改为三类配额 + 全文分层抽样：
+      1) 摘要区：仅取前 3 句（不再占满配额）；
+      2) 结论区：命中结论关键词且位于文档后半段（优先后半段，避免把 introdution
+         里的 "we propose" 当结论）；
+      3) 结果句：含百分号/指标关键词的句子，按**文档位置分桶**每桶取一句
+         （保证方法/实验/结果各段都有代表，而不是只覆盖开头）。
+    配额不足时按行文顺序补齐，保证返回条数稳定、可比。
+    """
+    sents = [s.strip() for s in split_sentences(paper_text or "")]
+    sents = [s for s in sents if 20 <= len(s) <= 400]
     if not sents:
         return []
-    head = sents[:8]  # 摘要区
-    tail_candidates = [s for s in sents if any(k in s.lower() for k in _CONCLUSION_KW)]
-    seen = set()
+    n = len(sents)
+    seen: set[str] = set()
     out: list[str] = []
-    for s in head + tail_candidates:
-        s_clean = s.strip()
-        if len(s_clean) < 20:  # 过滤碎片
-            continue
-        key = s_clean[:80].lower()
-        if key in seen:
-            continue
+
+    def _add(sentence: str) -> bool:
+        key = sentence[:80].lower()
+        if key in seen or len(out) >= max_n:
+            return False
         seen.add(key)
-        out.append(s_clean)
+        out.append(sentence)
+        return True
+
+    # 1) 摘要区：仅头部 3 句
+    for s in sents[:3]:
+        _add(s)
+
+    # 2) 结论区：后半段命中结论词的句子，最多 4 句
+    added_concl = 0
+    for i, s in enumerate(sents):
+        if added_concl >= 4 or len(out) >= max_n:
+            break
+        if i < n // 2:
+            continue
+        if any(k in s.lower() for k in _CONCLUSION_KW) and _add(s):
+            added_concl += 1
+
+    # 3) 结果句：按文档位置分桶，每桶取一句（保证中段/尾部都有代表）
+    buckets = max(1, min(6, max_n // 2))
+    size = max(1, n // buckets)
+    for b in range(buckets):
         if len(out) >= max_n:
             break
+        lo = min(b * size, n)
+        hi = min((b + 1) * size if b < buckets - 1 else n, n)
+        best: tuple[int, str] | None = None
+        for i in range(lo, hi):
+            s = sents[i]
+            low = s.lower()
+            signal = (2 if "%" in s else 0) + (1 if any(k in low for k in _RESULT_SIGNAL_KW) else 0)
+            if signal == 0:
+                continue
+            if best is None or signal > best[0]:
+                best = (signal, s)
+        if best is not None:
+            _add(best[1])
+
+    # 4) 配额不足→按行文顺序补齐（保持条数稳定，便于跨报告比较）
+    for s in sents:
+        if len(out) >= max_n:
+            break
+        _add(s)
+
     return out
 
 
@@ -840,11 +974,28 @@ def compute_coverage(
 
     coverage = round(matched / len(keypts), 3) if keypts else None
     status = "ok" if ml_ok else "degraded_model"
+
+    # 降级 + 跨语言 → 覆盖率不可测（不得当 0 分参与加权）—— 同 compute_fidelity 的处理。
+    if not ml_ok:
+        xling_report_sents = [s for s in rep_sents if _sentence_is_crosslingual(s, gram_paper)]
+        if xling_report_sents:
+            return CoverageResult(
+                coverage=None,
+                covered=covered,
+                uncovered=uncovered,
+                copy_ratio=copy_ratio,
+                status="degraded_model",
+                message=(
+                    f"未启用多语言嵌入，而报告有 {len(xling_report_sents)} 句跨语言复述："
+                    "覆盖度不可测（不作为评分依据；照抄检测仍有效）"
+                ),
+            )
+
     return CoverageResult(
         coverage=coverage,
         covered=covered,
         uncovered=uncovered,
         copy_ratio=copy_ratio,
         status=status,
-        message="" if ml_ok else "多语言模型不可用，回退英文 bge 比对（结果仅供粗参考）",
+        message="" if ml_ok else "多语言模型不可用，回退英文 bge 比对（同语种仍有效）",
     )

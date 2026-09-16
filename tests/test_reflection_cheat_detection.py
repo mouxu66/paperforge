@@ -585,6 +585,66 @@ class TestCombinedAttack:
         assert result["ai_likelihood"] >= 0.0  # 总是有值
 
 
+class TestCrossvalBonusGate:
+    """出处核验加分开关（B5）：默认关闭——元数据拄写正确 ≠ 理解准确。
+
+    核验本身照常执行（advisory 写进 hardcoded_overrides），但不得改变分数，
+    也不得单独把 verdict 抬高；需要恢复旧行为时设
+    PAPERFORGE_REFLECTION_CROSSVAL_BONUS=1。
+    """
+
+    PAIR = {
+        "arxiv_id": "1405.3094",
+        "title": "The inverted Pendulum: A fundamental Benchmark in Control Theory and Robotics",
+        "authors": ["Olfa Boubaker"],
+        "student_title": "The inverted Pendulum: A fundamental Benchmark in Control Theory and Robotics",
+        "student_author": "Olfa Boubaker",
+        "student_arxiv": "1405.3094",
+    }
+
+    @pytest.fixture
+    def _mock_pair(self, monkeypatch):
+        monkeypatch.delenv("PAPERFORGE_REFLECTION_SKIP_CROSSVAL", raising=False)
+        monkeypatch.delenv("PAPERFORGE_REFLECTION_CROSSVAL_BONUS", raising=False)
+        monkeypatch.setattr(
+            "mock_api.depth_eval_reflection._resolve_paper_pair",
+            lambda student_id, full_text="": dict(self.PAIR),
+        )
+
+    def test_bonus_off_by_default_scores_unchanged(self, _mock_pair):
+        from mock_api.depth_eval_reflection import apply_crossval_bonus
+
+        scores = {
+            "understanding_accuracy": 0.70,
+            "analysis_depth": 0.70,
+            "innovative_insights": 0.70,
+            "evidence_support": 0.70,
+            "average": 0.70,
+        }
+        new_scores, bonus, reason = apply_crossval_bonus(dict(scores), "20240001")
+        assert bonus == 0.0
+        assert new_scores == scores, "加分关闭时分数不得发生变化"
+        assert "advisory" in reason, "仍应回传出处核验结果供人工复核"
+
+    def test_bonus_on_when_explicitly_enabled(self, _mock_pair, monkeypatch):
+        from mock_api.depth_eval_reflection import apply_crossval_bonus
+
+        monkeypatch.setenv("PAPERFORGE_REFLECTION_CROSSVAL_BONUS", "1")
+        scores = {"understanding_accuracy": 0.70, "average": 0.70}
+        new_scores, bonus, reason = apply_crossval_bonus(dict(scores), "20240001")
+        assert bonus > 0
+        assert new_scores["understanding_accuracy"] > 0.70
+        assert "交叉验证加分" in reason
+
+    def test_skip_crossval_still_short_circuits(self, monkeypatch):
+        from mock_api.depth_eval_reflection import apply_crossval_bonus
+
+        monkeypatch.setenv("PAPERFORGE_REFLECTION_SKIP_CROSSVAL", "1")
+        scores = {"understanding_accuracy": 0.7}
+        new_scores, bonus, reason = apply_crossval_bonus(dict(scores), "20240001")
+        assert (new_scores, bonus, reason) == (scores, 0.0, "")
+
+
 class TestEdgeCases:
     """边界情况：学生可能利用的检测盲区。"""
 

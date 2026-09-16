@@ -213,18 +213,28 @@ class TestAnalyzeReflectionFile:
         result = analyze_reflection_file(str(test_file), fake_db)
 
         # 验证返回结构
+        from mock_api.reflection_pipeline import W
+
         assert result["student_id"] == "20240001"
         assert result["student_name"] == "张三"
         assert result["paper_title"] == "Deep Learning Advances"
         assert result["bound_paper_id"] == "paper001"
         assert result["scores"]["understanding_accuracy"] == 0.80
         assert result["scores"]["fidelity"] == 0.65
-        # 融合层现为 6 维加权评分；coverage 未命中时按 0 计入。
-        assert result["average"] == round(
-            0.80 * 0.05 + 0.75 * 0.15 + 0.70 * 0.35 + 0.85 * 0.05
-            + 0.65 * 0.05 + (result["coverage"] or 0.0) * 0.35,
-            4,
+        # 融合层现为 6 维加权评分。
+        # 2026-09-16（B1）：coverage 不可测（None）时不再当成 0 分参与加权
+        # （旧行为 = 「系统没拿到论文」与「学生编造」同罚，占权重 0.35 的分数被静默归零），
+        # 改为只对**实际可用维度**归一化，并在结果里显式报告不可用维度。
+        assert result["scores"]["coverage"] is None
+        assert result["unavailable_dimensions"].get("coverage"), (
+            "不可用维度必须带出原因（status），供人工复核"
         )
+        assert result["system_degraded"] is True
+        usable = {k: v for k, v in result["scores"].items() if v is not None}
+        assert result["average"] == round(
+            sum(usable[k] * W[k] for k in usable) / sum(W[k] for k in usable), 4
+        )
+        assert result["score_dimensions_used"] == sorted(usable)
         assert result["verdict"] == "needs_evidence"
         assert result["fidelity_status"] == "ok"
         assert result["ai_likelihood"] == 0.12
@@ -448,11 +458,13 @@ class TestAnalyzeReflectionFile:
 
         # fidelity None 时不触发 FIDELITY_FAIL 的 rewrite 覆盖
         assert result["verdict"] == "needs_evidence"
-        assert result["average"] == round(
-            0.80 * 0.05 + 0.75 * 0.15 + 0.70 * 0.35 + 0.85 * 0.05
-            + 0.0 * 0.05 + (result["coverage"] or 0.0) * 0.35,
-            4,
-        )  # fidelity=0 in average
+        assert result["scores"]["fidelity"] is None
+        assert result["unavailable_dimensions"]["fidelity"] == "no_paper"
+        # 2026-09-16（B1）：不可测维度不参与加权，也不充当 0 分。
+        # 可用维度 = UA/AD/II/ES（权重 .05/.15/.35/.05，合计 .60 → 归一化）：
+        # (.80*.05 + .75*.15 + .70*.35 + .85*.05) / .60 = .44/.60 = 0.7333
+        assert result["average"] == 0.7333
+        assert "fidelity" not in result["score_dimensions_used"]
 
     def test_rewrite_required_caps_average(self, tmp_path, monkeypatch):
         """verdict=rewrite_required 时 average 封顶 REWRITE_AVG_CAP（照抄/编造防分叉）。"""
@@ -667,6 +679,14 @@ class TestCitationIntegrityVerdict:
 
         回归防护：reflection_pipeline 默认从「跳过」改为「自动 offline 校验」，
         必须保证未显式置 0 时校验器被实际调用（且为 offline，不触网）。
+
+        2026-09-16：配置通道统一后，未设 env 会回落 Settings/.env（三态解析见
+        settings.resolve_citation_verify_mode）。本测试锁定「本链路默认档 = offline」，
+        因此把 Settings 侧的值显式置空——否则跑在有 .env 的机器上会因
+        PAPERFORGE_CITATION_VERIFY=1 而触网，测试结果随环境漂移。
+
+        注意：必须打到 ``mock_api.settings``（解析器读的是自己模块全局的 get_settings），
+        打在 reflection_pipeline 命名空间上没用。
         """
         from mock_api.reflection_pipeline import analyze_reflection_file
 
@@ -676,6 +696,10 @@ class TestCitationIntegrityVerdict:
         test_file.write_bytes(b"fake docx bytes")
 
         monkeypatch.delenv("PAPERFORGE_CITATION_VERIFY", raising=False)
+        monkeypatch.setattr(
+            "mock_api.settings.get_settings",
+            lambda: Mock(citation_verify=""),
+        )
         monkeypatch.setattr(
             "mock_api.reflection_pipeline.parse_docx_from_bytes",
             lambda data, filename="": _fake_parse(),
@@ -712,8 +736,60 @@ class TestCitationIntegrityVerdict:
         result = analyze_reflection_file(str(test_file), Mock())
         assert called, "默认未设 PAPERFORGE_CITATION_VERIFY 时应自动执行引用校验"
         assert result["citation_integrity"] == {"integrity_flag": "ok"}
-        # 默认必须为 offline（不触网），仅显式 1/true/on 才触网
+        # 本链路默认档为 offline（不触网），仅显式 1/true/on 才触网
         assert called[0][1] is False
+        assert result["citation_verify_mode"] == "offline"
+
+    def test_citation_verify_env_zero_skips_verifier(self, tmp_path, monkeypatch):
+        """显式 PAPERFORGE_CITATION_VERIFY=0 → skip：校验器压根不该被调用。
+
+        三态语义（settings.resolve_citation_verify_mode）：0/false/off=skip，
+        offline/其他非空=离线校验，1/true/on=在线校验。
+        """
+        from mock_api.reflection_pipeline import analyze_reflection_file
+
+        called = []
+        test_file = tmp_path / "report.docx"
+        test_file.write_bytes(b"fake docx bytes")
+        monkeypatch.setenv("PAPERFORGE_CITATION_VERIFY", "0")
+        monkeypatch.setattr(
+            "mock_api.reflection_pipeline.parse_docx_from_bytes",
+            lambda data, filename="": _fake_parse(),
+        )
+        monkeypatch.setattr(
+            "mock_api.reflection_pipeline.match_paper_by_title",
+            lambda title, db: "paper001",
+        )
+        monkeypatch.setattr(
+            "mock_api.reflection_pipeline.compute_fidelity",
+            lambda sections, full, emb: _fake_fidelity(0.65),
+        )
+        monkeypatch.setattr(
+            "mock_api.reflection_pipeline.compute_ai_likelihood",
+            lambda text: _fake_ai(),
+        )
+        monkeypatch.setattr(
+            "mock_api.depth_eval_reflection.ReflectionReviewer",
+            lambda: Mock(
+                review=lambda rid, title, raw, student_id="", paper_text="", **kwargs: _fake_review_result(
+                    0.78, "well_done"
+                )
+            ),
+        )
+        monkeypatch.setattr(
+            "mock_api.reflection_pipeline._get_paper_text_emb",
+            lambda db, pid: ("full paper text", None),
+        )
+        monkeypatch.setattr(
+            "mock_api.integrity.citation_verifier.assess_citation_integrity",
+            lambda text, verify_online=False: called.append((text, verify_online))
+            or {"integrity_flag": "ok"},
+        )
+
+        result = analyze_reflection_file(str(test_file), Mock())
+        assert called == [], "=0 时不应调用引用校验器"
+        assert result["citation_integrity"] == {}
+        assert result["citation_verify_mode"] == "skip"
 
     def test_inconsistent_uses_reviewer_top_level_verdict(self, tmp_path, monkeypatch):
         """生产形态：verdict 是结果对象顶层字段（不在 scores dict 里），
